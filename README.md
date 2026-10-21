@@ -61,9 +61,9 @@ ffmpeg_path = "ffmpeg"
 | `REMASTERED_OAUTH_LOCAL_PORT` | Docker·헤드리스 환경 OAuth 로컬 서버 포트 (예: `8095`) |
 | `REMASTERED_OAUTH_USE_CONSOLE` | `true`면 URL·코드 복사·붙여넣기 OAuth (`remastered auth --console`) |
 | `REMASTERED_WEB_PUBLIC_BASE_URL` | 공개 URL (예: `https://remastered.baem.app`) — OAuth 리다이렉트·프록시용 |
-| `REMASTERED_GOOGLE_CLIENT_ID` / `SECRET` | 웹 OAuth 클라이언트 (또는 `web` 유형 JSON) |
-| `REMASTERED_TOKEN_ENCRYPTION_KEY` | 사용자 refresh 토큰 암호화 Fernet 키 (필수) |
-| `REMASTERED_WEB_SESSION_SECRET` | 세션 쿠키 서명 |
+| `REMASTERED_GOOGLE_CLIENT_ID` / `SECRET` | (선택) 예전 웹 Google 로그인용 — 현재 웹 UI는 미사용 |
+| `REMASTERED_TOKEN_ENCRYPTION_KEY` | (선택) 예전 웹 토큰 암호화용 — CLI·웹 익명 모드에서는 불필요 |
+| `REMASTERED_WEB_SESSION_SECRET` | 익명 세션 쿠키 서명 (필수) |
 | `REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER` | 사용자당 일일 작업 수 (기본 5) |
 | `REMASTERED_WEB_MAX_SOURCE_DURATION_SECONDS` | 소스 최대 길이(초) |
 | `REMASTERED_WEB_JOB_RETENTION_DAYS` | 완료 작업 파일 보존 일수 |

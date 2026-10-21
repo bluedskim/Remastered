@@ -4,22 +4,14 @@ import time
 from pathlib import Path
 
 import pytest
-from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
-from remastered.web.app import app, require_signed_in
+from remastered.web.app import app
 from remastered.web.media import RETENTION_MESSAGE
 
 
 @pytest.fixture
-def encryption_key(monkeypatch: pytest.MonkeyPatch) -> str:
-    key = Fernet.generate_key().decode()
-    monkeypatch.setenv("REMASTERED_TOKEN_ENCRYPTION_KEY", key)
-    return key
-
-
-@pytest.fixture
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encryption_key: str) -> TestClient:
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     work = tmp_path / "work"
     refs = tmp_path / "refs"
     work.mkdir()
@@ -28,8 +20,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encryption_key: str)
     monkeypatch.setenv("REMASTERED_WORK_DIR", str(work))
     monkeypatch.setenv("REMASTERED_WEB_REFERENCES_DIR", str(refs))
     monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "0")
-    monkeypatch.setenv("REMASTERED_GOOGLE_CLIENT_ID", "test-client-id")
-    monkeypatch.setenv("REMASTERED_GOOGLE_CLIENT_SECRET", "test-secret")
+    monkeypatch.delenv("REMASTERED_GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("REMASTERED_GOOGLE_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("REMASTERED_TOKEN_ENCRYPTION_KEY", raising=False)
 
     def fake_web_pipeline(url: str, reference: Path, settings, progress=None):
         prog = progress
@@ -56,129 +49,125 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encryption_key: str)
         yield test_client
 
 
-def _register_user(store, user_id: str = "u1") -> str:
-    return store.upsert_user(
-        google_sub=f"sub-{user_id}",
-        email=f"{user_id}@example.com",
-        name=user_id,
-        picture=None,
-        encrypted_token=b"x",
-    )
-
-
-def test_landing_anonymous(client: TestClient) -> None:
+def test_home_without_google_env(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "Google로 로그인" in resp.text
-    assert client.get("/dashboard", follow_redirects=False).status_code == 303
-
-
-def test_oauth_not_configured(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encryption_key: str
-) -> None:
-    monkeypatch.delenv("REMASTERED_GOOGLE_CLIENT_ID", raising=False)
-    monkeypatch.delenv("REMASTERED_GOOGLE_CLIENT_SECRET", raising=False)
-    monkeypatch.delenv("REMASTERED_CLIENT_SECRETS", raising=False)
-    monkeypatch.setenv("REMASTERED_WORK_DIR", str(tmp_path / "work"))
-    (tmp_path / "work").mkdir()
-    monkeypatch.setenv("REMASTERED_WEB_REFERENCES_DIR", str(tmp_path / "refs"))
-    (tmp_path / "refs").mkdir()
-
-    with TestClient(app) as test_client:
-        home = test_client.get("/")
-        assert home.status_code == 200
-        assert "Google 로그인이 아직 설정되지 않았습니다" in home.text
-        assert "Google로 로그인" not in home.text
-
-        auth = test_client.get("/auth/google")
-        assert auth.status_code == 200
-        assert "Google 로그인이 아직 설정되지 않았습니다" in auth.text
-
-        dash = test_client.get("/dashboard", follow_redirects=False)
-        assert dash.status_code == 303
-        assert dash.headers["location"] == "/auth/unavailable"
+    assert "새 작업" in resp.text
+    assert "Google" not in resp.text
+    assert client.get("/dashboard", follow_redirects=False).headers["location"] == "/"
 
 
 def test_index_and_create_job(client: TestClient) -> None:
-    user_id = _register_user(client.app.state.store, "u1")
-    app.dependency_overrides[require_signed_in] = lambda: user_id
-    try:
-        home = client.get("/dashboard")
-        assert home.status_code == 200
-        assert "새 작업" in home.text
-        assert "YouTube에 업로드" not in home.text
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "새 작업" in home.text
+    assert "YouTube에 업로드" not in home.text
 
-        resp = client.post(
-            "/jobs",
-            data={
-                "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-                "reference_name": "ref.wav",
-            },
-            follow_redirects=False,
-        )
-        assert resp.status_code == 303
-        job_url = resp.headers["location"]
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    job_url = resp.headers["location"]
 
-        for _ in range(40):
-            panel = client.get(job_url + "/panel")
-            if "status-completed" in panel.text:
-                break
-            time.sleep(0.05)
-        else:
-            pytest.fail("job did not complete")
+    for _ in range(40):
+        panel = client.get(job_url + "/panel")
+        if "status-completed" in panel.text:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("job did not complete")
 
-        media = client.get(job_url.replace("/jobs/", "/media/") + "/mastered")
-        assert media.status_code == 200
-        ranged = client.get(
-            job_url.replace("/jobs/", "/media/") + "/mastered",
-            headers={"Range": "bytes=0-3"},
-        )
-        assert ranged.status_code == 206
-    finally:
-        app.dependency_overrides.clear()
+    media = client.get(job_url.replace("/jobs/", "/media/") + "/mastered")
+    assert media.status_code == 200
+    ranged = client.get(
+        job_url.replace("/jobs/", "/media/") + "/mastered",
+        headers={"Range": "bytes=0-3"},
+    )
+    assert ranged.status_code == 206
 
 
 def test_job_isolation(client: TestClient) -> None:
-    store = client.app.state.store
-    u1 = _register_user(store, "alice")
-    u2 = _register_user(store, "bob")
-    job_id = store.create_job(
-        user_id=u1,
-        youtube_url="https://youtu.be/x",
-        reference_path="/references/ref.wav",
-        title=None,
-        description="",
-        privacy="private",
-        upload_enabled=False,
+    client.get("/")
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=abc",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
     )
-    app.dependency_overrides[require_signed_in] = lambda: u2
-    try:
-        assert client.get(f"/jobs/{job_id}").status_code == 404
-        assert client.get(f"/media/{job_id}/mastered").status_code == 404
-    finally:
-        app.dependency_overrides.clear()
+    assert resp.status_code == 303
+    job_id = resp.headers["location"].split("/")[-1]
+    client.cookies.clear()
+    client.get("/")
+    assert client.get(f"/jobs/{job_id}").status_code == 404
+    assert client.get(f"/media/{job_id}/mastered").status_code == 404
 
 
-def test_daily_quota(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_daily_quota_per_owner(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER", "1")
-    store = client.app.state.store
-    user_id = _register_user(store, "quota")
+    client.get("/")
+    first = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=one",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    assert first.status_code == 303
+    monkeypatch.setattr(
+        "remastered.web.limits.inspect_youtube_source",
+        lambda url: {"duration": 60, "filesize": 1000},
+    )
+    second = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=two",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    assert second.status_code == 429
+
+
+def test_daily_quota_per_ip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    work = tmp_path / "work"
+    refs = tmp_path / "refs"
+    work.mkdir()
+    refs.mkdir()
+    (refs / "ref.wav").write_bytes(b"x")
+    monkeypatch.setenv("REMASTERED_WORK_DIR", str(work))
+    monkeypatch.setenv("REMASTERED_WEB_REFERENCES_DIR", str(refs))
+    monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "0")
+    monkeypatch.setenv("REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER", "1")
+    monkeypatch.setattr(
+        "remastered.web.limits.inspect_youtube_source",
+        lambda url: {"duration": 60, "filesize": 1000},
+    )
+    store_path = work / "remastered_jobs.db"
+    from remastered.web.db import JobStore
+
+    store = JobStore(store_path)
     store.create_job(
-        user_id=user_id,
+        user_id="anon-other",
         youtube_url="https://youtu.be/a",
         reference_path="/x",
         title=None,
         description="",
         privacy="private",
         upload_enabled=False,
+        client_ip="testclient",
     )
-    app.dependency_overrides[require_signed_in] = lambda: user_id
-    monkeypatch.setattr(
-        "remastered.web.limits.inspect_youtube_source",
-        lambda url: {"duration": 60, "filesize": 1000},
-    )
-    try:
-        resp = client.post(
+
+    with TestClient(app) as fresh_browser:
+        fresh_browser.get("/")
+        resp = fresh_browser.post(
             "/jobs",
             data={
                 "youtube_url": "https://www.youtube.com/watch?v=abc",
@@ -187,35 +176,32 @@ def test_daily_quota(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> Non
             follow_redirects=False,
         )
         assert resp.status_code == 429
-    finally:
-        app.dependency_overrides.clear()
 
 
-def test_missing_media_retention_message(client: TestClient, tmp_path: Path) -> None:
+def test_missing_media_retention_message(client: TestClient) -> None:
+    client.get("/")
     store = client.app.state.store
-    user_id = _register_user(store, "retention")
-    work = tmp_path / "work"
-    job_id = store.create_job(
-        user_id=user_id,
-        youtube_url="https://youtu.be/x",
-        reference_path="/references/ref.wav",
-        title=None,
-        description="",
-        privacy="private",
-        upload_enabled=False,
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=ret",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
     )
+    job_id = resp.headers["location"].split("/")[-1]
+    job = store.get_job(job_id)
+    assert job is not None
+    owner_id = job["user_id"]
+    work = client.app.state.store.db_path.parent
     store.update_job(
         job_id,
         status="completed",
-        audio_path=str(work / "users" / user_id / "missing.wav"),
-        mastered_path=str(work / "users" / user_id / "missing2.wav"),
+        audio_path=str(work / "users" / owner_id / "missing.wav"),
+        mastered_path=str(work / "users" / owner_id / "missing2.wav"),
     )
-    app.dependency_overrides[require_signed_in] = lambda: user_id
-    try:
-        panel = client.get(f"/jobs/{job_id}/panel")
-        assert RETENTION_MESSAGE.split("。")[0] in panel.text or "보관 기간" in panel.text
-        resp = client.get(f"/media/{job_id}/mastered")
-        assert resp.status_code == 404
-        assert RETENTION_MESSAGE in resp.json()["detail"]
-    finally:
-        app.dependency_overrides.clear()
+    panel = client.get(f"/jobs/{job_id}/panel")
+    assert RETENTION_MESSAGE.split("。")[0] in panel.text or "보관 기간" in panel.text
+    media_resp = client.get(f"/media/{job_id}/mastered")
+    assert media_resp.status_code == 404
+    assert RETENTION_MESSAGE in media_resp.json()["detail"]

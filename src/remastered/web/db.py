@@ -11,7 +11,7 @@ from uuid import uuid4
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -101,6 +101,7 @@ class JobStore:
                     video_path TEXT,
                     stage_state TEXT NOT NULL DEFAULT '{}',
                     files_cleaned INTEGER NOT NULL DEFAULT 0,
+                    client_ip TEXT,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
                 """
@@ -113,11 +114,15 @@ class JobStore:
                 conn.execute(
                     "ALTER TABLE jobs ADD COLUMN files_cleaned INTEGER NOT NULL DEFAULT 0"
                 )
+            cols = self._job_columns(conn)
+            if "client_ip" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN client_ip TEXT")
             self._backfill_legacy_jobs(conn)
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_job_logs_job ON job_logs(job_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_client_ip ON jobs(client_ip)")
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     @staticmethod
@@ -219,6 +224,7 @@ class JobStore:
         description: str,
         privacy: str,
         upload_enabled: bool,
+        client_ip: str | None = None,
     ) -> str:
         job_id = uuid4().hex
         now = _utc_now()
@@ -232,8 +238,8 @@ class JobStore:
                 INSERT INTO jobs (
                     id, user_id, created_at, updated_at, status, stage, youtube_url,
                     reference_path, title, description, privacy, upload_enabled,
-                    stage_state
-                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?)
+                    stage_state, client_ip
+                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job_id,
@@ -247,6 +253,7 @@ class JobStore:
                     privacy,
                     1 if upload_enabled else 0,
                     json.dumps(stage_state),
+                    client_ip,
                 ),
             )
         return job_id
@@ -355,6 +362,35 @@ class JobStore:
                 WHERE user_id = ? AND created_at >= ?
                 """,
                 (user_id, start),
+            ).fetchone()
+        return int(row["c"])
+
+    def count_ip_active_jobs(self, client_ip: str) -> int:
+        if not client_ip or client_ip == "unknown":
+            return 0
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM jobs
+                WHERE client_ip = ? AND status IN ('pending', 'running')
+                """,
+                (client_ip,),
+            ).fetchone()
+        return int(row["c"])
+
+    def count_ip_jobs_today(self, client_ip: str) -> int:
+        if not client_ip or client_ip == "unknown":
+            return 0
+        start = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ).isoformat()
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM jobs
+                WHERE client_ip = ? AND created_at >= ?
+                """,
+                (client_ip, start),
             ).fetchone()
         return int(row["c"])
 

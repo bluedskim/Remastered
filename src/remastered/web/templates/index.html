@@ -1,15 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card user-bar">
-  <p>
-    <strong>{{ user.email or '사용자' }}</strong>
-    <span class="muted">— 다운로드·마스터링 작업</span>
-  </p>
-  <p>
-    <a class="btn btn-secondary" href="/logout">로그아웃</a>
-    <form method="post" action="/account/disconnect" style="display:inline">
-      <button type="submit" class="btn btn-secondary">계정 연결 해제</button>
-    </form>
+<section class="card hero">
+  <h2>YouTube 오디오 리마스터</h2>
+  <p class="muted">
+    matchering으로 레퍼런스에 맞춰 마스터링하고, 브라우저에서 결과를 들을 수 있습니다.
   </p>
 </section>
 
