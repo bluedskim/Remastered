@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "remastered"
+version = "0.1.0"
+description = "YouTube 오디오 다운로드, matchering 마스터링, YouTube 재업로드 CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Dennis" }]
+dependencies = [
+    "click>=8.1",
+    "google-api-python-client>=2.100",
+    "google-auth-httplib2>=0.2",
+    "google-auth-oauthlib>=1.2",
+    "matchering>=2.0.6",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "yt-dlp>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "numpy>=1.24",
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+]
+
+[project.scripts]
+remastered = "remastered.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/remastered"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/remastered", "tests", "README.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
