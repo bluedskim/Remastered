@@ -72,14 +72,19 @@ def _enforce_concurrency_and_quota(
         )
 
 
-def enforce_job_limits(
+def enforce_job_creation_limits(
     store: JobStore,
     owner_id: str,
     client_ip: str,
-    youtube_url: str,
 ) -> None:
+    """POST /jobs: quota·동시성만 (yt-dlp는 워커에서 검증)."""
     ws = WebSettings()
     _enforce_concurrency_and_quota(store, ws, owner_id=owner_id, client_ip=client_ip)
+
+
+def validate_youtube_source_limits(youtube_url: str) -> None:
+    """워커: 길이·크기 제한 (yt-dlp 메타데이터 조회)."""
+    ws = WebSettings()
     info = inspect_youtube_source(youtube_url.strip())
     duration = info.get("duration") or 0
     if duration and duration > ws.max_source_duration_seconds:
@@ -96,3 +101,14 @@ def enforce_job_limits(
             status_code=400,
             detail=f"영상 크기가 제한({ws.max_source_bytes // (1024 * 1024)}MB)을 초과합니다.",
         )
+
+
+def enforce_job_limits(
+    store: JobStore,
+    owner_id: str,
+    client_ip: str,
+    youtube_url: str,
+) -> None:
+    """하위 호환: 생성 한도 + 소스 검증."""
+    enforce_job_creation_limits(store, owner_id, client_ip)
+    validate_youtube_source_limits(youtube_url)

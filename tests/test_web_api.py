@@ -25,20 +25,29 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.delenv("REMASTERED_GOOGLE_CLIENT_SECRET", raising=False)
     monkeypatch.delenv("REMASTERED_TOKEN_ENCRYPTION_KEY", raising=False)
 
-    def fake_web_pipeline(url: str, reference: Path, settings, progress=None):
+    def fake_web_pipeline(
+        url: str, reference: Path, settings, progress=None, on_downloaded=None
+    ):
         prog = progress
         if prog:
             prog.stage_start("download")
             prog.stage_done("download")
             prog.stage_start("master")
             prog.stage_done("master")
+        if on_downloaded:
+            on_downloaded("Test Track", "vid")
         audio = settings.work_dir / "vid" / "audio.wav"
         audio.parent.mkdir(parents=True, exist_ok=True)
         audio.write_bytes(b"RIFF" + b"\x00" * 100)
         mastered = settings.work_dir / "vid" / "master" / "out.wav"
         mastered.parent.mkdir(parents=True, exist_ok=True)
         mastered.write_bytes(b"RIFF" + b"\x00" * 100)
-        return {"audio": audio, "mastered": mastered, "video_id": "vid"}
+        return {
+            "audio": audio,
+            "mastered": mastered,
+            "video_id": "vid",
+            "title": "Test Track",
+        }
 
     monkeypatch.setattr("remastered.web.worker.run_web_master_pipeline", fake_web_pipeline)
 
@@ -51,7 +60,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr("remastered.web.worker.transcode_wav_for_playback", fake_transcode)
     monkeypatch.setattr(
         "remastered.web.limits.inspect_youtube_source",
-        lambda url: {"duration": 120, "filesize": 1000},
+        lambda url: {"duration": 120, "filesize": 1000, "title": "Test Track"},
     )
 
     with TestClient(fastapi_application) as test_client:
@@ -254,3 +263,41 @@ def test_media_download_disposition(client: TestClient) -> None:
     assert inline.headers.get("content-disposition", "").lower().startswith("inline")
     attach = client.get(f"/media/{job_id}/mastered?download=1")
     assert "attachment" in attach.headers.get("content-disposition", "").lower()
+
+
+def test_job_title_on_dashboard_and_detail(client: TestClient) -> None:
+    client.get("/")
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=title-test",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    job_id = resp.headers["location"].split("/")[-1]
+    for _ in range(40):
+        job = client.app.state.store.get_job(job_id)
+        if job and job.get("title"):
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("title not set")
+
+    dash = client.get("/")
+    assert "Test Track" in dash.text
+    detail = client.get(f"/jobs/{job_id}")
+    assert "Test Track" in detail.text
+
+
+def test_duplicate_submission_redirects_to_same_job(client: TestClient) -> None:
+    client.get("/")
+    payload = {
+        "youtube_url": "https://www.youtube.com/watch?v=dup-test",
+        "reference_name": "ref.wav",
+    }
+    first = client.post("/jobs", data=payload, follow_redirects=False)
+    second = client.post("/jobs", data=payload, follow_redirects=False)
+    assert first.status_code == 303
+    assert second.status_code == 303
+    assert first.headers["location"] == second.headers["location"]

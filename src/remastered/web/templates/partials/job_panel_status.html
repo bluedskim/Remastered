@@ -1,6 +1,8 @@
 <section class="card">
   <h2>작업 상태</h2>
+  <p class="job-title"><strong>{{ job_display_title(job) }}</strong></p>
   <p class="muted">ID: {{ job.id }}</p>
+  <p class="muted small" style="overflow:hidden;text-overflow:ellipsis">{{ job.youtube_url }}</p>
   <p>상태: <strong class="status-{{ job.status }}">{{ job.status }}</strong>
     {% if job.error %}<span class="oauth-err"> — {{ job.error }}</span>{% endif %}
   </p>

@@ -32,6 +32,7 @@ class WebSettings(BaseSettings):
     max_concurrent_media_streams: int = 12
     uvicorn_limit_concurrency: int = 80
     uvicorn_timeout_keep_alive: int = 5
+    duplicate_job_window_seconds: int = 30
 
     @property
     def references_path(self) -> Path:

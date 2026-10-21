@@ -31,8 +31,12 @@ def media_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     monkeypatch.setattr("remastered.web.worker.transcode_wav_for_playback", fake_transcode)
 
-    def fake_web_pipeline(url: str, reference: Path, settings, progress=None):
+    def fake_web_pipeline(
+        url: str, reference: Path, settings, progress=None, on_downloaded=None
+    ):
         owner_work = settings.work_dir
+        if on_downloaded:
+            on_downloaded("Stress Track", "vid")
         audio = owner_work / "vid" / "audio.wav"
         audio.parent.mkdir(parents=True, exist_ok=True)
         audio.write_bytes(b"RIFF" + b"\x00" * 4096)
@@ -41,7 +45,12 @@ def media_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         mastered.write_bytes(b"RIFF" + b"\x00" * 4096)
         fake_transcode(audio)
         fake_transcode(mastered)
-        return {"audio": audio, "mastered": mastered, "video_id": "vid"}
+        return {
+            "audio": audio,
+            "mastered": mastered,
+            "video_id": "vid",
+            "title": "Stress Track",
+        }
 
     monkeypatch.setattr("remastered.web.worker.run_web_master_pipeline", fake_web_pipeline)
     monkeypatch.setattr(

@@ -54,6 +54,15 @@ def _create_pr3_database(path: Path) -> None:
 def test_upgrade_pr3_database(tmp_path: Path) -> None:
     db_path = tmp_path / "remastered_jobs.db"
     _create_pr3_database(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO job_logs (job_id, created_at, message)
+        VALUES ('job1', '2026-01-01T00:00:00+00:00', '다운로드 완료: Legacy Title')
+        """
+    )
+    conn.commit()
+    conn.close()
 
     store = JobStore(db_path)
 
@@ -70,3 +79,4 @@ def test_upgrade_pr3_database(tmp_path: Path) -> None:
     job = store.get_job("job1")
     assert job is not None
     assert job["user_id"] == LEGACY_MIGRATION_USER_ID
+    assert job.get("title") == "Legacy Title"

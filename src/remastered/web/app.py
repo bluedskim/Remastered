@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
@@ -23,13 +24,15 @@ from remastered.web.media import (
     media_file_response,
     resolve_job_media_path,
 )
-from remastered.web.limits import JobCreateRateLimiter, enforce_job_limits
+from remastered.web.job_titles import job_display_title
+from remastered.web.limits import JobCreateRateLimiter, enforce_job_creation_limits
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
+templates.env.globals["job_display_title"] = job_display_title
 
 STAGE_LABELS = {
     "download": "다운로드",
@@ -199,7 +202,6 @@ async def create_job(
 ) -> RedirectResponse:
     ip = client_ip(request)
     limiter.check(owner_id, ip)
-    await run_in_threadpool(enforce_job_limits, store, owner_id, ip, youtube_url)
 
     ws = _web_settings()
     reference_path: Path | None = None
@@ -208,7 +210,13 @@ async def create_job(
     if reference_upload and reference_upload.filename:
         safe_name = Path(reference_upload.filename).name
         dest = owner_ref_dir / safe_name
-        dest.write_bytes(await reference_upload.read())
+        body = await reference_upload.read()
+
+        def _write_upload() -> None:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(body)
+
+        await run_in_threadpool(_write_upload)
         reference_path = dest
     elif reference_name:
         name = Path(reference_name).name
@@ -222,9 +230,24 @@ async def create_job(
     if reference_path is None:
         raise HTTPException(status_code=400, detail="레퍼런스 트랙을 선택하거나 업로드하세요.")
 
+    youtube_url = youtube_url.strip()
+    duplicate_id = await run_in_threadpool(
+        partial(
+            store.find_recent_duplicate_job,
+            owner_id,
+            youtube_url,
+            str(reference_path),
+            within_seconds=ws.duplicate_job_window_seconds,
+        )
+    )
+    if duplicate_id:
+        return RedirectResponse(f"/jobs/{duplicate_id}", status_code=303)
+
+    await run_in_threadpool(enforce_job_creation_limits, store, owner_id, ip)
+
     job_id = store.create_job(
         user_id=owner_id,
-        youtube_url=youtube_url.strip(),
+        youtube_url=youtube_url,
         reference_path=str(reference_path),
         title=None,
         description="",
