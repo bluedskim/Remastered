@@ -1,0 +1,179 @@
+:root {
+  --bg: #0f1419;
+  --card: #1a2332;
+  --text: #e7ecf3;
+  --muted: #9aa8bc;
+  --accent: #5b9fd4;
+  --ok: #3d9a6a;
+  --warn: #c9a227;
+  --err: #d45b5b;
+  --border: #2a3648;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Pretendard", "Apple SD Gothic Neo", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+}
+
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.6rem;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+label {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+input[type="text"],
+input[type="url"],
+input[type="password"],
+textarea,
+select {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #0c1017;
+  color: var(--text);
+}
+
+button,
+.btn {
+  display: inline-block;
+  background: var(--accent);
+  color: #041018;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn-secondary {
+  background: #2a3648;
+  color: var(--text);
+}
+
+.oauth-ok {
+  color: var(--ok);
+}
+.oauth-warn {
+  color: var(--warn);
+}
+.oauth-err {
+  color: var(--err);
+}
+
+.stages {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.stage {
+  text-align: center;
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.stage.pending {
+  opacity: 0.55;
+}
+.stage.running {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.stage.done {
+  border-color: var(--ok);
+}
+.stage.skipped {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.stage.failed {
+  border-color: var(--err);
+}
+
+.log-box {
+  max-height: 280px;
+  overflow: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  background: #0c1017;
+  border-radius: 8px;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+}
+
+.log-line {
+  margin: 0 0 0.25rem;
+  white-space: pre-wrap;
+}
+
+table.jobs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+table.jobs th,
+table.jobs td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.35rem;
+  text-align: left;
+}
+
+.status-completed {
+  color: var(--ok);
+}
+.status-failed {
+  color: var(--err);
+}
+.status-running {
+  color: var(--accent);
+}
+
+.player {
+  margin-top: 0.75rem;
+}

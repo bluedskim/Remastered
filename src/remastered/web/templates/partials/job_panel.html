@@ -1,0 +1,49 @@
+<section class="card">
+  <h2>작업 상태</h2>
+  <p class="muted">ID: {{ job.id }}</p>
+  <p>상태: <strong class="status-{{ job.status }}">{{ job.status }}</strong>
+    {% if job.error %}<span class="oauth-err"> — {{ job.error }}</span>{% endif %}
+  </p>
+
+  <div class="stages">
+    {% for stage in stages %}
+    <div class="stage {{ job.stage_state.get(stage, 'pending') }}">
+      {{ stage_labels.get(stage, stage) }}<br />
+      <small>{{ job.stage_state.get(stage, 'pending') }}</small>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if job.mastered_path %}
+  <div class="player">
+    <p><strong>마스터 WAV</strong></p>
+    <audio controls src="/media/{{ job.id }}/mastered"></audio>
+    <a class="btn btn-secondary" href="/media/{{ job.id }}/mastered" download>다운로드</a>
+  </div>
+  {% endif %}
+
+  {% if job.video_path %}
+  <div class="player">
+    <p><strong>MP4</strong></p>
+    <video controls width="100%" src="/media/{{ job.id }}/video"></video>
+    <a class="btn btn-secondary" href="/media/{{ job.id }}/video" download>다운로드</a>
+  </div>
+  {% endif %}
+
+  {% if job.uploaded_video_id %}
+  <p><a href="https://www.youtube.com/watch?v={{ job.uploaded_video_id }}" target="_blank" rel="noopener">
+    YouTube에서 보기 ↗
+  </a></p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h3>로그</h3>
+  <div class="log-box">
+    {% for line in logs %}
+    <div class="log-line">[{{ line.created_at[11:19] }}] {{ line.message }}</div>
+    {% else %}
+    <div class="log-line muted">로그 없음</div>
+    {% endfor %}
+  </div>
+</section>

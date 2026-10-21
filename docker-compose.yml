@@ -1,10 +1,35 @@
-# Remastered는 상시 HTTP 서버가 아니라 CLI 작업 단위로 실행합니다.
-# 예: docker compose run --rm remastered run "https://..." -r /references/ref.wav
-#
-# OAuth 최초 로그인: docker compose run --rm remastered auth
-# (포트 8095가 compose에 노출되어 Mac 브라우저에서 localhost로 접속)
+# CLI 일회 실행: docker compose run --rm remastered run "https://..." -r /references/ref.wav
+# 웹 UI (상시): docker compose up -d web  →  http://localhost:8080
+# CLI OAuth: docker compose run --rm remastered auth (포트 8095)
 
 services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    image: remastered-web:local
+    restart: unless-stopped
+    ports:
+      - "${REMASTERED_WEB_PORT:-8080}:8080"
+    volumes:
+      - ${REMASTERED_INPUT_DIR:-./docker/data/input}:/input
+      - ${REMASTERED_OUTPUT_DIR:-./docker/data/output}:/output
+      - ${REMASTERED_WORK_DIR:-./docker/data/work}:/work
+      - ${REMASTERED_REFERENCES_DIR:-./references}:/references
+      - ${REMASTERED_CONFIG_DIR:-./docker/config}:/config
+    environment:
+      REMASTERED_CONFIG: /config/config.toml
+      REMASTERED_WORK_DIR: /work
+      REMASTERED_CLIENT_SECRETS: /config/client_secrets.json
+      REMASTERED_TOKEN_PATH: /config/token.json
+      REMASTERED_WEB_HOST: 0.0.0.0
+      REMASTERED_WEB_PORT: 8080
+      REMASTERED_WEB_REFERENCES_DIR: /references
+      REMASTERED_WEB_PASSWORD: ${REMASTERED_WEB_PASSWORD:-}
+      REMASTERED_WEB_SESSION_SECRET: ${REMASTERED_WEB_SESSION_SECRET:-change-me-in-production}
+      REMASTERED_WEB_OAUTH_REDIRECT_BASE: ${REMASTERED_WEB_OAUTH_REDIRECT_BASE:-http://localhost:8080}
+
   remastered:
     build:
       context: .

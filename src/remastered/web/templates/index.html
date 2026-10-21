@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>YouTube OAuth</h2>
+  <p class="{% if oauth.status == 'ok' %}oauth-ok{% elif oauth.status in ['no_token','expired','refresh_failed'] %}oauth-warn{% else %}oauth-err{% endif %}">
+    <strong>{{ oauth.label }}</strong> — {{ oauth.detail }}
+  </p>
+  {% if oauth.status != 'ok' and oauth.status != 'no_secrets' %}
+  <p><a class="btn" href="/oauth/start">YouTube 계정 연결</a></p>
+  {% elif oauth.status == 'no_secrets' %}
+  <p class="muted">CLI: <code>docker compose run --rm remastered auth</code> (secrets 준비 후)</p>
+  {% endif %}
+  {% if request.query_params.get('oauth') == 'connected' %}
+  <p class="oauth-ok">YouTube 연결이 완료되었습니다.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>새 작업</h2>
+  <form method="post" action="/jobs" enctype="multipart/form-data" class="grid">
+    <div>
+      <label for="youtube_url">YouTube URL</label>
+      <input type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=..." required />
+    </div>
+    <div>
+      <label for="reference_name">레퍼런스 (마운트된 /references)</label>
+      <select id="reference_name" name="reference_name">
+        <option value="">— 선택 —</option>
+        {% for ref in references %}
+        <option value="{{ ref }}">{{ ref }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="reference_upload">또는 레퍼런스 파일 업로드</label>
+      <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" />
+    </div>
+    <div>
+      <label for="title">업로드 제목 (비우면 자동)</label>
+      <input type="text" id="title" name="title" />
+    </div>
+    <div>
+      <label for="description">설명</label>
+      <textarea id="description" name="description" rows="2"></textarea>
+    </div>
+    <div>
+      <label for="privacy">공개 설정</label>
+      <select id="privacy" name="privacy">
+        <option value="private" selected>비공개 (private)</option>
+        <option value="unlisted">일부 공개 (unlisted)</option>
+        <option value="public">공개 (public)</option>
+      </select>
+    </div>
+    <div>
+      <label><input type="checkbox" name="upload_enabled" value="on" checked /> YouTube에 업로드</label>
+    </div>
+    <button type="submit">작업 시작</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>최근 작업</h2>
+  {% if not jobs %}
+  <p class="muted">아직 작업이 없습니다.</p>
+  {% else %}
+  <table class="jobs">
+    <thead>
+      <tr><th>시간</th><th>상태</th><th>단계</th><th>URL</th></tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <td><a href="/jobs/{{ job.id }}">{{ job.created_at[:19] }}</a></td>
+        <td class="status-{{ job.status }}">{{ job.status }}</td>
+        <td>{{ stage_labels.get(job.stage, job.stage) }}</td>
+        <td class="muted" style="max-width:240px;overflow:hidden;text-overflow:ellipsis">{{ job.youtube_url }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

@@ -32,13 +32,29 @@ WORKDIR /work
 ENTRYPOINT ["remastered"]
 CMD ["--help"]
 
+FROM base AS web
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+
+RUN pip install --no-cache-dir ".[web]" \
+    && useradd --create-home --uid 1000 --shell /usr/sbin/nologin remastered \
+    && mkdir -p /work /input /output /references /config \
+    && chown remastered:remastered /work /input /output /references /config
+
+USER remastered
+WORKDIR /work
+
+EXPOSE 8080
+ENTRYPOINT ["remastered-web"]
+
 FROM base AS dev
 
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY tests ./tests
 
-RUN pip install --no-cache-dir ".[dev]"
+RUN pip install --no-cache-dir ".[dev,web]"
 
 WORKDIR /app
 CMD ["pytest", "-q"]

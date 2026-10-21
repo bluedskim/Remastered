@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}작업 {{ job.id[:8] }} — Remastered{% endblock %}
+{% block content %}
+<p><a href="/">← 목록</a></p>
+<div id="job-panel"
+     hx-get="/jobs/{{ job.id }}/panel"
+     hx-trigger="load, every 2s"
+     hx-swap="innerHTML">
+  {% include "partials/job_panel.html" %}
+</div>
+{% endblock %}
