@@ -39,8 +39,7 @@
       <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" />
     </div>
     <p class="muted small">
-      한도: 동시 {{ limits.max_concurrent_jobs_per_user }}건 · 하루 {{ limits.daily_job_quota_per_user }}건 ·
-      최대 {{ limits.max_source_duration_seconds // 60 }}분 ·
+      제한: 소스 최대 {{ limits.max_source_duration_seconds // 60 }}분 ·
       {{ limits.max_source_bytes // (1024*1024) }}MB
     </p>
     <button type="submit" id="create-job-submit">작업 시작</button>
@@ -61,7 +60,7 @@
       <tr>
         <td><a href="/jobs/{{ job.id }}">{{ job.created_at[:19] }}</a></td>
         <td class="job-title" style="max-width:280px;overflow:hidden;text-overflow:ellipsis">{{ job_display_title(job) }}</td>
-        <td class="status-{{ job.status }}">{{ job.status }}</td>
+        <td class="status-{{ job.status }}">{{ job.status_display }}</td>
         <td>{{ stage_labels.get(job.stage, job.stage) }}</td>
       </tr>
       {% endfor %}

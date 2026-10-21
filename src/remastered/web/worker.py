@@ -27,6 +27,7 @@ class JobWorker:
         self._thread: threading.Thread | None = None
         self._wake = threading.Event()
         self._last_cleanup = 0.0
+        self._last_served_user_id: str | None = None
 
     def start(self) -> None:
         self.store.reset_interrupted()
@@ -55,7 +56,7 @@ class JobWorker:
     def _loop(self) -> None:
         while not self._stop.is_set():
             self._maybe_cleanup()
-            job_id = self.store.next_pending()
+            job_id = self.store.next_pending_fair(self._last_served_user_id)
             if not job_id:
                 self._wake.wait(timeout=2.0)
                 self._wake.clear()
@@ -71,6 +72,7 @@ class JobWorker:
             self.store.update_job(job_id, status="failed", error="user_id 없음")
             return
 
+        self._last_served_user_id = user_id
         self.store.update_job(job_id, status="running", stage="download", error=None)
         stage_state = dict(job["stage_state"])
 

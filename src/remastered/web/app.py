@@ -24,8 +24,8 @@ from remastered.web.media import (
     media_file_response,
     resolve_job_media_path,
 )
+from remastered.web.job_queue import job_status_display
 from remastered.web.job_titles import job_display_title
-from remastered.web.limits import JobCreateRateLimiter, enforce_job_creation_limits
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
@@ -61,10 +61,8 @@ async def _lifespan(app: FastAPI):
     store = JobStore(_job_db_path())
     worker = build_worker(store)
     worker.start()
-    ws = _web_settings()
     app.state.store = store
     app.state.worker = worker
-    app.state.rate_limiter = JobCreateRateLimiter(ws.job_create_min_interval_seconds)
     yield
     worker.stop()
 
@@ -96,10 +94,6 @@ def get_store(request: Request) -> JobStore:
 
 def get_worker(request: Request) -> JobWorker:
     return request.app.state.worker
-
-
-def get_rate_limiter(request: Request) -> JobCreateRateLimiter:
-    return request.app.state.rate_limiter
 
 
 def require_owner(request: Request) -> str:
@@ -151,13 +145,19 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 
+def _enrich_job(job: dict, store: JobStore) -> dict:
+    data = dict(job)
+    data["status_display"] = job_status_display(job, store)
+    return data
+
+
 def _dashboard_context(
     request: Request,
     owner_id: str,
     store: JobStore,
 ) -> dict:
     ws = _web_settings()
-    jobs = store.list_jobs(owner_id, limit=20)
+    jobs = [_enrich_job(j, store) for j in store.list_jobs(owner_id, limit=20)]
     shared_refs = _list_reference_files(ws.references_path)
     user_refs = _list_reference_files(_owner_references_dir(owner_id))
     return {
@@ -194,7 +194,6 @@ async def create_job(
     owner_id: str = Depends(require_owner),
     store: JobStore = Depends(get_store),
     worker: JobWorker = Depends(get_worker),
-    limiter: JobCreateRateLimiter = Depends(get_rate_limiter),
     youtube_url: str = Form(...),
     reference_name: str = Form(""),
     reference_source: str = Form("shared"),
@@ -241,9 +240,6 @@ async def create_job(
     if duplicate_id:
         return RedirectResponse(f"/jobs/{duplicate_id}", status_code=303)
 
-    limiter.check(owner_id, ip)
-    await run_in_threadpool(enforce_job_creation_limits, store, owner_id, ip)
-
     job_id = store.create_job(
         user_id=owner_id,
         youtube_url=youtube_url,
@@ -275,7 +271,7 @@ def job_detail(
         request,
         "job_detail.html",
         {
-            "job": job,
+            "job": _enrich_job(job, store),
             "logs": logs,
             "stage_labels": STAGE_LABELS,
             "stages": WEB_STAGES,
@@ -297,7 +293,7 @@ def job_panel(
     logs = store.get_logs(job_id)
     media_ctx = _job_media_context(job, owner_id)
     ctx = {
-        "job": job,
+        "job": _enrich_job(job, store),
         "logs": logs,
         "stage_labels": STAGE_LABELS,
         "stages": WEB_STAGES,

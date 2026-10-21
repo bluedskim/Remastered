@@ -64,7 +64,6 @@ ffmpeg_path = "ffmpeg"
 | `REMASTERED_GOOGLE_CLIENT_ID` / `SECRET` | (선택) 예전 웹 Google 로그인용 — 현재 웹 UI는 미사용 |
 | `REMASTERED_TOKEN_ENCRYPTION_KEY` | (선택) 예전 웹 토큰 암호화용 — CLI·웹 익명 모드에서는 불필요 |
 | `REMASTERED_WEB_SESSION_SECRET` | 익명 세션 쿠키 서명 (필수) |
-| `REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER` | 사용자당 일일 작업 수 (기본 5) |
 | `REMASTERED_WEB_MAX_SOURCE_DURATION_SECONDS` | 소스 최대 길이(초) |
 | `REMASTERED_WEB_JOB_RETENTION_DAYS` | 완료 작업 파일 보존 일수 |
 | `REMASTERED_WEB_MAX_CONCURRENT_MEDIA_STREAMS` | 동시 `/media` 스트림 상한 (기본 12) |
@@ -91,7 +90,7 @@ Cloudflare Tunnel 등 리버스 프록시는 `X-Forwarded-Proto: https`와 `CF-C
 
 **운영:** `docker-compose.yml`에 `/health` 헬스체크가 있습니다. Docker는 `unhealthy`만으로는 자동 재시작하지 않으므로, 필요 시 [willfarrell/autoheal](https://github.com/willfarrell/docker-autoheal) 등으로 unhealthy 컨테이너를 재시작할 수 있습니다 (`restart: unless-stopped`는 프로세스 종료 시 재시작).
 
-**한도 (기본):** 세션·IP 각각 동시 1건 · 일 5건 · 소스 최대 15분 · `/media` 동시 스트림 12 · uvicorn 동시 연결 80.
+**한도 (기본):** 소스 최대 15분 · 500MB · 제출은 대기열(워커 1대, 사용자 간 공정 라운드로빈) · `/media` 동시 스트림 12 · uvicorn 동시 연결 80.
 
 CLI(로컬·개인)는 기존처럼 `token.json` + `docker compose run --rm remastered auth`를 사용합니다.
 
