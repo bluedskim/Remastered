@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
+from google.oauth2.credentials import Credentials as OAuthCredentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -21,7 +21,7 @@ def _run_oauth_flow(
     *,
     local_port: int | None,
     use_console: bool,
-) -> Credentials:
+) -> OAuthCredentials:
     if use_console:
         return flow.run_console()
     if local_port is not None:
@@ -45,16 +45,16 @@ def authorize_youtube(
     oauth_local_port: int | None = None,
     oauth_use_console: bool = False,
     force: bool = False,
-) -> Credentials:
+) -> OAuthCredentials:
     """OAuth 토큰을 발급·갱신하고 token_path에 저장합니다."""
     if not client_secrets.is_file():
         raise FileNotFoundError(
             f"OAuth 클라이언트 비밀 파일이 없습니다: {client_secrets}"
         )
     token_path.parent.mkdir(parents=True, exist_ok=True)
-    creds: Credentials | None = None
+    creds: OAuthCredentials | None = None
     if not force and token_path.is_file():
-        creds = Credentials.from_authorized_user_file(str(token_path), YOUTUBE_SCOPES)
+        creds = OAuthCredentials.from_authorized_user_file(str(token_path), YOUTUBE_SCOPES)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token and not force:
@@ -94,8 +94,9 @@ def get_youtube_service(
 def upload_video(
     video_path: Path,
     *,
-    client_secrets: Path,
-    token_path: Path,
+    client_secrets: Path | None = None,
+    token_path: Path | None = None,
+    credentials: OAuthCredentials | None = None,
     title: str,
     description: str = "",
     privacy: PrivacyStatus = "private",
@@ -108,12 +109,17 @@ def upload_video(
     if not video_path.is_file():
         raise FileNotFoundError(f"업로드할 비디오 없음: {video_path}")
 
-    youtube = get_youtube_service(
-        client_secrets,
-        token_path,
-        oauth_local_port=oauth_local_port,
-        oauth_use_console=oauth_use_console,
-    )
+    if credentials is not None:
+        youtube = build("youtube", "v3", credentials=credentials)
+    elif client_secrets and token_path:
+        youtube = get_youtube_service(
+            client_secrets,
+            token_path,
+            oauth_local_port=oauth_local_port,
+            oauth_use_console=oauth_use_console,
+        )
+    else:
+        raise ValueError("업로드하려면 credentials 또는 client_secrets/token_path가 필요합니다.")
     body: dict[str, Any] = {
         "snippet": {
             "title": title,

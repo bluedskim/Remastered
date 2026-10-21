@@ -3,9 +3,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from remastered.config import RemasteredSettings
+
+if TYPE_CHECKING:
+    from google.oauth2.credentials import Credentials as OAuthCredentials
 from remastered.download import download_audio
 from remastered.master import run_matchering
 from remastered.paths import ensure_dir, job_dir
@@ -38,6 +41,7 @@ def run_pipeline_progress(
     privacy: str | None = None,
     cover_image: Path | None = None,
     skip_upload: bool = False,
+    upload_credentials: OAuthCredentials | None = None,
 ) -> dict[str, Path | str]:
     """단계별 콜백이 있는 파이프라인 (웹 UI·작업 큐용)."""
     prog = progress or PipelineProgress()
@@ -91,10 +95,9 @@ def run_pipeline_progress(
         prog.stage_done("upload")
         return result
 
-    if not settings.client_secrets:
+    if upload_credentials is None and not settings.client_secrets:
         raise ValueError(
-            "업로드하려면 client_secrets 경로가 필요합니다 "
-            "(설정 파일 또는 REMASTERED_CLIENT_SECRETS)."
+            "업로드하려면 OAuth credentials 또는 client_secrets가 필요합니다."
         )
 
     prog.stage_start("upload")
@@ -104,6 +107,7 @@ def run_pipeline_progress(
         video_path,
         client_secrets=settings.client_secrets,
         token_path=settings.token_path,
+        credentials=upload_credentials,
         title=upload_title,
         description=description,
         privacy=privacy or settings.default_privacy,

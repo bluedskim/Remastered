@@ -177,3 +177,29 @@ table.jobs td {
 .player {
   margin-top: 0.75rem;
 }
+
+.hero .btn-large {
+  font-size: 1.1rem;
+  padding: 0.75rem 1.5rem;
+}
+
+.legal h3 {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 1rem;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.compact p {
+  margin: 0.35rem 0;
+}
+
+.user-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+}

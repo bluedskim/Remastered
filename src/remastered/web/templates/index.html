@@ -1,18 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="card">
-  <h2>YouTube OAuth</h2>
-  <p class="{% if oauth.status == 'ok' %}oauth-ok{% elif oauth.status in ['no_token','expired','refresh_failed'] %}oauth-warn{% else %}oauth-err{% endif %}">
-    <strong>{{ oauth.label }}</strong> — {{ oauth.detail }}
+<section class="card user-bar">
+  <p>
+    <strong>{{ user.email or '사용자' }}</strong>
+    <span class="muted">— 본인 YouTube 채널로 업로드됩니다.</span>
   </p>
-  {% if oauth.status != 'ok' and oauth.status != 'no_secrets' %}
-  <p><a class="btn" href="/oauth/start">YouTube 계정 연결</a></p>
-  {% elif oauth.status == 'no_secrets' %}
-  <p class="muted">CLI: <code>docker compose run --rm remastered auth</code> (secrets 준비 후)</p>
-  {% endif %}
-  {% if request.query_params.get('oauth') == 'connected' %}
-  <p class="oauth-ok">YouTube 연결이 완료되었습니다.</p>
-  {% endif %}
+  <p>
+    <a class="btn btn-secondary" href="/logout">로그아웃</a>
+    <form method="post" action="/account/disconnect" style="display:inline">
+      <button type="submit" class="btn btn-secondary">YouTube 연결 해제</button>
+    </form>
+  </p>
+</section>
+
+<section class="card legal compact">
+  <p class="small muted"><strong>권리·책임:</strong> {{ notice.rights }}</p>
+  <p class="small muted"><strong>개인정보:</strong> {{ notice.privacy }}</p>
 </section>
 
 <section class="card">
@@ -23,16 +26,23 @@
       <input type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=..." required />
     </div>
     <div>
-      <label for="reference_name">레퍼런스 (마운트된 /references)</label>
+      <label for="reference_name">공용 레퍼런스 (/references)</label>
       <select id="reference_name" name="reference_name">
         <option value="">— 선택 —</option>
-        {% for ref in references %}
+        {% for ref in shared_references %}
         <option value="{{ ref }}">{{ ref }}</option>
         {% endfor %}
       </select>
+      <input type="hidden" name="reference_source" value="shared" id="reference_source" />
     </div>
+    {% if user_references %}
     <div>
-      <label for="reference_upload">또는 레퍼런스 파일 업로드</label>
+      <label>내 레퍼런스</label>
+      <p class="muted small">{% for ref in user_references %}{{ ref }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    </div>
+    {% endif %}
+    <div>
+      <label for="reference_upload">레퍼런스 파일 업로드 (내 폴더에 저장)</label>
       <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" />
     </div>
     <div>
@@ -52,14 +62,19 @@
       </select>
     </div>
     <div>
-      <label><input type="checkbox" name="upload_enabled" value="on" checked /> YouTube에 업로드</label>
+      <label><input type="checkbox" name="upload_enabled" value="on" checked /> 내 YouTube에 업로드</label>
     </div>
+    <p class="muted small">
+      한도: 동시 {{ limits.max_concurrent_jobs_per_user }}건 · 하루 {{ limits.daily_job_quota_per_user }}건 ·
+      최대 {{ limits.max_source_duration_seconds // 60 }}분 ·
+      {{ limits.max_source_bytes // (1024*1024) }}MB
+    </p>
     <button type="submit">작업 시작</button>
   </form>
 </section>
 
 <section class="card">
-  <h2>최근 작업</h2>
+  <h2>내 작업</h2>
   {% if not jobs %}
   <p class="muted">아직 작업이 없습니다.</p>
   {% else %}
