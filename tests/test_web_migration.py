@@ -65,6 +65,7 @@ def test_upgrade_pr3_database(tmp_path: Path) -> None:
     assert version == SCHEMA_VERSION
     assert "user_id" in cols
     assert "files_cleaned" in cols
+    assert "client_ip" in cols
 
     job = store.get_job("job1")
     assert job is not None
