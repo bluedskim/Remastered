@@ -29,6 +29,9 @@ class WebSettings(BaseSettings):
     job_create_min_interval_seconds: float = 30.0
     job_retention_days: int = 14
     trusted_proxy_ips: str = "*"
+    max_concurrent_media_streams: int = 12
+    uvicorn_limit_concurrency: int = 80
+    uvicorn_timeout_keep_alive: int = 5
 
     @property
     def references_path(self) -> Path:

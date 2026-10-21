@@ -12,6 +12,8 @@ def run() -> None:
         host=ws.host,
         port=ws.port,
         log_level="info",
+        timeout_keep_alive=ws.uvicorn_timeout_keep_alive,
+        limit_concurrency=ws.uvicorn_limit_concurrency,
     )
 
 

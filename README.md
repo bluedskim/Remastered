@@ -67,44 +67,33 @@ ffmpeg_path = "ffmpeg"
 | `REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER` | 사용자당 일일 작업 수 (기본 5) |
 | `REMASTERED_WEB_MAX_SOURCE_DURATION_SECONDS` | 소스 최대 길이(초) |
 | `REMASTERED_WEB_JOB_RETENTION_DAYS` | 완료 작업 파일 보존 일수 |
+| `REMASTERED_WEB_MAX_CONCURRENT_MEDIA_STREAMS` | 동시 `/media` 스트림 상한 (기본 12) |
+| `REMASTERED_WEB_UVICORN_LIMIT_CONCURRENCY` | uvicorn 동시 연결 상한 (기본 80) |
+| `REMASTERED_WEB_UVICORN_TIMEOUT_KEEP_ALIVE` | keep-alive 초 (기본 5) |
 
 ## Docker (Apple Silicon M2 / linux/arm64)
 
 이미지는 **linux/arm64**와 **linux/amd64** 모두에서 빌드·실행할 수 있습니다. M2 Mac에서는 Docker Desktop이 **linux/arm64** 네이티브로 동작합니다.
 
-### 웹 UI (공개 멀티유저 — remastered.baem.app)
+### 웹 UI (공개 — remastered.baem.app)
 
-방문자는 **Google 로그인** 후 YouTube URL을 **다운로드·마스터링**합니다(웹에서는 MP4 렌더/YouTube 업로드 없음). OAuth refresh 토큰은 SQLite `users` 테이블에 **암호화 저장**되며, 작업·파일은 **사용자별로 격리**됩니다. 익명 사용자는 랜딩·로그인만 가능합니다.
+로그인 없이 YouTube URL을 **다운로드·마스터링**합니다. 브라우저 재생은 작업 완료 시 생성되는 **AAC(192k) M4A** 스트림을 쓰고, **WAV는 다운로드**(`?download=1`) 전용입니다. `<audio>`는 `preload="none"`입니다.
 
 ```bash
-# Fernet 키 생성
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-
 export REMASTERED_WEB_PUBLIC_BASE_URL=https://remastered.baem.app
-export REMASTERED_GOOGLE_CLIENT_ID=...
-export REMASTERED_GOOGLE_CLIENT_SECRET=...
-export REMASTERED_TOKEN_ENCRYPTION_KEY=...
 export REMASTERED_WEB_SESSION_SECRET=...
 
 docker compose build web
 docker compose up -d web
 ```
 
-Cloudflare Tunnel 등 리버스 프록시는 `X-Forwarded-Proto: https`를 전달해야 합니다 (앱에 ProxyHeaders 미들웨어 포함).
+Cloudflare Tunnel 등 리버스 프록시는 `X-Forwarded-Proto: https`와 `CF-Connecting-IP`를 전달해야 합니다.
 
-**Google OAuth:** 웹 로그인은 `openid` + email + profile만 요청합니다(민감 범위 검증 불필요). CLI 업로드는 별도 데스크톱 OAuth를 사용합니다.
+**운영:** `docker-compose.yml`에 `/health` 헬스체크가 있습니다. Docker는 `unhealthy`만으로는 자동 재시작하지 않으므로, 필요 시 [willfarrell/autoheal](https://github.com/willfarrell/docker-autoheal) 등으로 unhealthy 컨테이너를 재시작할 수 있습니다 (`restart: unless-stopped`는 프로세스 종료 시 재시작).
 
-**한도 (기본):** 사용자당 동시 1건 · 일 5건 · 소스 최대 15분 · 전역 작업 큐 1 워커 · 오래된 파일 자동 정리.
+**한도 (기본):** 세션·IP 각각 동시 1건 · 일 5건 · 소스 최대 15분 · `/media` 동시 스트림 12 · uvicorn 동시 연결 80.
 
 CLI(로컬·개인)는 기존처럼 `token.json` + `docker compose run --rm remastered auth`를 사용합니다.
-
-#### Google Cloud Console (Mac mini / 공개 웹)
-
-1. **API 및 서비스** → **YouTube Data API v3** 사용 설정  
-2. **사용자 인증 정보** → **OAuth 클라이언트 ID** → 유형 **웹 애플리케이션**  
-3. **승인된 리디렉션 URI:** `https://remastered.baem.app/oauth/callback` (로컬 테스트 시 `http://localhost:8080/oauth/callback` 추가)  
-4. **OAuth 동의 화면:** `openid`, `email`, `profile` (웹 로그인용)  
-5. 클라이언트 ID/비밀을 `REMASTERED_GOOGLE_CLIENT_ID` / `REMASTERED_GOOGLE_CLIENT_SECRET`에 설정 (또는 `web` 키가 있는 JSON을 `client_secrets.json`으로 마운트)
 
 ### 준비 (M2 Mac)
 

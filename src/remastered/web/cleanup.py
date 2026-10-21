@@ -7,6 +7,7 @@ from pathlib import Path
 
 from remastered.web.db import JobStore
 from remastered.web.settings import WebSettings
+from remastered.web.stream_audio import playback_path_for_wav
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,9 @@ def cleanup_old_jobs(store: JobStore, work_dir: Path) -> int:
                 p = Path(path)
                 if p.is_file():
                     p.unlink(missing_ok=True)
+                playback = playback_path_for_wav(p)
+                if playback.is_file():
+                    playback.unlink(missing_ok=True)
         job_root = work_dir / "users" / job["user_id"] / job.get("source_video_id", "")
         if job_root.is_dir() and job.get("source_video_id"):
             shutil.rmtree(job_root, ignore_errors=True)
