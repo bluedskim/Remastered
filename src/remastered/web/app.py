@@ -201,8 +201,6 @@ async def create_job(
     reference_upload: UploadFile | None = File(None),
 ) -> RedirectResponse:
     ip = client_ip(request)
-    limiter.check(owner_id, ip)
-
     ws = _web_settings()
     reference_path: Path | None = None
     owner_ref_dir = _owner_references_dir(owner_id)
@@ -243,6 +241,7 @@ async def create_job(
     if duplicate_id:
         return RedirectResponse(f"/jobs/{duplicate_id}", status_code=303)
 
+    limiter.check(owner_id, ip)
     await run_in_threadpool(enforce_job_creation_limits, store, owner_id, ip)
 
     job_id = store.create_job(
