@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from remastered.web.app import app as asgi_app, fastapi_application
+from remastered.web.limits import JobCreateRateLimiter
 from remastered.web.media import RETENTION_MESSAGE
 from remastered.web.stream_audio import playback_path_for_wav
 
@@ -290,7 +291,12 @@ def test_job_title_on_dashboard_and_detail(client: TestClient) -> None:
     assert "Test Track" in detail.text
 
 
-def test_duplicate_submission_redirects_to_same_job(client: TestClient) -> None:
+def test_duplicate_submission_redirects_to_same_job(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "30")
+    client.app.state.rate_limiter = JobCreateRateLimiter(30.0)
+
     client.get("/")
     payload = {
         "youtube_url": "https://www.youtube.com/watch?v=dup-test",
@@ -301,3 +307,30 @@ def test_duplicate_submission_redirects_to_same_job(client: TestClient) -> None:
     assert first.status_code == 303
     assert second.status_code == 303
     assert first.headers["location"] == second.headers["location"]
+
+
+def test_rate_limit_still_applies_to_different_jobs(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "30")
+    client.app.state.rate_limiter = JobCreateRateLimiter(30.0)
+    client.get("/")
+    first = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=rate-a",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    assert first.status_code == 303
+    second = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=rate-b",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    assert second.status_code == 429
+    assert "요청이 너무 잦습니다" in second.text
