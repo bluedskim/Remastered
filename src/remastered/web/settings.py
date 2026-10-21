@@ -23,7 +23,6 @@ class WebSettings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
     max_concurrent_jobs_per_user: int = 1
-    daily_job_quota_per_user: int = 5
     max_source_duration_seconds: int = 900
     max_source_bytes: int = 500 * 1024 * 1024
     job_create_min_interval_seconds: float = 30.0

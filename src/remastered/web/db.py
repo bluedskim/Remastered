@@ -367,14 +367,56 @@ class JobStore:
         return [{"created_at": r["created_at"], "message": r["message"]} for r in rows]
 
     def next_pending(self) -> str | None:
+        return self.next_pending_fair(None)
+
+    def next_pending_fair(self, last_user_id: str | None) -> str | None:
+        """Round-robin across owners: oldest pending job per owner, fair rotation."""
+        with self._conn() as conn:
+            owners = conn.execute(
+                """
+                SELECT user_id, MIN(created_at) AS oldest
+                FROM jobs WHERE status = 'pending'
+                GROUP BY user_id
+                ORDER BY oldest ASC
+                """
+            ).fetchall()
+            if not owners:
+                return None
+            user_ids = [row["user_id"] for row in owners]
+            if last_user_id and last_user_id in user_ids:
+                start = (user_ids.index(last_user_id) + 1) % len(user_ids)
+            else:
+                start = 0
+            for offset in range(len(user_ids)):
+                uid = user_ids[(start + offset) % len(user_ids)]
+                row = conn.execute(
+                    """
+                    SELECT id FROM jobs
+                    WHERE status = 'pending' AND user_id = ?
+                    ORDER BY created_at ASC LIMIT 1
+                    """,
+                    (uid,),
+                ).fetchone()
+                if row:
+                    return row["id"]
+        return None
+
+    def queue_position(self, job_id: str) -> int:
+        """1-based position among all pending jobs (by created_at)."""
         with self._conn() as conn:
             row = conn.execute(
-                """
-                SELECT id FROM jobs WHERE status = 'pending'
-                ORDER BY created_at ASC LIMIT 1
-                """
+                "SELECT created_at, status FROM jobs WHERE id = ?", (job_id,)
             ).fetchone()
-        return row["id"] if row else None
+            if row is None or row["status"] != "pending":
+                return 0
+            ahead = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM jobs
+                WHERE status = 'pending' AND created_at < ?
+                """,
+                (row["created_at"],),
+            ).fetchone()
+        return int(ahead["c"]) + 1
 
     def count_user_active_jobs(self, user_id: str) -> int:
         with self._conn() as conn:

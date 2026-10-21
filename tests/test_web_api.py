@@ -7,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from remastered.web.app import app as asgi_app, fastapi_application
-from remastered.web.limits import JobCreateRateLimiter
 from remastered.web.media import RETENTION_MESSAGE
 from remastered.web.stream_audio import playback_path_for_wav
 
@@ -137,75 +136,6 @@ def test_job_isolation(client: TestClient) -> None:
     assert client.get(f"/media/{job_id}/mastered").status_code == 404
 
 
-def test_daily_quota_per_owner(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER", "1")
-    client.get("/")
-    first = client.post(
-        "/jobs",
-        data={
-            "youtube_url": "https://www.youtube.com/watch?v=one",
-            "reference_name": "ref.wav",
-        },
-        follow_redirects=False,
-    )
-    assert first.status_code == 303
-    monkeypatch.setattr(
-        "remastered.web.limits.inspect_youtube_source",
-        lambda url: {"duration": 60, "filesize": 1000},
-    )
-    second = client.post(
-        "/jobs",
-        data={
-            "youtube_url": "https://www.youtube.com/watch?v=two",
-            "reference_name": "ref.wav",
-        },
-        follow_redirects=False,
-    )
-    assert second.status_code == 429
-
-
-def test_daily_quota_per_ip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    work = tmp_path / "work"
-    refs = tmp_path / "refs"
-    work.mkdir()
-    refs.mkdir()
-    (refs / "ref.wav").write_bytes(b"x")
-    monkeypatch.setenv("REMASTERED_WORK_DIR", str(work))
-    monkeypatch.setenv("REMASTERED_WEB_REFERENCES_DIR", str(refs))
-    monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "0")
-    monkeypatch.setenv("REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER", "1")
-    monkeypatch.setattr(
-        "remastered.web.limits.inspect_youtube_source",
-        lambda url: {"duration": 60, "filesize": 1000},
-    )
-    store_path = work / "remastered_jobs.db"
-    from remastered.web.db import JobStore
-
-    store = JobStore(store_path)
-    store.create_job(
-        user_id="anon-other",
-        youtube_url="https://youtu.be/a",
-        reference_path="/x",
-        title=None,
-        description="",
-        privacy="private",
-        upload_enabled=False,
-        client_ip="testclient",
-    )
-
-    with TestClient(fastapi_application) as fresh_browser:
-        fresh_browser.get("/")
-        resp = fresh_browser.post(
-            "/jobs",
-            data={
-                "youtube_url": "https://www.youtube.com/watch?v=abc",
-                "reference_name": "ref.wav",
-            },
-            follow_redirects=False,
-        )
-        assert resp.status_code == 429
-
-
 def test_missing_media_retention_message(client: TestClient) -> None:
     client.get("/")
     store = client.app.state.store
@@ -291,12 +221,7 @@ def test_job_title_on_dashboard_and_detail(client: TestClient) -> None:
     assert "Test Track" in detail.text
 
 
-def test_duplicate_submission_redirects_to_same_job(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "30")
-    client.app.state.rate_limiter = JobCreateRateLimiter(30.0)
-
+def test_duplicate_submission_redirects_to_same_job(client: TestClient) -> None:
     client.get("/")
     payload = {
         "youtube_url": "https://www.youtube.com/watch?v=dup-test",
@@ -309,11 +234,7 @@ def test_duplicate_submission_redirects_to_same_job(
     assert first.headers["location"] == second.headers["location"]
 
 
-def test_rate_limit_still_applies_to_different_jobs(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "30")
-    client.app.state.rate_limiter = JobCreateRateLimiter(30.0)
+def test_rapid_submits_queue_both_jobs(client: TestClient) -> None:
     client.get("/")
     first = client.post(
         "/jobs",
@@ -323,7 +244,6 @@ def test_rate_limit_still_applies_to_different_jobs(
         },
         follow_redirects=False,
     )
-    assert first.status_code == 303
     second = client.post(
         "/jobs",
         data={
@@ -332,5 +252,11 @@ def test_rate_limit_still_applies_to_different_jobs(
         },
         follow_redirects=False,
     )
-    assert second.status_code == 429
-    assert "요청이 너무 잦습니다" in second.text
+    assert first.status_code == 303
+    assert second.status_code == 303
+    assert first.headers["location"] != second.headers["location"]
+    job_b_id = second.headers["location"].split("/")[-1]
+    store = client.app.state.store
+    assert store.queue_position(job_b_id) >= 1
+    detail = client.get(second.headers["location"])
+    assert "대기" in detail.text
