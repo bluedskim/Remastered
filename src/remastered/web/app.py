@@ -32,18 +32,11 @@ STAGE_LABELS = {
     "upload": "업로드",
 }
 
-LEGAL_NOTICE = {
-    "rights": (
-        "본 서비스에 올리는 음원·영상은 **본인이 마스터링·배포 권한을 가진 콘텐츠**만 "
-        "사용해야 합니다. 권리 없는 재업로드는 YouTube Content ID 클레임·삭제 등의 "
-        "제재를 받을 수 있습니다."
-    ),
-    "privacy": (
-        "저장 항목: Google 계정 식별자·이메일, 암호화된 YouTube OAuth 토큰, 작업 URL·"
-        "로그·생성 파일 경로. 토큰은 서버 SQLite에 암호화 저장되며, 로그아웃·연결 해제 시 "
-        "삭제·revoke 할 수 있습니다."
-    ),
-}
+PRIVACY_NOTICE = (
+    "저장 항목: Google 계정 식별자·이메일, 암호화된 YouTube OAuth 토큰, 작업 URL·"
+    "로그·생성 파일 경로. 토큰은 서버 SQLite에 암호화 저장되며, 로그아웃·연결 해제 시 "
+    "삭제·revoke 할 수 있습니다."
+)
 
 
 def _web_settings() -> WebSettings:
@@ -146,7 +139,7 @@ def landing(request: Request) -> HTMLResponse:
         request,
         "landing.html",
         {
-            "notice": LEGAL_NOTICE,
+            "privacy_notice": PRIVACY_NOTICE,
             "google_login_enabled": is_google_oauth_configured(),
         },
     )
@@ -224,7 +217,7 @@ def dashboard(
             "user": user,
             "stage_labels": STAGE_LABELS,
             "default_privacy": settings.default_privacy,
-            "notice": LEGAL_NOTICE,
+            "privacy_notice": PRIVACY_NOTICE,
             "limits": ws,
         },
     )
