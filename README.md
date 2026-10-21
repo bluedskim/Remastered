@@ -60,39 +60,51 @@ ffmpeg_path = "ffmpeg"
 | `REMASTERED_CONFIG` | 설정 TOML 경로 (Docker에서 `/config/config.toml` 등) |
 | `REMASTERED_OAUTH_LOCAL_PORT` | Docker·헤드리스 환경 OAuth 로컬 서버 포트 (예: `8095`) |
 | `REMASTERED_OAUTH_USE_CONSOLE` | `true`면 URL·코드 복사·붙여넣기 OAuth (`remastered auth --console`) |
-| `REMASTERED_WEB_PASSWORD` | 웹 UI 접근 비밀번호 (LAN용, 비우면 비활성) |
-| `REMASTERED_WEB_OAUTH_REDIRECT_BASE` | 웹 OAuth 리다이렉트 베이스 URL (기본 `http://localhost:8080`) |
+| `REMASTERED_WEB_PUBLIC_BASE_URL` | 공개 URL (예: `https://remastered.baem.app`) — OAuth 리다이렉트·프록시용 |
+| `REMASTERED_GOOGLE_CLIENT_ID` / `SECRET` | 웹 OAuth 클라이언트 (또는 `web` 유형 JSON) |
+| `REMASTERED_TOKEN_ENCRYPTION_KEY` | 사용자 refresh 토큰 암호화 Fernet 키 (필수) |
+| `REMASTERED_WEB_SESSION_SECRET` | 세션 쿠키 서명 |
+| `REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER` | 사용자당 일일 작업 수 (기본 5) |
+| `REMASTERED_WEB_MAX_SOURCE_DURATION_SECONDS` | 소스 최대 길이(초) |
+| `REMASTERED_WEB_JOB_RETENTION_DAYS` | 완료 작업 파일 보존 일수 |
 
 ## Docker (Apple Silicon M2 / linux/arm64)
 
 이미지는 **linux/arm64**와 **linux/amd64** 모두에서 빌드·실행할 수 있습니다. M2 Mac에서는 Docker Desktop이 **linux/arm64** 네이티브로 동작합니다.
 
-### 웹 UI (권장 — 상시 서비스)
+### 웹 UI (공개 멀티유저 — remastered.baem.app)
 
-M2 Mac에서 **한국어 웹 UI**로 작업을 제출·추적할 수 있습니다. 백그라운드에서 **한 번에 하나씩** 작업을 처리하고, 상태는 `/work/remastered_jobs.db`(SQLite)에 저장되어 **컨테이너 재시작 후에도** 이어집니다.
+방문자는 **Google 로그인** 후 **자신의 YouTube 채널**로만 업로드합니다. OAuth refresh 토큰은 SQLite `users` 테이블에 **암호화 저장**되며, 작업·파일은 **사용자별로 격리**됩니다. 익명 사용자는 랜딩·로그인만 가능합니다.
 
 ```bash
-# .env 또는 셸에서 (LAN 노출 시 권장)
-export REMASTERED_WEB_PASSWORD='나만_아는_비밀번호'
+# Fernet 키 생성
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+export REMASTERED_WEB_PUBLIC_BASE_URL=https://remastered.baem.app
+export REMASTERED_GOOGLE_CLIENT_ID=...
+export REMASTERED_GOOGLE_CLIENT_SECRET=...
+export REMASTERED_TOKEN_ENCRYPTION_KEY=...
+export REMASTERED_WEB_SESSION_SECRET=...
 
 docker compose build web
 docker compose up -d web
 ```
 
-브라우저: **http://localhost:8080** (같은 Wi‑Fi의 다른 기기는 `http://<맥IP>:8080`)
+Cloudflare Tunnel 등 리버스 프록시는 `X-Forwarded-Proto: https`를 전달해야 합니다 (앱에 ProxyHeaders 미들웨어 포함).
 
-웹에서 할 수 있는 것:
+**Google OAuth 검증:** `youtube.upload` 범위는 공개 앱에 **Google 검증**이 필요합니다. 검증 전에는 Cloud Console에서 **테스트 사용자**만 로그인할 수 있습니다.
 
-- YouTube URL 입력, `/references` 목록에서 레퍼런스 선택 또는 파일 업로드
-- 제목·설명·공개 설정(기본 비공개), YouTube 업로드 여부
-- 단계별 진행(다운로드 → 마스터 → 렌더 → 업로드), 로그, 오류
-- 마스터 WAV / MP4 재생·다운로드, 업로드된 YouTube 링크
-- **YouTube OAuth** 상태 표시 및 브라우저에서 **계정 연결** (`/oauth/start` → Google 로그인 → `token.json` 저장)
+**한도 (기본):** 사용자당 동시 1건 · 일 5건 · 소스 최대 15분 · 전역 작업 큐 1 워커 · 오래된 파일 자동 정리.
 
-Google Cloud OAuth 클라이언트에 웹 리다이렉트 URI를 추가해야 할 수 있습니다:  
-`http://localhost:8080/oauth/callback` (LAN IP로 접속할 때는 `REMASTERED_WEB_OAUTH_REDIRECT_BASE=http://192.168.x.x:8080` 설정)
+CLI(로컬·개인)는 기존처럼 `token.json` + `docker compose run --rm remastered auth`를 사용합니다.
 
-CLI는 그대로 사용 가능합니다 (`docker compose run --rm remastered …`).
+#### Google Cloud Console (Mac mini / 공개 웹)
+
+1. **API 및 서비스** → **YouTube Data API v3** 사용 설정  
+2. **사용자 인증 정보** → **OAuth 클라이언트 ID** → 유형 **웹 애플리케이션**  
+3. **승인된 리디렉션 URI:** `https://remastered.baem.app/oauth/callback` (로컬 테스트 시 `http://localhost:8080/oauth/callback` 추가)  
+4. **OAuth 동의 화면:** `openid`, `email`, `profile`, `youtube.upload` — **민감 범위**이므로 프로덕션 전 **앱 검증** 필요 (검증 전 **테스트 사용자**만 로그인 가능)  
+5. 클라이언트 ID/비밀을 `REMASTERED_GOOGLE_CLIENT_ID` / `REMASTERED_GOOGLE_CLIENT_SECRET`에 설정 (또는 `web` 키가 있는 JSON을 `client_secrets.json`으로 마운트)
 
 ### 준비 (M2 Mac)
 

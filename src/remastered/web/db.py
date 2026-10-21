@@ -40,8 +40,19 @@ class JobStore:
         with self._conn() as conn:
             conn.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    google_sub TEXT NOT NULL UNIQUE,
+                    email TEXT,
+                    name TEXT,
+                    picture TEXT,
+                    encrypted_token BLOB,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     status TEXT NOT NULL,
@@ -58,7 +69,9 @@ class JobStore:
                     audio_path TEXT,
                     mastered_path TEXT,
                     video_path TEXT,
-                    stage_state TEXT NOT NULL DEFAULT '{}'
+                    stage_state TEXT NOT NULL DEFAULT '{}',
+                    files_cleaned INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
                 );
                 CREATE TABLE IF NOT EXISTS job_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,12 +81,78 @@ class JobStore:
                     FOREIGN KEY(job_id) REFERENCES jobs(id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_job_logs_job ON job_logs(job_id);
+                CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id);
+                CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
                 """
+            )
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+            if "user_id" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN user_id TEXT")
+            if "files_cleaned" not in cols:
+                conn.execute(
+                    "ALTER TABLE jobs ADD COLUMN files_cleaned INTEGER NOT NULL DEFAULT 0"
+                )
+
+    def upsert_user(
+        self,
+        *,
+        google_sub: str,
+        email: str | None,
+        name: str | None,
+        picture: str | None,
+        encrypted_token: bytes,
+    ) -> str:
+        now = _utc_now()
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT id FROM users WHERE google_sub = ?", (google_sub,)
+            ).fetchone()
+            if row:
+                user_id = row["id"]
+                conn.execute(
+                    """
+                    UPDATE users SET email = ?, name = ?, picture = ?,
+                    encrypted_token = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (email, name, picture, encrypted_token, now, user_id),
+                )
+                return user_id
+            user_id = uuid4().hex
+            conn.execute(
+                """
+                INSERT INTO users (
+                    id, google_sub, email, name, picture, encrypted_token,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, google_sub, email, name, picture, encrypted_token, now, now),
+            )
+            return user_id
+
+    def get_user(self, user_id: str) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+
+    def update_user_token(self, user_id: str, encrypted_token: bytes) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE users SET encrypted_token = ?, updated_at = ? WHERE id = ?",
+                (encrypted_token, _utc_now(), user_id),
+            )
+
+    def clear_user_token(self, user_id: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE users SET encrypted_token = NULL, updated_at = ? WHERE id = ?",
+                (_utc_now(), user_id),
             )
 
     def create_job(
         self,
         *,
+        user_id: str,
         youtube_url: str,
         reference_path: str,
         title: str | None,
@@ -90,13 +169,14 @@ class JobStore:
             conn.execute(
                 """
                 INSERT INTO jobs (
-                    id, created_at, updated_at, status, stage, youtube_url,
+                    id, user_id, created_at, updated_at, status, stage, youtube_url,
                     reference_path, title, description, privacy, upload_enabled,
                     stage_state
-                ) VALUES (?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job_id,
+                    user_id,
                     now,
                     now,
                     youtube_url,
@@ -132,6 +212,7 @@ class JobStore:
             "mastered_path",
             "video_path",
             "stage_state",
+            "files_cleaned",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
@@ -146,18 +227,27 @@ class JobStore:
                 values,
             )
 
-    def get_job(self, job_id: str) -> dict[str, Any] | None:
+    def get_job(self, job_id: str, user_id: str | None = None) -> dict[str, Any] | None:
         with self._conn() as conn:
-            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if user_id:
+                row = conn.execute(
+                    "SELECT * FROM jobs WHERE id = ? AND user_id = ?",
+                    (job_id, user_id),
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         if row is None:
             return None
         return self._row_to_job(row)
 
-    def list_jobs(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_jobs(self, user_id: str, limit: int = 50) -> list[dict[str, Any]]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?",
-                (limit,),
+                """
+                SELECT * FROM jobs WHERE user_id = ?
+                ORDER BY created_at DESC LIMIT ?
+                """,
+                (user_id, limit),
             ).fetchall()
         return [self._row_to_job(r) for r in rows]
 
@@ -182,8 +272,48 @@ class JobStore:
             ).fetchone()
         return row["id"] if row else None
 
+    def count_user_active_jobs(self, user_id: str) -> int:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM jobs
+                WHERE user_id = ? AND status IN ('pending', 'running')
+                """,
+                (user_id,),
+            ).fetchone()
+        return int(row["c"])
+
+    def count_user_jobs_today(self, user_id: str) -> int:
+        start = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ).isoformat()
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM jobs
+                WHERE user_id = ? AND created_at >= ?
+                """,
+                (user_id, start),
+            ).fetchone()
+        return int(row["c"])
+
+    def list_jobs_for_cleanup(self, created_before_iso: str) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM jobs
+                WHERE status IN ('completed', 'failed')
+                  AND files_cleaned = 0
+                  AND created_at < ?
+                """,
+                (created_before_iso,),
+            ).fetchall()
+        return [self._row_to_job(r) for r in rows]
+
+    def mark_files_cleaned(self, job_id: str) -> None:
+        self.update_job(job_id, files_cleaned=1)
+
     def reset_interrupted(self) -> None:
-        """컨테이너 재시작 시 running 작업을 pending으로 되돌립니다."""
         with self._conn() as conn:
             conn.execute(
                 """
@@ -197,4 +327,5 @@ class JobStore:
         data = dict(row)
         data["upload_enabled"] = bool(data["upload_enabled"])
         data["stage_state"] = json.loads(data["stage_state"] or "{}")
+        data["files_cleaned"] = bool(data.get("files_cleaned", 0))
         return data

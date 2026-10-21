@@ -14,6 +14,20 @@ logger = logging.getLogger(__name__)
 YOUTUBE_SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
 
+def inspect_youtube_source(url: str) -> dict[str, Any]:
+    """다운로드 없이 영상 메타데이터만 조회합니다 (길이·크기 제한용)."""
+    ydl_opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if info is None:
+        raise RuntimeError(f"영상 정보를 가져올 수 없습니다: {url}")
+    return info
+
+
 @dataclass
 class DownloadResult:
     video_id: str

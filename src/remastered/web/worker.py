@@ -8,6 +8,8 @@ from pathlib import Path
 
 from remastered.config import RemasteredSettings, resolve_settings
 from remastered.pipeline import PipelineProgress, run_pipeline_progress
+from remastered.web.auth_google import get_user_credentials
+from remastered.web.cleanup import cleanup_old_jobs
 from remastered.web.db import STAGES, JobStore
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,7 @@ class JobWorker:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._wake = threading.Event()
+        self._last_cleanup = 0.0
 
     def start(self) -> None:
         self.store.reset_interrupted()
@@ -35,8 +38,19 @@ class JobWorker:
     def enqueue(self, job_id: str) -> None:
         self._wake.set()
 
+    def _maybe_cleanup(self) -> None:
+        now = time.monotonic()
+        if now - self._last_cleanup < 3600:
+            return
+        self._last_cleanup = now
+        try:
+            cleanup_old_jobs(self.store, self.settings.work_dir)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("정리 작업 실패: %s", exc)
+
     def _loop(self) -> None:
         while not self._stop.is_set():
+            self._maybe_cleanup()
             job_id = self.store.next_pending()
             if not job_id:
                 self._wake.wait(timeout=2.0)
@@ -48,6 +62,11 @@ class JobWorker:
         job = self.store.get_job(job_id)
         if not job or job["status"] != "pending":
             return
+        user_id = job.get("user_id")
+        if not user_id:
+            self.store.update_job(job_id, status="failed", error="user_id 없음")
+            return
+
         self.store.update_job(job_id, status="running", stage="download", error=None)
         stage_state = dict(job["stage_state"])
 
@@ -69,15 +88,24 @@ class JobWorker:
             if not reference.is_file():
                 raise FileNotFoundError(f"레퍼런스 파일 없음: {reference}")
 
+            user_work = self.settings.work_dir / "users" / user_id
+            user_work.mkdir(parents=True, exist_ok=True)
+            job_settings = self.settings.model_copy(update={"work_dir": user_work})
+
+            upload_creds = None
+            if job["upload_enabled"]:
+                upload_creds = get_user_credentials(self.store, user_id)
+
             result = run_pipeline_progress(
                 job["youtube_url"],
                 reference,
-                self.settings,
+                job_settings,
                 progress,
                 title=job["title"],
                 description=job["description"],
                 privacy=job["privacy"],
                 skip_upload=not job["upload_enabled"],
+                upload_credentials=upload_creds,
             )
             self.store.update_job(
                 job_id,
@@ -88,7 +116,14 @@ class JobWorker:
                 audio_path=str(result.get("audio", "")),
                 mastered_path=str(result.get("mastered", "")),
                 video_path=str(result.get("video", "")),
-                stage_state={s: ("skipped" if s == "upload" and not job["upload_enabled"] else "done") for s in STAGES},
+                stage_state={
+                    s: (
+                        "skipped"
+                        if s == "upload" and not job["upload_enabled"]
+                        else "done"
+                    )
+                    for s in STAGES
+                },
             )
             log("작업이 완료되었습니다.")
         except Exception as exc:  # noqa: BLE001
