@@ -11,6 +11,7 @@ from remastered.pipeline import PipelineProgress
 from remastered.web.cleanup import cleanup_old_jobs
 from remastered.web.db import WEB_STAGES, JobStore
 from remastered.web.pipeline_web import run_web_master_pipeline
+from remastered.web.stream_audio import transcode_wav_for_playback
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,18 @@ class JobWorker:
                 job_settings,
                 progress,
             )
+            audio_wav = result.get("audio")
+            mastered_wav = result.get("mastered")
+            if isinstance(audio_wav, Path):
+                try:
+                    transcode_wav_for_playback(audio_wav)
+                except Exception as exc:  # noqa: BLE001
+                    log(f"재생용 오디오 변환 실패(원본): {exc}")
+            if isinstance(mastered_wav, Path):
+                try:
+                    transcode_wav_for_playback(mastered_wav)
+                except Exception as exc:  # noqa: BLE001
+                    log(f"재생용 오디오 변환 실패(마스터): {exc}")
             self.store.update_job(
                 job_id,
                 status="completed",

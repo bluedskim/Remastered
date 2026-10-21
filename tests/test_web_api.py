@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from remastered.web.app import app
+from remastered.web.app import app as asgi_app, fastapi_application
 from remastered.web.media import RETENTION_MESSAGE
+from remastered.web.stream_audio import playback_path_for_wav
 
 
 @pytest.fixture
@@ -40,12 +41,20 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         return {"audio": audio, "mastered": mastered, "video_id": "vid"}
 
     monkeypatch.setattr("remastered.web.worker.run_web_master_pipeline", fake_web_pipeline)
+
+    def fake_transcode(wav: Path) -> Path:
+        out = playback_path_for_wav(wav)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"\x00" * 256)
+        return out
+
+    monkeypatch.setattr("remastered.web.worker.transcode_wav_for_playback", fake_transcode)
     monkeypatch.setattr(
         "remastered.web.limits.inspect_youtube_source",
         lambda url: {"duration": 120, "filesize": 1000},
     )
 
-    with TestClient(app) as test_client:
+    with TestClient(fastapi_application) as test_client:
         yield test_client
 
 
@@ -174,7 +183,7 @@ def test_daily_quota_per_ip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         client_ip="testclient",
     )
 
-    with TestClient(app) as fresh_browser:
+    with TestClient(fastapi_application) as fresh_browser:
         fresh_browser.get("/")
         resp = fresh_browser.post(
             "/jobs",

@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from remastered.config import resolve_settings
@@ -23,6 +24,7 @@ from remastered.web.media import (
     resolve_job_media_path,
 )
 from remastered.web.limits import JobCreateRateLimiter, enforce_job_limits
+from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
 
@@ -64,16 +66,24 @@ async def _lifespan(app: FastAPI):
     worker.stop()
 
 
-app = FastAPI(title="Remastered", lifespan=_lifespan)
+fastapi_application = FastAPI(title="Remastered", lifespan=_lifespan)
 ws_init = _web_settings()
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=ws_init.trusted_proxy_ips)
-app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")
+fastapi_application.add_middleware(
+    ProxyHeadersMiddleware, trusted_hosts=ws_init.trusted_proxy_ips
+)
+fastapi_application.mount(
+    "/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static"
+)
 
 from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
 
-app.add_middleware(
+fastapi_application.add_middleware(
     SessionMiddleware,
     **session_middleware_kwargs(ws_init.public_base_url, ws_init.session_secret),
+)
+fastapi_application.add_middleware(
+    MediaStreamLimitMiddleware,
+    max_streams=ws_init.max_concurrent_media_streams,
 )
 
 
@@ -128,7 +138,7 @@ def _owner_references_dir(owner_id: str) -> Path:
     return path
 
 
-@app.exception_handler(HTTPException)
+@fastapi_application.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     if exc.status_code == 429:
         return HTMLResponse(
@@ -136,11 +146,6 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             status_code=429,
         )
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
 
 
 def _dashboard_context(
@@ -162,7 +167,7 @@ def _dashboard_context(
     }
 
 
-@app.get("/", response_class=HTMLResponse)
+@fastapi_application.get("/", response_class=HTMLResponse)
 def home(
     request: Request,
     owner_id: str = Depends(require_owner),
@@ -175,12 +180,12 @@ def home(
     )
 
 
-@app.get("/dashboard", response_class=HTMLResponse)
+@fastapi_application.get("/dashboard", response_class=HTMLResponse)
 def dashboard_redirect() -> RedirectResponse:
     return RedirectResponse("/", status_code=303)
 
 
-@app.post("/jobs")
+@fastapi_application.post("/jobs")
 async def create_job(
     request: Request,
     owner_id: str = Depends(require_owner),
@@ -194,7 +199,7 @@ async def create_job(
 ) -> RedirectResponse:
     ip = client_ip(request)
     limiter.check(owner_id, ip)
-    enforce_job_limits(store, owner_id, ip, youtube_url)
+    await run_in_threadpool(enforce_job_limits, store, owner_id, ip, youtube_url)
 
     ws = _web_settings()
     reference_path: Path | None = None
@@ -232,7 +237,7 @@ async def create_job(
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
 
 
-@app.get("/jobs/{job_id}", response_class=HTMLResponse)
+@fastapi_application.get("/jobs/{job_id}", response_class=HTMLResponse)
 def job_detail(
     request: Request,
     job_id: str,
@@ -257,7 +262,7 @@ def job_detail(
     )
 
 
-@app.get("/jobs/{job_id}/panel", response_class=HTMLResponse)
+@fastapi_application.get("/jobs/{job_id}/panel", response_class=HTMLResponse)
 def job_panel(
     request: Request,
     job_id: str,
@@ -286,23 +291,36 @@ def job_panel(
     )
 
 
-@app.get("/media/{job_id}/{kind}")
-def media_file(
+@fastapi_application.get("/media/{job_id}/{kind}")
+async def media_file(
     job_id: str,
     kind: str,
     download: int | None = None,
     owner_id: str = Depends(require_owner),
     store: JobStore = Depends(get_store),
 ) -> FileResponse:
-    job = store.get_job(job_id, user_id=owner_id)
+    job = await run_in_threadpool(store.get_job, job_id, owner_id)
     if not job:
         raise HTTPException(status_code=404, detail=RETENTION_MESSAGE)
     settings = resolve_settings()
-    path = resolve_job_media_path(
-        job, kind, user_id=owner_id, work_dir=settings.work_dir
-    )
-    return media_file_response(path, kind, download=bool(download))
+    work_dir = settings.work_dir
+    want_download = bool(download)
+
+    def _resolve() -> Path:
+        return resolve_job_media_path(
+            job,
+            kind,
+            user_id=owner_id,
+            work_dir=work_dir,
+            download=want_download,
+        )
+
+    path = await run_in_threadpool(_resolve)
+    return media_file_response(path, kind, download=want_download)
+
+
+app = mount_health_router(fastapi_application)
 
 
 def create_app() -> FastAPI:
-    return app
+    return fastapi_application

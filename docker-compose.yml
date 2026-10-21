@@ -10,6 +10,18 @@ services:
       target: web
     image: remastered-web:local
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     ports:
       - "${REMASTERED_WEB_PORT:-8080}:8080"
     volumes:
@@ -34,6 +46,9 @@ services:
       REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER: ${REMASTERED_WEB_DAILY_JOB_QUOTA_PER_USER:-5}
       REMASTERED_WEB_MAX_SOURCE_DURATION_SECONDS: ${REMASTERED_WEB_MAX_SOURCE_DURATION_SECONDS:-900}
       REMASTERED_WEB_JOB_RETENTION_DAYS: ${REMASTERED_WEB_JOB_RETENTION_DAYS:-14}
+      REMASTERED_WEB_MAX_CONCURRENT_MEDIA_STREAMS: ${REMASTERED_WEB_MAX_CONCURRENT_MEDIA_STREAMS:-12}
+      REMASTERED_WEB_UVICORN_LIMIT_CONCURRENCY: ${REMASTERED_WEB_UVICORN_LIMIT_CONCURRENCY:-80}
+      REMASTERED_WEB_UVICORN_TIMEOUT_KEEP_ALIVE: ${REMASTERED_WEB_UVICORN_TIMEOUT_KEEP_ALIVE:-5}
 
   remastered:
     build:
