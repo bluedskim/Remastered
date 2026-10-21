@@ -88,6 +88,11 @@ fastapi_application.add_middleware(
 )
 
 
+@fastapi_application.get("/health")
+def health_check() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 def get_store(request: Request) -> JobStore:
     return request.app.state.store
 

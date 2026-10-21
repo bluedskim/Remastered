@@ -77,6 +77,7 @@ def test_fastapi_lifespan_starts_worker(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setenv("REMASTERED_WORK_DIR", str(work))
     monkeypatch.setenv("REMASTERED_WEB_REFERENCES_DIR", str(refs))
     with TestClient(fastapi_application) as client:
+        assert client.get("/health").json() == {"status": "ok"}
         assert client.app.state.worker._thread is not None
         assert client.app.state.worker._thread.is_alive()
 
