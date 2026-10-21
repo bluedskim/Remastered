@@ -76,7 +76,7 @@ def test_index_and_create_job(client: TestClient) -> None:
 
     for _ in range(40):
         panel = client.get(job_url + "/panel")
-        if "status-completed" in panel.text:
+        if panel.status_code == 286:
             break
         time.sleep(0.05)
     else:
@@ -84,11 +84,20 @@ def test_index_and_create_job(client: TestClient) -> None:
 
     media = client.get(job_url.replace("/jobs/", "/media/") + "/mastered")
     assert media.status_code == 200
+    assert media.headers.get("content-disposition", "").lower().startswith("inline")
     ranged = client.get(
         job_url.replace("/jobs/", "/media/") + "/mastered",
         headers={"Range": "bytes=0-3"},
     )
     assert ranged.status_code == 206
+
+    job_id = job_url.split("/")[-1]
+    panel = client.get(f"/jobs/{job_id}/panel")
+    assert panel.status_code == 286
+    detail = client.get(job_url)
+    assert "every 2s" not in detail.text
+    assert 'id="job-players"' in detail.text
+    assert "<audio" in detail.text
 
 
 def test_job_isolation(client: TestClient) -> None:
@@ -190,7 +199,13 @@ def test_missing_media_retention_message(client: TestClient) -> None:
         follow_redirects=False,
     )
     job_id = resp.headers["location"].split("/")[-1]
-    job = store.get_job(job_id)
+    for _ in range(40):
+        job = store.get_job(job_id)
+        if job and job["status"] == "completed":
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("job did not complete")
     assert job is not None
     owner_id = job["user_id"]
     work = client.app.state.store.db_path.parent
@@ -205,3 +220,28 @@ def test_missing_media_retention_message(client: TestClient) -> None:
     media_resp = client.get(f"/media/{job_id}/mastered")
     assert media_resp.status_code == 404
     assert RETENTION_MESSAGE in media_resp.json()["detail"]
+
+
+def test_media_download_disposition(client: TestClient) -> None:
+    client.get("/")
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=dl",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    job_id = resp.headers["location"].split("/")[-1]
+    for _ in range(40):
+        panel = client.get(f"/jobs/{job_id}/panel")
+        if panel.status_code == 286:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("job did not complete")
+
+    inline = client.get(f"/media/{job_id}/mastered")
+    assert inline.headers.get("content-disposition", "").lower().startswith("inline")
+    attach = client.get(f"/media/{job_id}/mastered?download=1")
+    assert "attachment" in attach.headers.get("content-disposition", "").lower()

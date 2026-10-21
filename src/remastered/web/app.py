@@ -34,6 +34,8 @@ STAGE_LABELS = {
     "master": "마스터링",
 }
 
+TERMINAL_JOB_STATUSES = frozenset({"completed", "failed", "cancelled"})
+
 PRIVACY_NOTICE = (
     "저장 항목: 익명 세션 식별자, 작업 URL·로그·생성 파일 경로. "
     "작업 파일은 보관 기간 후 삭제됩니다."
@@ -267,16 +269,20 @@ def job_panel(
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
     logs = store.get_logs(job_id)
     media_ctx = _job_media_context(job, owner_id)
+    ctx = {
+        "job": job,
+        "logs": logs,
+        "stage_labels": STAGE_LABELS,
+        "stages": WEB_STAGES,
+        **media_ctx,
+    }
+    # HTMX: 286 stops hx-trigger polling (see htmx.org/docs/#polling)
+    status_code = 286 if job["status"] in TERMINAL_JOB_STATUSES else status.HTTP_200_OK
     return templates.TemplateResponse(
         request,
-        "partials/job_panel.html",
-        {
-            "job": job,
-            "logs": logs,
-            "stage_labels": STAGE_LABELS,
-            "stages": WEB_STAGES,
-            **media_ctx,
-        },
+        "partials/job_panel_poll.html",
+        ctx,
+        status_code=status_code,
     )
 
 
@@ -284,6 +290,7 @@ def job_panel(
 def media_file(
     job_id: str,
     kind: str,
+    download: int | None = None,
     owner_id: str = Depends(require_owner),
     store: JobStore = Depends(get_store),
 ) -> FileResponse:
@@ -294,7 +301,7 @@ def media_file(
     path = resolve_job_media_path(
         job, kind, user_id=owner_id, work_dir=settings.work_dir
     )
-    return media_file_response(path, kind)
+    return media_file_response(path, kind, download=bool(download))
 
 
 def create_app() -> FastAPI:

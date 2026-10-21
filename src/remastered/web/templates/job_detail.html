@@ -1,11 +1,16 @@
 {% extends "base.html" %}
 {% block title %}작업 {{ job.id[:8] }} — Remastered{% endblock %}
 {% block content %}
-<p><a href="/dashboard">← 목록</a></p>
-<div id="job-panel"
+<p><a href="/">← 목록</a></p>
+<div id="job-status"
+     {% if job.status not in ('completed', 'failed', 'cancelled') %}
      hx-get="/jobs/{{ job.id }}/panel"
      hx-trigger="load, every 2s"
-     hx-swap="innerHTML">
-  {% include "partials/job_panel.html" %}
+     hx-swap="innerHTML"
+     {% endif %}>
+  {% include "partials/job_panel_status.html" %}
+</div>
+<div id="job-players">
+  {% include "partials/job_players.html" %}
 </div>
 {% endblock %}
