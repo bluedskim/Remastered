@@ -138,7 +138,8 @@ def get_user_credentials(store: JobStore, user_id: str) -> Credentials:
     if not row or not row.get("encrypted_token"):
         raise PermissionError("YouTube 연동이 필요합니다. 다시 로그인하세요.")
     token_json = decrypt_token(row["encrypted_token"])
-    creds = Credentials.from_authorized_user_info(json.loads(token_json), WEB_SIGNIN_SCOPES)
+    # 기존 youtube.upload 토큰도 로드 가능 (스코프는 토큰 JSON에 포함)
+    creds = Credentials.from_authorized_user_info(json.loads(token_json))
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
         store.update_user_token(user_id, encrypt_token(creds.to_json()))

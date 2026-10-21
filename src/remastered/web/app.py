@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from remastered.config import PrivacyStatus, resolve_settings
+from remastered.config import resolve_settings
 from remastered.web.auth_google import (
     authorization_url,
     exchange_code,
@@ -17,7 +17,13 @@ from remastered.web.auth_google import (
     revoke_user_token,
     upsert_user_from_credentials,
 )
-from remastered.web.db import STAGES, JobStore
+from remastered.web.db import WEB_STAGES, JobStore
+from remastered.web.media import (
+    RETENTION_MESSAGE,
+    media_exists,
+    media_file_response,
+    resolve_job_media_path,
+)
 from remastered.web.limits import JobCreateRateLimiter, enforce_job_limits
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
@@ -28,8 +34,6 @@ templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
 STAGE_LABELS = {
     "download": "다운로드",
     "master": "마스터링",
-    "render": "렌더",
-    "upload": "업로드",
 }
 
 PRIVACY_NOTICE = (
@@ -103,6 +107,23 @@ def _list_reference_files(references_dir: Path) -> list[str]:
         for p in references_dir.iterdir()
         if p.is_file() and p.suffix.lower() in exts
     )
+
+
+def _job_media_context(job: dict, user_id: str) -> dict[str, bool | str]:
+    settings = resolve_settings()
+    work = settings.work_dir
+    audio_path = job.get("audio_path")
+    mastered_path = job.get("mastered_path")
+    audio_ok = media_exists(audio_path, user_id, work)
+    mastered_ok = media_exists(mastered_path, user_id, work)
+    had_paths = bool(audio_path or mastered_path)
+    expired = job["status"] == "completed" and had_paths and not (audio_ok or mastered_ok)
+    return {
+        "audio_ok": audio_ok,
+        "mastered_ok": mastered_ok,
+        "files_expired": expired,
+        "retention_message": RETENTION_MESSAGE,
+    }
 
 
 def _user_references_dir(user_id: str) -> Path:
@@ -216,7 +237,6 @@ def dashboard(
             "user_references": user_refs,
             "user": user,
             "stage_labels": STAGE_LABELS,
-            "default_privacy": settings.default_privacy,
             "privacy_notice": PRIVACY_NOTICE,
             "limits": ws,
         },
@@ -231,10 +251,6 @@ async def create_job(
     worker: JobWorker = Depends(get_worker),
     limiter: JobCreateRateLimiter = Depends(get_rate_limiter),
     youtube_url: str = Form(...),
-    title: str = Form(""),
-    description: str = Form(""),
-    privacy: PrivacyStatus = Form("private"),
-    upload_enabled: str = Form(""),
     reference_name: str = Form(""),
     reference_source: str = Form("shared"),
     reference_upload: UploadFile | None = File(None),
@@ -263,15 +279,14 @@ async def create_job(
     if reference_path is None:
         raise HTTPException(status_code=400, detail="레퍼런스 트랙을 선택하거나 업로드하세요.")
 
-    upload_on = upload_enabled in ("on", "true", "1", "yes")
     job_id = store.create_job(
         user_id=user_id,
         youtube_url=youtube_url.strip(),
         reference_path=str(reference_path),
-        title=title.strip() or None,
-        description=description,
-        privacy=privacy,
-        upload_enabled=upload_on,
+        title=None,
+        description="",
+        privacy="private",
+        upload_enabled=False,
     )
     store.append_log(job_id, "작업이 대기열에 추가되었습니다.")
     worker.enqueue(job_id)
@@ -289,6 +304,7 @@ def job_detail(
     if not job:
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
     logs = store.get_logs(job_id)
+    media_ctx = _job_media_context(job, user_id)
     return templates.TemplateResponse(
         request,
         "job_detail.html",
@@ -296,7 +312,8 @@ def job_detail(
             "job": job,
             "logs": logs,
             "stage_labels": STAGE_LABELS,
-            "stages": STAGES,
+            "stages": WEB_STAGES,
+            **media_ctx,
         },
     )
 
@@ -312,6 +329,7 @@ def job_panel(
     if not job:
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
     logs = store.get_logs(job_id)
+    media_ctx = _job_media_context(job, user_id)
     return templates.TemplateResponse(
         request,
         "partials/job_panel.html",
@@ -319,7 +337,8 @@ def job_panel(
             "job": job,
             "logs": logs,
             "stage_labels": STAGE_LABELS,
-            "stages": STAGES,
+            "stages": WEB_STAGES,
+            **media_ctx,
         },
     )
 
@@ -333,21 +352,12 @@ def media_file(
 ) -> FileResponse:
     job = store.get_job(job_id, user_id=user_id)
     if not job:
-        raise HTTPException(status_code=404)
-    key = {"audio": "audio_path", "mastered": "mastered_path", "video": "video_path"}.get(kind)
-    if not key or not job.get(key):
-        raise HTTPException(status_code=404)
+        raise HTTPException(status_code=404, detail=RETENTION_MESSAGE)
     settings = resolve_settings()
-    path = Path(job[key])
-    user_root = (settings.work_dir / "users" / user_id).resolve()
-    try:
-        path.resolve().relative_to(user_root)
-    except ValueError:
-        raise HTTPException(status_code=404)
-    if not path.is_file():
-        raise HTTPException(status_code=404)
-    media_type = "video/mp4" if kind == "video" else "audio/wav"
-    return FileResponse(path, media_type=media_type, filename=path.name)
+    path = resolve_job_media_path(
+        job, kind, user_id=user_id, work_dir=settings.work_dir
+    )
+    return media_file_response(path, kind)
 
 
 def create_app() -> FastAPI:

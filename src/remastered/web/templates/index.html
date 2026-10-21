@@ -3,12 +3,12 @@
 <section class="card user-bar">
   <p>
     <strong>{{ user.email or '사용자' }}</strong>
-    <span class="muted">— 본인 YouTube 채널로 업로드됩니다.</span>
+    <span class="muted">— 다운로드·마스터링 작업</span>
   </p>
   <p>
     <a class="btn btn-secondary" href="/logout">로그아웃</a>
     <form method="post" action="/account/disconnect" style="display:inline">
-      <button type="submit" class="btn btn-secondary">YouTube 연결 해제</button>
+      <button type="submit" class="btn btn-secondary">계정 연결 해제</button>
     </form>
   </p>
 </section>
@@ -43,25 +43,6 @@
     <div>
       <label for="reference_upload">레퍼런스 파일 업로드 (내 폴더에 저장)</label>
       <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" />
-    </div>
-    <div>
-      <label for="title">업로드 제목 (비우면 자동)</label>
-      <input type="text" id="title" name="title" />
-    </div>
-    <div>
-      <label for="description">설명</label>
-      <textarea id="description" name="description" rows="2"></textarea>
-    </div>
-    <div>
-      <label for="privacy">공개 설정</label>
-      <select id="privacy" name="privacy">
-        <option value="private" selected>비공개 (private)</option>
-        <option value="unlisted">일부 공개 (unlisted)</option>
-        <option value="public">공개 (public)</option>
-      </select>
-    </div>
-    <div>
-      <label><input type="checkbox" name="upload_enabled" value="on" checked /> 내 YouTube에 업로드</label>
     </div>
     <p class="muted small">
       한도: 동시 {{ limits.max_concurrent_jobs_per_user }}건 · 하루 {{ limits.daily_job_quota_per_user }}건 ·

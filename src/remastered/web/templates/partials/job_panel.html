@@ -14,26 +14,24 @@
     {% endfor %}
   </div>
 
-  {% if job.mastered_path %}
+  {% if files_expired %}
+  <p class="oauth-warn">{{ retention_message }}</p>
+  {% endif %}
+
+  {% if audio_ok %}
   <div class="player">
-    <p><strong>마스터 WAV</strong></p>
-    <audio controls src="/media/{{ job.id }}/mastered"></audio>
+    <p><strong>원본 (다운로드)</strong></p>
+    <audio controls preload="metadata" src="/media/{{ job.id }}/audio"></audio>
+    <a class="btn btn-secondary" href="/media/{{ job.id }}/audio" download>다운로드</a>
+  </div>
+  {% endif %}
+
+  {% if mastered_ok %}
+  <div class="player">
+    <p><strong>마스터 결과</strong></p>
+    <audio controls preload="metadata" src="/media/{{ job.id }}/mastered"></audio>
     <a class="btn btn-secondary" href="/media/{{ job.id }}/mastered" download>다운로드</a>
   </div>
-  {% endif %}
-
-  {% if job.video_path %}
-  <div class="player">
-    <p><strong>MP4</strong></p>
-    <video controls width="100%" src="/media/{{ job.id }}/video"></video>
-    <a class="btn btn-secondary" href="/media/{{ job.id }}/video" download>다운로드</a>
-  </div>
-  {% endif %}
-
-  {% if job.uploaded_video_id %}
-  <p><a href="https://www.youtube.com/watch?v={{ job.uploaded_video_id }}" target="_blank" rel="noopener">
-    YouTube에서 보기 ↗
-  </a></p>
   {% endif %}
 </section>
 

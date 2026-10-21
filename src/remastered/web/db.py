@@ -9,6 +9,7 @@ from typing import Any, Iterator
 from uuid import uuid4
 
 STAGES = ("download", "master", "render", "upload")
+WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 SCHEMA_VERSION = 2
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
@@ -221,9 +222,10 @@ class JobStore:
     ) -> str:
         job_id = uuid4().hex
         now = _utc_now()
-        stage_state = {s: "pending" for s in STAGES}
-        if not upload_enabled:
-            stage_state["upload"] = "skipped"
+        stage_state = {s: "pending" for s in WEB_STAGES}
+        stage_state["render"] = "skipped"
+        stage_state["upload"] = "skipped"
+        upload_enabled = False
         with self._conn() as conn:
             conn.execute(
                 """
