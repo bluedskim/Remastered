@@ -8,7 +8,7 @@ from remastered.web.settings import WebSettings
 def run() -> None:
     ws = WebSettings()
     uvicorn.run(
-        "remastered.web.app:app",
+        "remastered.web.app:fastapi_application",
         host=ws.host,
         port=ws.port,
         log_level="info",

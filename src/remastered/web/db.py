@@ -369,36 +369,58 @@ class JobStore:
     def next_pending(self) -> str | None:
         return self.next_pending_fair(None)
 
+    def count_pending_jobs(self) -> int:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS c FROM jobs WHERE status = 'pending'"
+            ).fetchone()
+        return int(row["c"])
+
+    def next_pending_fifo(self) -> str | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT id FROM jobs
+                WHERE status = 'pending'
+                  AND user_id IS NOT NULL AND trim(user_id) != ''
+                ORDER BY created_at ASC LIMIT 1
+                """
+            ).fetchone()
+        return row["id"] if row else None
+
     def next_pending_fair(self, last_user_id: str | None) -> str | None:
         """Round-robin across owners: oldest pending job per owner, fair rotation."""
         with self._conn() as conn:
             owners = conn.execute(
                 """
                 SELECT user_id, MIN(created_at) AS oldest
-                FROM jobs WHERE status = 'pending'
+                FROM jobs
+                WHERE status = 'pending'
+                  AND user_id IS NOT NULL AND trim(user_id) != ''
                 GROUP BY user_id
                 ORDER BY oldest ASC
                 """
             ).fetchall()
-            if not owners:
-                return None
-            user_ids = [row["user_id"] for row in owners]
-            if last_user_id and last_user_id in user_ids:
-                start = (user_ids.index(last_user_id) + 1) % len(user_ids)
-            else:
-                start = 0
-            for offset in range(len(user_ids)):
-                uid = user_ids[(start + offset) % len(user_ids)]
-                row = conn.execute(
-                    """
-                    SELECT id FROM jobs
-                    WHERE status = 'pending' AND user_id = ?
-                    ORDER BY created_at ASC LIMIT 1
-                    """,
-                    (uid,),
-                ).fetchone()
-                if row:
-                    return row["id"]
+            if owners:
+                user_ids = [row["user_id"] for row in owners]
+                if last_user_id and last_user_id in user_ids:
+                    start = (user_ids.index(last_user_id) + 1) % len(user_ids)
+                else:
+                    start = 0
+                for offset in range(len(user_ids)):
+                    uid = user_ids[(start + offset) % len(user_ids)]
+                    row = conn.execute(
+                        """
+                        SELECT id FROM jobs
+                        WHERE status = 'pending' AND user_id = ?
+                        ORDER BY created_at ASC LIMIT 1
+                        """,
+                        (uid,),
+                    ).fetchone()
+                    if row:
+                        return row["id"]
+        if self.count_pending_jobs() > 0:
+            return self.next_pending_fifo()
         return None
 
     def queue_position(self, job_id: str) -> int:
@@ -512,13 +534,22 @@ class JobStore:
         self.update_job(job_id, files_cleaned=1)
 
     def reset_interrupted(self) -> None:
+        self.requeue_orphaned_running_jobs(
+            "서버 재시작으로 중단된 작업을 대기열에 다시 넣었습니다."
+        )
+
+    def requeue_orphaned_running_jobs(self, message: str) -> int:
         with self._conn() as conn:
-            conn.execute(
-                """
-                UPDATE jobs SET status = 'pending', error = NULL
-                WHERE status = 'running'
-                """
-            )
+            rows = conn.execute(
+                "SELECT id FROM jobs WHERE status = 'running'"
+            ).fetchall()
+        requeued = 0
+        for row in rows:
+            job_id = row["id"]
+            self.update_job(job_id, status="pending", error=None)
+            self.append_log(job_id, message)
+            requeued += 1
+        return requeued
 
     @staticmethod
     def _row_to_job(row: sqlite3.Row) -> dict[str, Any]:

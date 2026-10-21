@@ -18,6 +18,10 @@ from remastered.web.stream_audio import transcode_wav_for_playback
 
 logger = logging.getLogger(__name__)
 
+ORPHAN_REQUEUE_MESSAGE = (
+    "서버 재시작으로 중단된 작업을 대기열에 다시 넣었습니다."
+)
+
 
 class JobWorker:
     def __init__(self, store: JobStore, settings: RemasteredSettings) -> None:
@@ -30,9 +34,12 @@ class JobWorker:
         self._last_served_user_id: str | None = None
 
     def start(self) -> None:
-        self.store.reset_interrupted()
+        requeued = self.store.requeue_orphaned_running_jobs(ORPHAN_REQUEUE_MESSAGE)
+        if requeued:
+            logger.info("Requeued %d orphaned running job(s)", requeued)
         self._thread = threading.Thread(target=self._loop, name="remastered-jobs", daemon=True)
         self._thread.start()
+        logger.info("Job worker thread started")
 
     def stop(self) -> None:
         self._stop.set()
@@ -55,41 +62,46 @@ class JobWorker:
 
     def _loop(self) -> None:
         while not self._stop.is_set():
-            self._maybe_cleanup()
-            job_id = self.store.next_pending_fair(self._last_served_user_id)
-            if not job_id:
-                self._wake.wait(timeout=2.0)
-                self._wake.clear()
-                continue
-            self._run_job(job_id)
+            try:
+                self._maybe_cleanup()
+                job_id = self.store.next_pending_fair(self._last_served_user_id)
+                if not job_id:
+                    self._wake.wait(timeout=2.0)
+                    self._wake.clear()
+                    continue
+                logger.info("Dequeuing job %s", job_id)
+                self._run_job(job_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("Job worker loop error")
+                time.sleep(1.0)
 
     def _run_job(self, job_id: str) -> None:
-        job = self.store.get_job(job_id)
-        if not job or job["status"] != "pending":
-            return
-        user_id = job.get("user_id")
-        if not user_id:
-            self.store.update_job(job_id, status="failed", error="user_id 없음")
-            return
-
-        self._last_served_user_id = user_id
-        self.store.update_job(job_id, status="running", stage="download", error=None)
-        stage_state = dict(job["stage_state"])
-
-        def log(msg: str) -> None:
-            self.store.append_log(job_id, msg)
-
-        def stage_start(stage: str) -> None:
-            stage_state[stage] = "running"
-            self.store.update_job(job_id, stage=stage, stage_state=stage_state)
-
-        def stage_done(stage: str) -> None:
-            stage_state[stage] = "done"
-            self.store.update_job(job_id, stage_state=stage_state)
-
-        progress = PipelineProgress(log=log, stage_start=stage_start, stage_done=stage_done)
-
         try:
+            job = self.store.get_job(job_id)
+            if not job or job["status"] != "pending":
+                return
+            user_id = (job.get("user_id") or "").strip()
+            if not user_id:
+                self.store.update_job(job_id, status="failed", error="user_id 없음")
+                return
+
+            self.store.update_job(job_id, status="running", stage="download", error=None)
+            self._last_served_user_id = user_id
+            stage_state = dict(job["stage_state"])
+
+            def log(msg: str) -> None:
+                self.store.append_log(job_id, msg)
+
+            def stage_start(stage: str) -> None:
+                stage_state[stage] = "running"
+                self.store.update_job(job_id, stage=stage, stage_state=stage_state)
+
+            def stage_done(stage: str) -> None:
+                stage_state[stage] = "done"
+                self.store.update_job(job_id, stage_state=stage_state)
+
+            progress = PipelineProgress(log=log, stage_start=stage_start, stage_done=stage_done)
+
             try:
                 validate_youtube_source_limits(job["youtube_url"])
             except HTTPException as exc:
@@ -156,14 +168,16 @@ class JobWorker:
             log("마스터링이 완료되었습니다.")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Job %s failed", job_id)
-            log(f"오류: {exc}")
-            log(traceback.format_exc())
-            self.store.update_job(
-                job_id,
-                status="failed",
-                error=str(exc),
-                stage_state=stage_state,
-            )
+            try:
+                self.store.append_log(job_id, f"오류: {exc}")
+                self.store.append_log(job_id, traceback.format_exc())
+                self.store.update_job(
+                    job_id,
+                    status="failed",
+                    error=str(exc),
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Could not persist failure for job %s", job_id)
 
     def refresh_settings(self) -> None:
         self.settings = resolve_settings()
