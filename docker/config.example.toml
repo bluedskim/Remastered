@@ -1,0 +1,13 @@
+# docker/config/config.toml 로 복사한 뒤 사용하세요.
+[remastered]
+work_dir = "/work"
+client_secrets = "/config/client_secrets.json"
+token_path = "/config/token.json"
+default_privacy = "private"
+bit_depth = 16
+preview = false
+ffmpeg_path = "ffmpeg"
+# Docker Desktop(Mac)에서 브라우저 OAuth: compose가 8095 포트를 노출합니다.
+oauth_local_port = 8095
+# 포트 없이 터미널 복사·붙여넣기만 쓰려면 true (또는 `remastered auth --console`)
+oauth_use_console = false
