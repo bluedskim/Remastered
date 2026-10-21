@@ -6,8 +6,8 @@ YouTube 영상 URL에서 오디오를 내려받고, **matchering**으로 레퍼�
 
 ## 요구 사항
 
-- Python 3.10 이상
-- [ffmpeg](https://ffmpeg.org/) (PATH에 `ffmpeg` 명령 사용 가능)
+- Python 3.10 이상 (로컬 설치) **또는** Docker (Apple Silicon M2 등)
+- [ffmpeg](https://ffmpeg.org/) (PATH에 `ffmpeg` 명령 사용 가능 — Docker 이미지에 포함)
 - YouTube 업로드 시: Google Cloud OAuth **데스크톱(Installed app)** 클라이언트 JSON
 
 ## 설치
@@ -57,6 +57,99 @@ ffmpeg_path = "ffmpeg"
 | `REMASTERED_DEFAULT_PRIVACY` | `private` / `unlisted` / `public` (기본 `private`) |
 | `REMASTERED_BIT_DEPTH` | `16` 또는 `24` |
 | `REMASTERED_PREVIEW` | `true` / `false` — matchering 미리듣기 WAV |
+| `REMASTERED_CONFIG` | 설정 TOML 경로 (Docker에서 `/config/config.toml` 등) |
+| `REMASTERED_OAUTH_LOCAL_PORT` | Docker·헤드리스 환경 OAuth 로컬 서버 포트 (예: `8095`) |
+| `REMASTERED_OAUTH_USE_CONSOLE` | `true`면 URL·코드 복사·붙여넣기 OAuth (`remastered auth --console`) |
+
+## Docker (Apple Silicon M2 / linux/arm64)
+
+이미지는 **linux/arm64**와 **linux/amd64** 모두에서 빌드·실행할 수 있습니다. M2 Mac에서는 Docker Desktop이 **linux/arm64** 네이티브로 동작합니다.
+
+### 서비스 모드 선택
+
+**상시 HTTP API나 큐 워커는 두지 않았습니다.** Remastered는 작업당 한 번 돌리는 CLI에 맞고, `docker compose run --rm`으로 명령을 실행하는 방식이 가장 단순하고 디버깅도 쉽습니다. `docker-compose.yml`의 `remastered` 서비스는 **일회성 CLI 러너**이며, 기본 `CMD`는 `--help`만 보여 줍니다.
+
+### 준비 (M2 Mac)
+
+```bash
+git clone https://github.com/bluedskim/Remastered.git
+cd Remastered
+
+# 설정·비밀 디렉터리
+cp docker/config.example.toml docker/config/config.toml
+# Google Cloud에서 받은 JSON을 아래 경로에 두세요 (이미지에 넣지 마세요)
+#   docker/config/client_secrets.json
+
+# 레퍼런스 WAV
+mkdir -p references
+# cp ~/Music/my_reference.wav references/
+
+docker compose build
+```
+
+### OAuth (컨테이너 안에서 첫 로그인)
+
+토큰은 **`docker/config/token.json`** 에 저장되며, `docker/config` 볼륨에 마운트되어 재사용됩니다.
+
+**방법 A — 로컬 서버 (권장, compose가 포트 노출)**
+
+```bash
+docker compose run --rm remastered auth
+```
+
+터미널에 표시되는 안내에 따라 Mac 브라우저에서 **http://localhost:8095** 로 접속합니다 (`docker-compose.yml`의 `8095` 포트 매핑). Google **데스크톱 앱** OAuth 클라이언트는 loopback(`localhost`) 리다이렉트를 허용합니다.
+
+**방법 B — 복사·붙여넣기 (포트 매핑 없음)**
+
+```bash
+docker compose run --rm remastered auth --console
+```
+
+URL을 브라우저에 붙여 넣고, 표시된 인증 코드를 터미널에 다시 붙여 넣습니다.
+
+### 작업 실행
+
+```bash
+docker compose run --rm remastered run \
+  "https://www.youtube.com/watch?v=VIDEO_ID" \
+  -r /references/my_ref.wav \
+  --title "제목 (Remastered)" \
+  --privacy private
+```
+
+업로드 없이 로컬만:
+
+```bash
+docker compose run --rm remastered run \
+  "https://www.youtube.com/watch?v=VIDEO_ID" \
+  -r /references/my_ref.wav \
+  --no-upload
+```
+
+볼륨 기본 경로:
+
+| 호스트 | 컨테이너 | 용도 |
+|--------|----------|------|
+| `./docker/data/work` | `/work` | 캐시·중간 파일 (`REMASTERED_WORK_DIR`) |
+| `./docker/data/input` | `/input` | (선택) 입력 파일 |
+| `./docker/data/output` | `/output` | (선택) 결과 복사 |
+| `./references` | `/references` | 레퍼런스 WAV (읽기 전용) |
+| `./docker/config` | `/config` | `config.toml`, `client_secrets.json`, `token.json` |
+
+환경 변수로 경로 변경: `REMASTERED_CONFIG_DIR`, `REMASTERED_REFERENCES_DIR`, `REMASTERED_WORK_DIR` 등 (`docker-compose.yml` 참고).
+
+### 멀티 플랫폼 빌드 (선택)
+
+```bash
+docker buildx build --platform linux/arm64,linux/amd64 -t remastered:local --target runtime .
+```
+
+### 컨테이너에서 테스트
+
+```bash
+docker compose --profile test build test
+docker compose --profile test run --rm test
+```
 
 ## 사용 예
 
@@ -105,10 +198,13 @@ remastered run "https://www.youtube.com/watch?v=VIDEO_ID" -r ./ref.wav --no-uplo
 
 ```
 .
+├── Dockerfile              # runtime / dev(test) 멀티 타깃
+├── docker-compose.yml      # CLI 일회 실행 + OAuth 포트
+├── docker/                 # 예시 설정·데이터 디렉터리
 ├── pyproject.toml          # 패키지·의존성·CLI 엔트리포인트
 ├── README.md
 ├── src/remastered/
-│   ├── cli.py              # Click CLI (download / master / render / upload / run)
+│   ├── cli.py              # Click CLI (download / master / render / upload / auth / run)
 │   ├── config.py           # TOML + 환경 변수 설정
 │   ├── download.py         # yt-dlp → WAV + 썸네일
 │   ├── master.py           # matchering

@@ -75,6 +75,8 @@ def run_pipeline(
         description=description,
         privacy=privacy or settings.default_privacy,
         category_id=settings.upload_category_id,
+        oauth_local_port=settings.oauth_local_port,
+        oauth_use_console=settings.oauth_use_console,
     )
     result["uploaded_video_id"] = new_id
     return result

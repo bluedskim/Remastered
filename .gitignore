@@ -13,3 +13,12 @@ venv/
 *.mp4
 token.json
 client_secrets.json
+docker/config/config.toml
+docker/config/client_secrets.json
+docker/config/token.json
+docker/data/work/*
+!docker/data/work/.gitkeep
+docker/data/input/*
+!docker/data/input/.gitkeep
+docker/data/output/*
+!docker/data/output/.gitkeep

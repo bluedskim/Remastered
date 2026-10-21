@@ -30,6 +30,8 @@ class RemasteredSettings(BaseSettings):
     ffmpeg_path: str = "ffmpeg"
     yt_dlp_path: str | None = None
     upload_category_id: str = "10"
+    oauth_local_port: int | None = None
+    oauth_use_console: bool = False
 
     @field_validator("work_dir", "token_path", mode="before")
     @classmethod
@@ -62,6 +64,10 @@ def resolve_settings(
     overrides: dict[str, Any] | None = None,
 ) -> RemasteredSettings:
     file_values: dict[str, Any] = {}
+    if config_file is None:
+        env_cfg = os.environ.get("REMASTERED_CONFIG")
+        if env_cfg:
+            config_file = Path(os.path.expanduser(env_cfg))
     if config_file and config_file.is_file():
         file_values = load_toml_config(config_file)
     elif config_file is None:

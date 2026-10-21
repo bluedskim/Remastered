@@ -12,7 +12,7 @@ from remastered.logging_setup import setup_logging
 from remastered.master import run_matchering
 from remastered.paths import ensure_dir
 from remastered.pipeline import run_pipeline
-from remastered.upload import upload_video
+from remastered.upload import authorize_youtube, upload_video
 from remastered.video import generate_placeholder_image, render_still_video
 
 logger = logging.getLogger(__name__)
@@ -176,8 +176,49 @@ def cmd_upload(
         description=description,
         privacy=privacy or settings.default_privacy,
         category_id=settings.upload_category_id,
+        oauth_local_port=settings.oauth_local_port,
+        oauth_use_console=settings.oauth_use_console,
     )
     click.echo(f"업로드 완료: https://www.youtube.com/watch?v={vid}")
+
+
+@main.command("auth")
+@click.option(
+    "--client-secrets",
+    type=click.Path(path_type=Path, exists=True),
+    help="Google OAuth client_secrets.json",
+)
+@click.option(
+    "--console",
+    is_flag=True,
+    help="URL·인증 코드 복사·붙여넣기 (포트 매핑 없이 Docker에서 사용)",
+)
+@click.option("--force", is_flag=True, help="기존 토큰을 무시하고 다시 로그인")
+@click.pass_context
+def cmd_auth(
+    ctx: click.Context,
+    client_secrets: Path | None,
+    console: bool,
+    force: bool,
+) -> None:
+    """YouTube OAuth 토큰만 발급합니다 (Docker 첫 설정용)."""
+    settings, verbose = _settings_from_ctx(ctx)
+    setup_logging(verbose)
+    secrets = client_secrets or settings.client_secrets
+    if not secrets:
+        raise click.UsageError(
+            "--client-secrets 또는 설정/환경 변수 REMASTERED_CLIENT_SECRETS가 필요합니다."
+        )
+    use_console = console or settings.oauth_use_console
+    port = None if use_console else settings.oauth_local_port
+    authorize_youtube(
+        secrets,
+        settings.token_path,
+        oauth_local_port=port,
+        oauth_use_console=use_console,
+        force=force,
+    )
+    click.echo(f"토큰 저장됨: {settings.token_path}")
 
 
 @main.command("run")
