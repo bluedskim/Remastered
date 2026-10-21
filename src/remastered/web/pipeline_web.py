@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from remastered.config import RemasteredSettings
 from remastered.download import download_audio
@@ -9,11 +10,15 @@ from remastered.paths import ensure_dir, job_dir
 from remastered.pipeline import PipelineProgress
 
 
+OnDownloaded = Callable[[str, str], None]
+
+
 def run_web_master_pipeline(
     url: str,
     reference: Path,
     settings: RemasteredSettings,
     progress: PipelineProgress | None = None,
+    on_downloaded: OnDownloaded | None = None,
 ) -> dict[str, Path | str]:
     """웹 작업: 다운로드 → 마스터링만 수행합니다."""
     prog = progress or PipelineProgress()
@@ -24,6 +29,8 @@ def run_web_master_pipeline(
     dl = download_audio(url, job_dir(work, "download"), yt_dlp_path=settings.yt_dlp_path)
     job = job_dir(work, dl.video_id)
     prog.log(f"다운로드 완료: {dl.title}")
+    if on_downloaded:
+        on_downloaded(dl.title, dl.video_id)
     prog.stage_done("download")
 
     prog.stage_start("master")
@@ -43,6 +50,7 @@ def run_web_master_pipeline(
         "audio": dl.audio_path,
         "mastered": master_out.output_path,
         "video_id": dl.video_id,
+        "title": dl.title,
     }
     if master_out.preview_path:
         result["preview"] = master_out.preview_path

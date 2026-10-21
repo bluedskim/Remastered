@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 from uuid import uuid4
@@ -11,7 +12,7 @@ from uuid import uuid4
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -121,6 +122,8 @@ class JobStore:
                 conn.execute("ALTER TABLE jobs ADD COLUMN client_ip TEXT")
             self._backfill_legacy_jobs(conn)
 
+        self._backfill_job_titles_from_logs(conn)
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_job_logs_job ON job_logs(job_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)")
@@ -159,6 +162,36 @@ class JobStore:
             """,
             (LEGACY_MIGRATION_USER_ID,),
         )
+
+    @staticmethod
+    def _backfill_job_titles_from_logs(conn: sqlite3.Connection) -> None:
+        """완료된 작업의 로그에서 YouTube 제목을 복원합니다."""
+        pattern = re.compile(r"^다운로드 완료:\s*(.+?)\s*$")
+        rows = conn.execute(
+            """
+            SELECT id FROM jobs
+            WHERE title IS NULL OR trim(title) = ''
+            """
+        ).fetchall()
+        for row in rows:
+            job_id = row["id"]
+            logs = conn.execute(
+                """
+                SELECT message FROM job_logs
+                WHERE job_id = ? ORDER BY id ASC
+                """,
+                (job_id,),
+            ).fetchall()
+            for log_row in logs:
+                match = pattern.match((log_row["message"] or "").strip())
+                if match:
+                    title = match.group(1).strip()
+                    if title:
+                        conn.execute(
+                            "UPDATE jobs SET title = ? WHERE id = ?",
+                            (title, job_id),
+                        )
+                    break
 
     def upsert_user(
         self,
@@ -275,6 +308,7 @@ class JobStore:
         allowed = {
             "status",
             "stage",
+            "title",
             "error",
             "source_video_id",
             "uploaded_video_id",
@@ -379,6 +413,29 @@ class JobStore:
                 (client_ip,),
             ).fetchone()
         return int(row["c"])
+
+    def find_recent_duplicate_job(
+        self,
+        user_id: str,
+        youtube_url: str,
+        reference_path: str,
+        *,
+        within_seconds: int = 30,
+    ) -> str | None:
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(seconds=within_seconds)
+        ).isoformat()
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT id FROM jobs
+                WHERE user_id = ? AND youtube_url = ? AND reference_path = ?
+                  AND created_at >= ?
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (user_id, youtube_url.strip(), reference_path, cutoff),
+            ).fetchone()
+        return row["id"] if row else None
 
     def count_ip_jobs_today(self, client_ip: str) -> int:
         if not client_ip or client_ip == "unknown":

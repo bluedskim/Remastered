@@ -13,7 +13,7 @@
 
 <section class="card">
   <h2>새 작업</h2>
-  <form method="post" action="/jobs" enctype="multipart/form-data" class="grid">
+  <form id="create-job-form" method="post" action="/jobs" enctype="multipart/form-data" class="grid">
     <div>
       <label for="youtube_url">YouTube URL</label>
       <input type="url" id="youtube_url" name="youtube_url" value="https://www.youtube.com/watch?v=fCV9oqtwyVA" placeholder="https://www.youtube.com/watch?v=..." required />
@@ -43,7 +43,7 @@
       최대 {{ limits.max_source_duration_seconds // 60 }}분 ·
       {{ limits.max_source_bytes // (1024*1024) }}MB
     </p>
-    <button type="submit">작업 시작</button>
+    <button type="submit" id="create-job-submit">작업 시작</button>
   </form>
 </section>
 
@@ -54,19 +54,36 @@
   {% else %}
   <table class="jobs">
     <thead>
-      <tr><th>시간</th><th>상태</th><th>단계</th><th>URL</th></tr>
+      <tr><th>시간</th><th>제목</th><th>상태</th><th>단계</th></tr>
     </thead>
     <tbody>
       {% for job in jobs %}
       <tr>
         <td><a href="/jobs/{{ job.id }}">{{ job.created_at[:19] }}</a></td>
+        <td class="job-title" style="max-width:280px;overflow:hidden;text-overflow:ellipsis">{{ job_display_title(job) }}</td>
         <td class="status-{{ job.status }}">{{ job.status }}</td>
         <td>{{ stage_labels.get(job.stage, job.stage) }}</td>
-        <td class="muted" style="max-width:240px;overflow:hidden;text-overflow:ellipsis">{{ job.youtube_url }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% endif %}
 </section>
+<script>
+(function () {
+  const form = document.getElementById("create-job-form");
+  const btn = document.getElementById("create-job-submit");
+  if (!form || !btn) return;
+  let submitted = false;
+  form.addEventListener("submit", function (e) {
+    if (submitted) {
+      e.preventDefault();
+      return;
+    }
+    submitted = true;
+    btn.disabled = true;
+    btn.textContent = "처리 중…";
+  });
+})();
+</script>
 {% endblock %}

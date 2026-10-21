@@ -6,10 +6,13 @@ import time
 import traceback
 from pathlib import Path
 
+from fastapi import HTTPException
+
 from remastered.config import RemasteredSettings, resolve_settings
 from remastered.pipeline import PipelineProgress
 from remastered.web.cleanup import cleanup_old_jobs
 from remastered.web.db import WEB_STAGES, JobStore
+from remastered.web.limits import validate_youtube_source_limits
 from remastered.web.pipeline_web import run_web_master_pipeline
 from remastered.web.stream_audio import transcode_wav_for_playback
 
@@ -85,6 +88,19 @@ class JobWorker:
         progress = PipelineProgress(log=log, stage_start=stage_start, stage_done=stage_done)
 
         try:
+            try:
+                validate_youtube_source_limits(job["youtube_url"])
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+                log(detail)
+                self.store.update_job(
+                    job_id,
+                    status="failed",
+                    error=detail,
+                    stage_state=stage_state,
+                )
+                return
+
             reference = Path(job["reference_path"])
             if not reference.is_file():
                 raise FileNotFoundError(f"레퍼런스 파일 없음: {reference}")
@@ -93,11 +109,19 @@ class JobWorker:
             user_work.mkdir(parents=True, exist_ok=True)
             job_settings = self.settings.model_copy(update={"work_dir": user_work})
 
+            def on_downloaded(title: str, video_id: str) -> None:
+                self.store.update_job(
+                    job_id,
+                    title=title,
+                    source_video_id=video_id,
+                )
+
             result = run_web_master_pipeline(
                 job["youtube_url"],
                 reference,
                 job_settings,
                 progress,
+                on_downloaded=on_downloaded,
             )
             audio_wav = result.get("audio")
             mastered_wav = result.get("mastered")
@@ -115,6 +139,7 @@ class JobWorker:
                 job_id,
                 status="completed",
                 stage="done",
+                title=str(result.get("title") or job.get("title") or ""),
                 source_video_id=str(result.get("video_id", "")),
                 uploaded_video_id="",
                 audio_path=str(result.get("audio", "")),
