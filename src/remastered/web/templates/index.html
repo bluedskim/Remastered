@@ -21,9 +21,11 @@
     <div>
       <label for="reference_name">공용 레퍼런스 (/references)</label>
       <select id="reference_name" name="reference_name">
+        {% if not shared_references %}
         <option value="">— 선택 —</option>
+        {% endif %}
         {% for ref in shared_references %}
-        <option value="{{ ref }}">{{ ref }}</option>
+        <option value="{{ ref }}"{% if loop.first %} selected{% endif %}>{{ ref }}</option>
         {% endfor %}
       </select>
       <input type="hidden" name="reference_source" value="shared" id="reference_source" />

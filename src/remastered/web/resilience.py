@@ -56,6 +56,9 @@ def mount_health_router(app: ASGIApp) -> ASGIApp:
     """Return an ASGI app that answers /health before heavier middleware stacks."""
 
     async def health_only(scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "lifespan":
+            await app(scope, receive, send)
+            return
         if scope["type"] == "http" and scope.get("path") == "/health":
             body = b'{"status":"ok"}'
             await send(
