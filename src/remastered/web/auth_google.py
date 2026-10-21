@@ -29,6 +29,21 @@ def _google_client_credentials() -> tuple[str | None, str | None]:
     return cid, secret
 
 
+def is_google_oauth_configured() -> bool:
+    """웹 Google 로그인에 필요한 클라이언트 설정이 있는지 확인합니다."""
+    client_id, client_secret = _google_client_credentials()
+    if client_id and client_secret:
+        return True
+    settings = resolve_settings()
+    if not settings.client_secrets or not settings.client_secrets.is_file():
+        return False
+    try:
+        data = json.loads(settings.client_secrets.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return "web" in data or "installed" in data
+
+
 def _load_oauth_client_config() -> dict[str, Any]:
     ws = WebSettings()
     client_id, client_secret = _google_client_credentials()

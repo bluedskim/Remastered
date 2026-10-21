@@ -13,6 +13,7 @@ from remastered.config import PrivacyStatus, resolve_settings
 from remastered.web.auth_google import (
     authorization_url,
     exchange_code,
+    is_google_oauth_configured,
     revoke_user_token,
     upsert_user_from_credentials,
 )
@@ -121,7 +122,9 @@ def _user_references_dir(user_id: str) -> Path:
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     if exc.status_code == status.HTTP_401_UNAUTHORIZED and request.url.path != "/":
-        return RedirectResponse("/auth/google", status_code=303)
+        if is_google_oauth_configured():
+            return RedirectResponse("/auth/google", status_code=303)
+        return RedirectResponse("/auth/unavailable", status_code=303)
     if exc.status_code == 429:
         return HTMLResponse(
             f"<h1>429</h1><p>{exc.detail}</p><p><a href='/dashboard'>돌아가기</a></p>",
@@ -142,12 +145,22 @@ def landing(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "landing.html",
-        {"notice": LEGAL_NOTICE},
+        {
+            "notice": LEGAL_NOTICE,
+            "google_login_enabled": is_google_oauth_configured(),
+        },
     )
 
 
-@app.get("/auth/google")
-def auth_google_start(request: Request) -> RedirectResponse:
+@app.get("/auth/unavailable", response_class=HTMLResponse)
+def auth_unavailable(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "oauth_not_configured.html", {})
+
+
+@app.get("/auth/google", response_model=None)
+def auth_google_start(request: Request):
+    if not is_google_oauth_configured():
+        return templates.TemplateResponse(request, "oauth_not_configured.html", {})
     ws = _web_settings()
     redirect_uri = ws.oauth_redirect_uri()
     url, state = authorization_url(redirect_uri)

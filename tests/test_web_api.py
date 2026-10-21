@@ -94,6 +94,32 @@ def test_landing_anonymous(client: TestClient) -> None:
     assert client.get("/dashboard", follow_redirects=False).status_code == 303
 
 
+def test_oauth_not_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encryption_key: str
+) -> None:
+    monkeypatch.delenv("REMASTERED_GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("REMASTERED_GOOGLE_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("REMASTERED_CLIENT_SECRETS", raising=False)
+    monkeypatch.setenv("REMASTERED_WORK_DIR", str(tmp_path / "work"))
+    (tmp_path / "work").mkdir()
+    monkeypatch.setenv("REMASTERED_WEB_REFERENCES_DIR", str(tmp_path / "refs"))
+    (tmp_path / "refs").mkdir()
+
+    with TestClient(app) as test_client:
+        home = test_client.get("/")
+        assert home.status_code == 200
+        assert "Google 로그인이 아직 설정되지 않았습니다" in home.text
+        assert "Google로 로그인" not in home.text
+
+        auth = test_client.get("/auth/google")
+        assert auth.status_code == 200
+        assert "Google 로그인이 아직 설정되지 않았습니다" in auth.text
+
+        dash = test_client.get("/dashboard", follow_redirects=False)
+        assert dash.status_code == 303
+        assert dash.headers["location"] == "/auth/unavailable"
+
+
 def test_index_and_create_job(client: TestClient) -> None:
     user_id = _register_user(client.app.state.store, "u1")
     app.dependency_overrides[require_signed_in] = lambda: user_id

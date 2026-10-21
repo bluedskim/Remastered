@@ -10,6 +10,8 @@ from uuid import uuid4
 
 STAGES = ("download", "master", "render", "upload")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
+SCHEMA_VERSION = 2
+LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
 def _utc_now() -> str:
@@ -38,19 +40,46 @@ class JobStore:
 
     def _init_db(self) -> None:
         with self._conn() as conn:
+            self._migrate_schema(conn)
+
+    @staticmethod
+    def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (name,),
+        ).fetchone()
+        return row is not None
+
+    @staticmethod
+    def _job_columns(conn: sqlite3.Connection) -> set[str]:
+        return {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+
+    def _migrate_schema(self, conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                google_sub TEXT NOT NULL UNIQUE,
+                email TEXT,
+                name TEXT,
+                picture TEXT,
+                encrypted_token BLOB,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS job_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                message TEXT NOT NULL,
+                FOREIGN KEY(job_id) REFERENCES jobs(id)
+            );
+            """
+        )
+        if not self._table_exists(conn, "jobs"):
             conn.executescript(
                 """
-                CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    google_sub TEXT NOT NULL UNIQUE,
-                    email TEXT,
-                    name TEXT,
-                    picture TEXT,
-                    encrypted_token BLOB,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS jobs (
+                CREATE TABLE jobs (
                     id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
                     created_at TEXT NOT NULL,
@@ -73,25 +102,55 @@ class JobStore:
                     files_cleaned INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
-                CREATE TABLE IF NOT EXISTS job_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    job_id TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    FOREIGN KEY(job_id) REFERENCES jobs(id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_job_logs_job ON job_logs(job_id);
-                CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id);
-                CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
                 """
             )
-            cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        else:
+            cols = self._job_columns(conn)
             if "user_id" not in cols:
                 conn.execute("ALTER TABLE jobs ADD COLUMN user_id TEXT")
             if "files_cleaned" not in cols:
                 conn.execute(
                     "ALTER TABLE jobs ADD COLUMN files_cleaned INTEGER NOT NULL DEFAULT 0"
                 )
+            self._backfill_legacy_jobs(conn)
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_job_logs_job ON job_logs(job_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)")
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+    @staticmethod
+    def _backfill_legacy_jobs(conn: sqlite3.Connection) -> None:
+        """PR #3 이전 작업에 로컬 마이그레이션 사용자 ID를 부여합니다."""
+        count = conn.execute(
+            "SELECT COUNT(*) AS c FROM jobs WHERE user_id IS NULL OR user_id = ''"
+        ).fetchone()["c"]
+        if not count:
+            return
+        now = _utc_now()
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO users (
+                id, google_sub, email, name, picture, encrypted_token,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?)
+            """,
+            (
+                LEGACY_MIGRATION_USER_ID,
+                "legacy-local-migration",
+                "legacy@local",
+                "Legacy (pre-upgrade)",
+                now,
+                now,
+            ),
+        )
+        conn.execute(
+            """
+            UPDATE jobs SET user_id = ?
+            WHERE user_id IS NULL OR user_id = ''
+            """,
+            (LEGACY_MIGRATION_USER_ID,),
+        )
 
     def upsert_user(
         self,
