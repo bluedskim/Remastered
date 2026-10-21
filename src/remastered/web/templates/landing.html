@@ -4,7 +4,7 @@
 <section class="card hero">
   <h2>YouTube 오디오 리마스터</h2>
   <p class="muted">
-    matchering으로 레퍼런스에 맞춰 마스터링하고, 본인 YouTube 채널에 업로드합니다.
+    matchering으로 레퍼런스에 맞춰 마스터링하고, 브라우저에서 결과를 들을 수 있습니다.
   </p>
   {% if google_login_enabled %}
   <p><a class="btn btn-large" href="/auth/google">Google로 로그인</a></p>
@@ -16,9 +16,5 @@
 <section class="card legal">
   <h3>개인정보</h3>
   <p>{{ privacy_notice }}</p>
-  <p class="muted small">
-    YouTube 업로드 범위(<code>youtube.upload</code>)는 Google OAuth 검증이 필요할 수 있습니다.
-    검증 전에는 테스트 사용자만 로그인할 수 있습니다.
-  </p>
 </section>
 {% endblock %}

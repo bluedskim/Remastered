@@ -7,8 +7,8 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
-from remastered.web import app as app_module
 from remastered.web.app import app, require_signed_in
+from remastered.web.media import RETENTION_MESSAGE
 
 
 @pytest.fixture
@@ -31,43 +31,22 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encryption_key: str)
     monkeypatch.setenv("REMASTERED_GOOGLE_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("REMASTERED_GOOGLE_CLIENT_SECRET", "test-secret")
 
-    def fake_pipeline(
-        url: str,
-        reference: Path,
-        settings,
-        progress=None,
-        **kwargs,
-    ):
+    def fake_web_pipeline(url: str, reference: Path, settings, progress=None):
         prog = progress
         if prog:
-            for stage in ("download", "master", "render", "upload"):
-                if stage == "upload" and kwargs.get("skip_upload"):
-                    continue
-                prog.stage_start(stage)
-                prog.stage_done(stage)
-        audio = work / "users" / "u1" / "vid" / "audio.wav"
+            prog.stage_start("download")
+            prog.stage_done("download")
+            prog.stage_start("master")
+            prog.stage_done("master")
+        audio = settings.work_dir / "vid" / "audio.wav"
         audio.parent.mkdir(parents=True, exist_ok=True)
-        audio.write_bytes(b"wav")
-        mastered = work / "users" / "u1" / "vid" / "master" / "out.wav"
+        audio.write_bytes(b"RIFF" + b"\x00" * 100)
+        mastered = settings.work_dir / "vid" / "master" / "out.wav"
         mastered.parent.mkdir(parents=True, exist_ok=True)
-        mastered.write_bytes(b"wav")
-        video = work / "users" / "u1" / "vid" / "vid_remastered.mp4"
-        video.write_bytes(b"mp4")
-        result = {
-            "audio": audio,
-            "mastered": mastered,
-            "video": video,
-            "video_id": "vid",
-        }
-        if not kwargs.get("skip_upload"):
-            result["uploaded_video_id"] = "UPLOADED1"
-        return result
+        mastered.write_bytes(b"RIFF" + b"\x00" * 100)
+        return {"audio": audio, "mastered": mastered, "video_id": "vid"}
 
-    monkeypatch.setattr("remastered.web.worker.run_pipeline_progress", fake_pipeline)
-    monkeypatch.setattr(
-        "remastered.web.worker.get_user_credentials",
-        lambda store, uid: object(),
-    )
+    monkeypatch.setattr("remastered.web.worker.run_web_master_pipeline", fake_web_pipeline)
     monkeypatch.setattr(
         "remastered.web.limits.inspect_youtube_source",
         lambda url: {"duration": 120, "filesize": 1000},
@@ -127,16 +106,13 @@ def test_index_and_create_job(client: TestClient) -> None:
         home = client.get("/dashboard")
         assert home.status_code == 200
         assert "새 작업" in home.text
+        assert "YouTube에 업로드" not in home.text
 
         resp = client.post(
             "/jobs",
             data={
                 "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
                 "reference_name": "ref.wav",
-                "title": "테스트 Remaster",
-                "description": "웹 UI",
-                "privacy": "private",
-                "upload_enabled": "on",
             },
             follow_redirects=False,
         )
@@ -150,6 +126,14 @@ def test_index_and_create_job(client: TestClient) -> None:
             time.sleep(0.05)
         else:
             pytest.fail("job did not complete")
+
+        media = client.get(job_url.replace("/jobs/", "/media/") + "/mastered")
+        assert media.status_code == 200
+        ranged = client.get(
+            job_url.replace("/jobs/", "/media/") + "/mastered",
+            headers={"Range": "bytes=0-3"},
+        )
+        assert ranged.status_code == 206
     finally:
         app.dependency_overrides.clear()
 
@@ -203,5 +187,35 @@ def test_daily_quota(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> Non
             follow_redirects=False,
         )
         assert resp.status_code == 429
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_missing_media_retention_message(client: TestClient, tmp_path: Path) -> None:
+    store = client.app.state.store
+    user_id = _register_user(store, "retention")
+    work = tmp_path / "work"
+    job_id = store.create_job(
+        user_id=user_id,
+        youtube_url="https://youtu.be/x",
+        reference_path="/references/ref.wav",
+        title=None,
+        description="",
+        privacy="private",
+        upload_enabled=False,
+    )
+    store.update_job(
+        job_id,
+        status="completed",
+        audio_path=str(work / "users" / user_id / "missing.wav"),
+        mastered_path=str(work / "users" / user_id / "missing2.wav"),
+    )
+    app.dependency_overrides[require_signed_in] = lambda: user_id
+    try:
+        panel = client.get(f"/jobs/{job_id}/panel")
+        assert RETENTION_MESSAGE.split("。")[0] in panel.text or "보관 기간" in panel.text
+        resp = client.get(f"/media/{job_id}/mastered")
+        assert resp.status_code == 404
+        assert RETENTION_MESSAGE in resp.json()["detail"]
     finally:
         app.dependency_overrides.clear()

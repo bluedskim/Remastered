@@ -7,10 +7,10 @@ import traceback
 from pathlib import Path
 
 from remastered.config import RemasteredSettings, resolve_settings
-from remastered.pipeline import PipelineProgress, run_pipeline_progress
-from remastered.web.auth_google import get_user_credentials
+from remastered.pipeline import PipelineProgress
 from remastered.web.cleanup import cleanup_old_jobs
-from remastered.web.db import STAGES, JobStore
+from remastered.web.db import WEB_STAGES, JobStore
+from remastered.web.pipeline_web import run_web_master_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -92,40 +92,28 @@ class JobWorker:
             user_work.mkdir(parents=True, exist_ok=True)
             job_settings = self.settings.model_copy(update={"work_dir": user_work})
 
-            upload_creds = None
-            if job["upload_enabled"]:
-                upload_creds = get_user_credentials(self.store, user_id)
-
-            result = run_pipeline_progress(
+            result = run_web_master_pipeline(
                 job["youtube_url"],
                 reference,
                 job_settings,
                 progress,
-                title=job["title"],
-                description=job["description"],
-                privacy=job["privacy"],
-                skip_upload=not job["upload_enabled"],
-                upload_credentials=upload_creds,
             )
             self.store.update_job(
                 job_id,
                 status="completed",
                 stage="done",
                 source_video_id=str(result.get("video_id", "")),
-                uploaded_video_id=str(result.get("uploaded_video_id", "") or ""),
+                uploaded_video_id="",
                 audio_path=str(result.get("audio", "")),
                 mastered_path=str(result.get("mastered", "")),
-                video_path=str(result.get("video", "")),
+                video_path="",
                 stage_state={
-                    s: (
-                        "skipped"
-                        if s == "upload" and not job["upload_enabled"]
-                        else "done"
-                    )
-                    for s in STAGES
+                    **{s: "done" for s in WEB_STAGES},
+                    "render": "skipped",
+                    "upload": "skipped",
                 },
             )
-            log("작업이 완료되었습니다.")
+            log("마스터링이 완료되었습니다.")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Job %s failed", job_id)
             log(f"오류: {exc}")
