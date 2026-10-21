@@ -1,0 +1,20 @@
+{% if audio_ok or mastered_ok %}
+<section class="card">
+  <h3>오디오</h3>
+  {% if audio_ok %}
+  <div class="player">
+    <p><strong>원본</strong></p>
+    <audio controls preload="metadata" src="/media/{{ job.id }}/audio"></audio>
+    <a class="btn btn-secondary" href="/media/{{ job.id }}/audio?download=1">다운로드</a>
+  </div>
+  {% endif %}
+
+  {% if mastered_ok %}
+  <div class="player">
+    <p><strong>마스터 결과</strong></p>
+    <audio controls preload="metadata" src="/media/{{ job.id }}/mastered"></audio>
+    <a class="btn btn-secondary" href="/media/{{ job.id }}/mastered?download=1">다운로드</a>
+  </div>
+  {% endif %}
+</section>
+{% endif %}

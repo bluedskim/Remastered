@@ -1,0 +1,31 @@
+<section class="card">
+  <h2>작업 상태</h2>
+  <p class="muted">ID: {{ job.id }}</p>
+  <p>상태: <strong class="status-{{ job.status }}">{{ job.status }}</strong>
+    {% if job.error %}<span class="oauth-err"> — {{ job.error }}</span>{% endif %}
+  </p>
+
+  <div class="stages">
+    {% for stage in stages %}
+    <div class="stage {{ job.stage_state.get(stage, 'pending') }}">
+      {{ stage_labels.get(stage, stage) }}<br />
+      <small>{{ job.stage_state.get(stage, 'pending') }}</small>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if files_expired %}
+  <p class="oauth-warn">{{ retention_message }}</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h3>로그</h3>
+  <div class="log-box">
+    {% for line in logs %}
+    <div class="log-line">[{{ line.created_at[11:19] }}] {{ line.message }}</div>
+    {% else %}
+    <div class="log-line muted">로그 없음</div>
+    {% endfor %}
+  </div>
+</section>

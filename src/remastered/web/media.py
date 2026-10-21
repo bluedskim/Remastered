@@ -31,14 +31,14 @@ def resolve_job_media_path(
     return path
 
 
-def media_file_response(path: Path, kind: str) -> FileResponse:
+def media_file_response(path: Path, kind: str, *, download: bool = False) -> FileResponse:
     media_type = "audio/wav"
-    return FileResponse(
-        path,
-        media_type=media_type,
-        filename=path.name,
-        headers={"Accept-Ranges": "bytes"},
-    )
+    disposition = "attachment" if download else "inline"
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'{disposition}; filename="{path.name}"',
+    }
+    return FileResponse(path, media_type=media_type, headers=headers)
 
 
 def media_exists(path_str: str | None, user_id: str, work_dir: Path) -> bool:
