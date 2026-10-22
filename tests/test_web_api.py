@@ -76,6 +76,9 @@ def test_home_without_google_env(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
     assert "새 작업" in resp.text
+    text = resp.text
+    assert text.index("레퍼런스 따라가기 (기본)") < text.index("원본 유지")
+    assert 'name="stereo_width_mode" value="follow_reference" checked' in text
     assert "Google" not in resp.text
     assert client.get("/dashboard", follow_redirects=False).headers["location"] == "/"
     assert "fCV9oqtwyVA" not in resp.text
