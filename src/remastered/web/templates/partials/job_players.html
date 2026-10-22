@@ -1,21 +1,57 @@
 {% if audio_ok or mastered_ok %}
 <section class="card">
   <h3>오디오</h3>
-  {% if audio_ok %}
+
+  {% if ab_compare_ok %}
+  <div class="ab-compare" data-ab-compare>
+    <p class="ab-now-playing small muted">
+      현재 청취: <strong class="ab-active-label" data-ab-active-label>리마스터</strong>
+      <span class="ab-loudness-hint">· 마스터링 시 음량이 올라갈 수 있습니다</span>
+    </p>
+    <div class="ab-segment" role="group" aria-label="원본과 리마스터 비교">
+      <button type="button" class="ab-segment-btn" data-ab-side="original" aria-pressed="false">
+        원본 Original
+      </button>
+      <button type="button" class="ab-segment-btn" data-ab-side="remastered" aria-pressed="true">
+        리마스터 Remastered
+      </button>
+    </div>
+    <div class="ab-audio-host" aria-hidden="true">
+      <audio data-audio="original" preload="auto" src="/media/{{ job.id }}/audio"></audio>
+      <audio data-audio="remastered" preload="auto" src="/media/{{ job.id }}/mastered"></audio>
+    </div>
+    <div class="ab-transport">
+      <button type="button" class="ab-play-btn" data-ab-play aria-label="재생" title="재생 (Space)">▶</button>
+      <span class="ab-time" data-ab-time-current>0:00</span>
+      <input type="range" class="ab-seek" data-ab-seek min="0" max="1000" value="0" step="1" aria-label="재생 위치" />
+      <span class="ab-time" data-ab-time-duration>0:00</span>
+      <label class="ab-volume-label">
+        <span class="small muted">음량</span>
+        <input type="range" class="ab-volume" data-ab-volume min="0" max="100" value="100" aria-label="음량" />
+      </label>
+    </div>
+    <p class="small muted ab-keys-hint">Space 재생/일시정지 · A 원본 · B 리마스터</p>
+    <div class="ab-downloads">
+      <a class="btn btn-secondary" href="/media/{{ job.id }}/audio?download=1"{% if audio_download_filename %} download="{{ audio_download_filename }}"{% endif %}>원본 다운로드</a>
+      <a class="btn btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>리마스터 다운로드</a>
+    </div>
+  </div>
+
+  {% elif audio_ok %}
   <div class="player">
     <p><strong>원본</strong></p>
-    <audio controls preload="none" src="/media/{{ job.id }}/audio"></audio>
+    <audio controls preload="auto" src="/media/{{ job.id }}/audio"></audio>
     <a class="btn btn-secondary" href="/media/{{ job.id }}/audio?download=1"{% if audio_download_filename %} download="{{ audio_download_filename }}"{% endif %}>다운로드</a>
   </div>
-  {% endif %}
 
-  {% if mastered_ok %}
+  {% elif mastered_ok %}
   <div class="player">
     <p><strong>마스터 결과</strong></p>
-    <audio controls preload="none" src="/media/{{ job.id }}/mastered"></audio>
+    <audio controls preload="auto" src="/media/{{ job.id }}/mastered"></audio>
     <a class="btn btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>다운로드</a>
   </div>
   {% endif %}
+
   <p class="rights-notice-inline small muted">{{ rights_notice_short }}</p>
 </section>
 {% endif %}

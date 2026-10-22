@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
 
 from remastered.web.download_filenames import build_attachment_content_disposition
-from remastered.web.stream_audio import playback_path_for_wav
+from remastered.web.stream_audio import playback_path_for_wav, transcode_wav_for_playback
+
+logger = logging.getLogger(__name__)
 
 RETENTION_MESSAGE = (
     "오디오 파일이 없습니다. 보관 기간(기본 14일)이 지난 경우 삭제되었을 수 있습니다."
@@ -43,8 +46,16 @@ def resolve_job_media_path(
         return wav
     playback = playback_path_for_wav(wav)
     if playback.is_file():
-        return playback
-    return wav
+        try:
+            if playback.stat().st_mtime >= wav.stat().st_mtime:
+                return playback
+        except OSError:
+            return playback
+    try:
+        return transcode_wav_for_playback(wav)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Playback transcode failed for %s: %s", wav, exc)
+        return wav
 
 
 def media_file_response(

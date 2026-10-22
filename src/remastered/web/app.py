@@ -141,6 +141,7 @@ def _job_media_context(job: dict, owner_id: str) -> dict[str, bool | str | None]
     return {
         "audio_ok": audio_ok,
         "mastered_ok": mastered_ok,
+        "ab_compare_ok": audio_ok and mastered_ok,
         "files_expired": expired,
         "retention_message": RETENTION_MESSAGE,
         "audio_download_filename": audio_download_filename,
