@@ -18,6 +18,7 @@ from remastered.web.identity import (
     get_or_create_owner_id,
     session_middleware_kwargs,
 )
+from remastered.web.download_filenames import media_download_filename
 from remastered.web.media import (
     RETENTION_MESSAGE,
     media_exists,
@@ -126,11 +127,22 @@ def _job_media_context(job: dict, owner_id: str) -> dict[str, bool | str]:
     mastered_ok = media_exists(mastered_path, owner_id, work)
     had_paths = bool(audio_path or mastered_path)
     expired = job["status"] == "completed" and had_paths and not (audio_ok or mastered_ok)
+    audio_download_filename: str | None = None
+    mastered_download_filename: str | None = None
+    if audio_ok and audio_path:
+        audio_download_filename = media_download_filename(job, "audio", Path(audio_path))
+    if mastered_ok and mastered_path:
+        mastered_download_filename = media_download_filename(
+            job, "mastered", Path(mastered_path)
+        )
+
     return {
         "audio_ok": audio_ok,
         "mastered_ok": mastered_ok,
         "files_expired": expired,
         "retention_message": RETENTION_MESSAGE,
+        "audio_download_filename": audio_download_filename,
+        "mastered_download_filename": mastered_download_filename,
     }
 
 
@@ -340,7 +352,7 @@ async def media_file(
         )
 
     path = await run_in_threadpool(_resolve)
-    return media_file_response(path, kind, download=want_download)
+    return media_file_response(path, kind, download=want_download, job=job)
 
 
 app = mount_health_router(fastapi_application)
