@@ -18,6 +18,7 @@
         <time class="small muted" datetime="{{ job.created_at }}">{{ job.relative_time }}</time>
       </p>
       <p class="job-url small muted">{{ job.youtube_url }}</p>
+      {% include "partials/job_reference.html" %}
       {% if job.error %}
       <p class="oauth-err job-error">{{ job.error }}</p>
       {% endif %}

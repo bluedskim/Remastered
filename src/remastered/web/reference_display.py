@@ -14,6 +14,14 @@ def reference_display_meta(filename: str) -> dict[str, str]:
     return {"genre": "레퍼런스", "label": stem or filename}
 
 
+def reference_display_for_job(reference_path: str | None) -> dict[str, str]:
+    """Friendly reference label for a job; never includes directory paths."""
+    name = Path(reference_path or "").name
+    if not name:
+        return {"genre": "레퍼런스", "label": "—"}
+    return reference_display_meta(name)
+
+
 def build_reference_options(shared: list[str], user: list[str]) -> list[dict[str, str]]:
     options: list[dict[str, str]] = []
     for name in shared:

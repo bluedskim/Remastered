@@ -218,6 +218,10 @@ def test_media_download_disposition(client: TestClient) -> None:
     detail = client.get(f"/jobs/{job_id}")
     assert "rights-notice-inline" in detail.text
     assert "14일 후" in detail.text
+    assert "레퍼런스" in detail.text
+    assert "ref" in detail.text.lower()
+    assert "/references/" not in detail.text
+    assert "users/" not in detail.text
 
 
 def test_job_title_on_dashboard_and_detail(client: TestClient) -> None:

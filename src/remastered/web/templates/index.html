@@ -78,6 +78,10 @@
           <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
           <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
         </div>
+        <p class="job-card-ref small muted">
+          <span class="ref-genre ref-genre--compact">{{ job.reference_genre }}</span>
+          <span>{{ job.reference_label }}</span>
+        </p>
         {% include "partials/job_progress.html" %}
         <p class="job-card-meta small muted">
           <time datetime="{{ job.created_at }}">{{ job.relative_time }}</time>
