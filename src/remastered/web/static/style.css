@@ -712,6 +712,28 @@ button,
   box-shadow: 0 12px 28px rgba(139, 92, 246, 0.4);
 }
 
+.ab-repeat-btn {
+  width: 2.65rem;
+  height: 2.65rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.ab-repeat-btn[aria-pressed="true"],
+.ab-repeat-btn.ab-repeat-on {
+  border-color: rgba(168, 85, 247, 0.55);
+  background: rgba(139, 92, 246, 0.18);
+  color: #e9d5ff;
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.25);
+}
+
 .ab-seek {
   flex: 1 1 160px;
   min-width: 120px;

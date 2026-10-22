@@ -4,6 +4,8 @@
   var DRIFT_SEC = 0.05;
   var SYNC_MS = 250;
   var HAVE_FUTURE_DATA = 3;
+  var LOOP_EPSILON = 0.12;
+  var REPEAT_STORAGE_KEY = "remastered.abPlayer.repeat";
 
   function isTypingTarget(el) {
     if (!el || !el.tagName) return false;
@@ -27,6 +29,7 @@
     if (!original || !remastered) return;
 
     var playBtn = root.querySelector("[data-ab-play]");
+    var repeatBtn = root.querySelector("[data-ab-repeat]");
     var seek = root.querySelector("[data-ab-seek]");
     var vol = root.querySelector("[data-ab-volume]");
     var timeCur = root.querySelector("[data-ab-time-current]");
@@ -40,6 +43,37 @@
     var buffering = false;
     var softPausing = false;
     var syncTimer = null;
+    var repeatEnabled = true;
+
+    function loadRepeatPreference() {
+      try {
+        var stored = localStorage.getItem(REPEAT_STORAGE_KEY);
+        if (stored === "0") repeatEnabled = false;
+        else if (stored === "1") repeatEnabled = true;
+      } catch (err) {
+        repeatEnabled = true;
+      }
+    }
+
+    function saveRepeatPreference() {
+      try {
+        localStorage.setItem(REPEAT_STORAGE_KEY, repeatEnabled ? "1" : "0");
+      } catch (err) {
+        /* ignore */
+      }
+    }
+
+    function setRepeatUi() {
+      if (!repeatBtn) return;
+      repeatBtn.setAttribute("aria-pressed", repeatEnabled ? "true" : "false");
+      repeatBtn.classList.toggle("ab-repeat-on", repeatEnabled);
+    }
+
+    function toggleRepeat() {
+      repeatEnabled = !repeatEnabled;
+      saveRepeatPreference();
+      setRepeatUi();
+    }
 
     function audible() {
       return activeSide === "original" ? original : remastered;
@@ -78,6 +112,53 @@
       var d = Math.max(original.duration || 0, remastered.duration || 0);
       if (!isFinite(d)) d = 0;
       return d;
+    }
+
+    function loopEndTime() {
+      var d1 = original.duration;
+      var d2 = remastered.duration;
+      if (!isFinite(d1) || !isFinite(d2) || d1 <= 0 || d2 <= 0) return 0;
+      return Math.min(d1, d2);
+    }
+
+    function restartBothFromStart() {
+      softPausing = true;
+      original.currentTime = 0;
+      remastered.currentTime = 0;
+      softPausing = false;
+      updateTimeUi();
+      if (!userWantsPlay) return;
+      var p1;
+      var p2;
+      try {
+        p1 = original.play();
+        p2 = remastered.play();
+      } catch (err) {
+        handlePlayRejection(err);
+        return;
+      }
+      Promise.all([p1, p2]).catch(handlePlayRejection);
+    }
+
+    function checkLoopRestart() {
+      if (!repeatEnabled || !userWantsPlay || seeking) return;
+      var end = loopEndTime();
+      if (end <= LOOP_EPSILON) return;
+      var master = audible();
+      if (master.ended || master.currentTime >= end - LOOP_EPSILON) {
+        restartBothFromStart();
+      }
+    }
+
+    function handleTrackEnded() {
+      if (repeatEnabled && userWantsPlay) {
+        restartBothFromStart();
+        return;
+      }
+      if (original.ended && remastered.ended) {
+        userPauseBoth();
+        updateTimeUi();
+      }
     }
 
     function updateTimeUi() {
@@ -247,7 +328,15 @@
       }
     }
 
+    loadRepeatPreference();
+    setRepeatUi();
     applyMute();
+
+    if (repeatBtn) {
+      repeatBtn.addEventListener("click", function () {
+        toggleRepeat();
+      });
+    }
 
     if (playBtn) {
       playBtn.addEventListener("click", function () {
@@ -275,14 +364,12 @@
     }
 
     [original, remastered].forEach(function (audio) {
-      audio.addEventListener("timeupdate", updateTimeUi);
-      audio.addEventListener("loadedmetadata", updateTimeUi);
-      audio.addEventListener("ended", function () {
-        if (original.ended && remastered.ended) {
-          userPauseBoth();
-          updateTimeUi();
-        }
+      audio.addEventListener("timeupdate", function () {
+        updateTimeUi();
+        checkLoopRestart();
       });
+      audio.addEventListener("loadedmetadata", updateTimeUi);
+      audio.addEventListener("ended", handleTrackEnded);
       audio.addEventListener("waiting", function () {
         onAudioWaiting(audio);
       });
@@ -312,6 +399,9 @@
         setActiveSide("original");
       } else if (e.key === "b" || e.key === "B") {
         setActiveSide("remastered");
+      } else if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        toggleRepeat();
       }
     };
   }

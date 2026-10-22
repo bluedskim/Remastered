@@ -37,6 +37,8 @@ def test_job_players_ab_compare_template(jinja_env: Environment) -> None:
     assert "controls" not in html.split("data-ab-compare")[1].split("ab-downloads")[0]
     assert "원본 다운로드" in html
     assert "권리 안내" in html
+    assert 'data-ab-repeat' in html
+    assert "반복 재생 (R)" in html
 
 
 def test_ab_player_js_does_not_cancel_play_on_waiting_or_stalled() -> None:
@@ -58,6 +60,20 @@ def test_ab_player_js_plays_synchronously_in_gesture_handler() -> None:
     click_idx = source.index('playBtn.addEventListener("click"')
     click_block = source[click_idx : click_idx + 280]
     assert "startPlaybackFromGesture()" in click_block
+
+
+def test_ab_player_js_repeat_loop_without_native_loop_attribute() -> None:
+    source = AB_PLAYER_JS.read_text(encoding="utf-8")
+    assert "restartBothFromStart" in source
+    assert "checkLoopRestart" in source
+    assert "REPEAT_STORAGE_KEY" in source
+    assert "localStorage" in source
+    assert 'loop="' not in source
+    assert ".loop =" not in source
+    assert ".loop=" not in source
+    ended_idx = source.index("addEventListener(\"ended\"")
+    ended_block = source[ended_idx : ended_idx + 120]
+    assert "handleTrackEnded" in ended_block
 
 
 def test_job_players_single_when_only_mastered(jinja_env: Environment) -> None:

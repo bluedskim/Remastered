@@ -22,6 +22,7 @@
     </div>
     <div class="ab-transport">
       <button type="button" class="ab-play-btn" data-ab-play aria-label="재생" title="재생 (Space)">▶</button>
+      <button type="button" class="ab-repeat-btn" data-ab-repeat aria-pressed="true" aria-label="반복 재생" title="반복 재생 (R)">🔁</button>
       <span class="ab-time" data-ab-time-current>0:00</span>
       <input type="range" class="ab-seek" data-ab-seek min="0" max="1000" value="0" step="1" aria-label="재생 위치" />
       <span class="ab-time" data-ab-time-duration>0:00</span>
@@ -30,7 +31,7 @@
         <input type="range" class="ab-volume" data-ab-volume min="0" max="100" value="100" aria-label="음량" />
       </label>
     </div>
-    <p class="small muted ab-keys-hint">Space 재생/일시정지 · A 원본 · B 리마스터</p>
+    <p class="small muted ab-keys-hint">Space 재생/일시정지 · A 원본 · B 리마스터 · R 반복</p>
     <div class="ab-downloads">
       <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/audio?download=1"{% if audio_download_filename %} download="{{ audio_download_filename }}"{% endif %}>원본 다운로드</a>
       <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>리마스터 다운로드</a>
