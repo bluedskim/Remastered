@@ -57,6 +57,32 @@ def _patch_pipeline() -> None:
     }
 
 
+def _capture_set(context, base: str, label: str) -> None:
+    for name, width in [("home-desktop", 1280), ("home-mobile", 390)]:
+        page = context.new_page()
+        page.set_viewport_size({"width": width, "height": 900})
+        page.goto(base, wait_until="networkidle")
+        page.screenshot(
+            path=str(ARTIFACTS / f"ui-{name}-{label}.png"),
+            full_page=True,
+        )
+        page.close()
+
+    page = context.new_page()
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.goto(base, wait_until="networkidle")
+    page.click("#create-job-submit")
+    page.wait_for_url("**/jobs/**", timeout=20000)
+    for _ in range(80):
+        if page.locator("[data-ab-compare]").count() > 0:
+            break
+        time.sleep(0.25)
+    page.screenshot(path=str(ARTIFACTS / f"ui-job-desktop-{label}.png"), full_page=True)
+    page.set_viewport_size({"width": 390, "height": 900})
+    page.screenshot(path=str(ARTIFACTS / f"ui-job-mobile-{label}.png"), full_page=True)
+    page.close()
+
+
 def main() -> int:
     work = ROOT / ".screenshot-work"
     refs = work / "refs"
@@ -87,23 +113,23 @@ def main() -> int:
     base = "http://127.0.0.1:8765"
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        for name, width in [("home-desktop", 1280), ("home-mobile", 390)]:
-            page = browser.new_page(viewport={"width": width, "height": 900})
-            page.goto(base, wait_until="networkidle")
-            page.screenshot(path=str(ARTIFACTS / f"ui-{name}.png"), full_page=True)
-
-        page = browser.new_page(viewport={"width": 1280, "height": 900})
-        page.goto(base, wait_until="networkidle")
-        page.click("#create-job-submit")
-        page.wait_for_url("**/jobs/**", timeout=20000)
-        for _ in range(80):
-            if page.locator("[data-ab-compare]").count() > 0:
-                break
-            time.sleep(0.25)
-        page.screenshot(path=str(ARTIFACTS / "ui-job-desktop.png"), full_page=True)
-        page.set_viewport_size({"width": 390, "height": 900})
-        page.screenshot(path=str(ARTIFACTS / "ui-job-mobile.png"), full_page=True)
+        for scheme in ("light", "dark"):
+            context = browser.new_context(color_scheme=scheme)
+            _capture_set(context, base, f"scheme-{scheme}")
+            context.close()
         browser.close()
+
+    # Legacy names (dark) for docs that reference older paths
+    for stem in (
+        "ui-home-desktop",
+        "ui-home-mobile",
+        "ui-job-desktop",
+        "ui-job-mobile",
+    ):
+        src = ARTIFACTS / f"{stem}-scheme-dark.png"
+        dst = ARTIFACTS / f"{stem}.png"
+        if src.is_file():
+            dst.write_bytes(src.read_bytes())
 
     server.should_exit = True
     thread.join(timeout=5)
