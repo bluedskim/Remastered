@@ -13,9 +13,11 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from remastered.config import resolve_settings
 from remastered.web.db import WEB_STAGES, JobStore
+from remastered.web.auth_routes import register_auth_routes
 from remastered.web.identity import (
+    RequestIdentity,
     client_ip,
-    get_or_create_owner_id,
+    resolve_identity,
     session_middleware_kwargs,
 )
 from remastered.web.download_filenames import media_download_filename
@@ -113,8 +115,8 @@ def get_worker(request: Request) -> JobWorker:
     return request.app.state.worker
 
 
-def require_owner(request: Request) -> str:
-    return get_or_create_owner_id(request)
+def require_identity(request: Request) -> RequestIdentity:
+    return resolve_identity(request)
 
 
 def _list_reference_files(references_dir: Path) -> list[str]:
@@ -128,14 +130,14 @@ def _list_reference_files(references_dir: Path) -> list[str]:
     )
 
 
-def _job_media_context(job: dict, owner_id: str) -> dict[str, bool | str | None]:
+def _job_media_context(job: dict) -> dict[str, bool | str | None]:
     ws = _web_settings()
     settings = resolve_settings()
     work = settings.work_dir
     audio_path = job.get("audio_path")
     mastered_path = job.get("mastered_path")
-    audio_ok = media_exists(audio_path, owner_id, work)
-    mastered_ok = media_exists(mastered_path, owner_id, work)
+    audio_ok = media_exists(audio_path, job, work)
+    mastered_ok = media_exists(mastered_path, job, work)
     had_paths = bool(audio_path or mastered_path)
     expired = job["status"] == "completed" and had_paths and not (audio_ok or mastered_ok)
     audio_download_filename: str | None = None
@@ -182,13 +184,32 @@ def _enrich_job(job: dict, store: JobStore) -> dict:
     return data
 
 
+def _auth_template_context(identity: RequestIdentity) -> dict:
+    if identity.account_id:
+        return {
+            "auth_user": {
+                "nickname": identity.nickname,
+                "id": identity.account_id,
+            }
+        }
+    return {"auth_user": None}
+
+
 def _dashboard_context(
     request: Request,
-    owner_id: str,
+    identity: RequestIdentity,
     store: JobStore,
 ) -> dict:
     ws = _web_settings()
-    jobs = [_enrich_job(j, store) for j in store.list_jobs(owner_id, limit=20)]
+    jobs = [
+        _enrich_job(j, store)
+        for j in store.list_jobs_for_access(
+            account_id=identity.account_id,
+            anon_id=identity.anon_id,
+            limit=20,
+        )
+    ]
+    owner_id = identity.job_owner_id
     shared_refs = _list_reference_files(ws.references_path)
     user_refs = _list_reference_files(_owner_references_dir(owner_id))
     return {
@@ -200,19 +221,23 @@ def _dashboard_context(
         "privacy_notice": PRIVACY_NOTICE,
         "rights_notice_lines": rights_notice_lines(ws.job_retention_days),
         "limits": ws,
+        **_auth_template_context(identity),
     }
+
+
+register_auth_routes(fastapi_application, templates, PRIVACY_NOTICE)
 
 
 @fastapi_application.get("/", response_class=HTMLResponse)
 def home(
     request: Request,
-    owner_id: str = Depends(require_owner),
+    identity: RequestIdentity = Depends(require_identity),
     store: JobStore = Depends(get_store),
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "index.html",
-        _dashboard_context(request, owner_id, store),
+        _dashboard_context(request, identity, store),
     )
 
 
@@ -224,7 +249,7 @@ def dashboard_redirect() -> RedirectResponse:
 @fastapi_application.post("/jobs")
 async def create_job(
     request: Request,
-    owner_id: str = Depends(require_owner),
+    identity: RequestIdentity = Depends(require_identity),
     store: JobStore = Depends(get_store),
     worker: JobWorker = Depends(get_worker),
     youtube_url: str = Form(...),
@@ -235,6 +260,7 @@ async def create_job(
     ip = client_ip(request)
     ws = _web_settings()
     reference_path: Path | None = None
+    owner_id = identity.job_owner_id
     owner_ref_dir = _owner_references_dir(owner_id)
 
     if reference_upload and reference_upload.filename:
@@ -292,14 +318,18 @@ async def create_job(
 def job_detail(
     request: Request,
     job_id: str,
-    owner_id: str = Depends(require_owner),
+    identity: RequestIdentity = Depends(require_identity),
     store: JobStore = Depends(get_store),
 ) -> HTMLResponse:
-    job = store.get_job(job_id, user_id=owner_id)
+    job = store.get_job_for_access(
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
     if not job:
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
     logs = store.get_logs(job_id)
-    media_ctx = _job_media_context(job, owner_id)
+    media_ctx = _job_media_context(job)
     return templates.TemplateResponse(
         request,
         "job_detail.html",
@@ -309,6 +339,7 @@ def job_detail(
             "stage_labels": STAGE_LABELS,
             "stages": WEB_STAGES,
             "privacy_notice": PRIVACY_NOTICE,
+            **_auth_template_context(identity),
             **media_ctx,
         },
     )
@@ -318,14 +349,18 @@ def job_detail(
 def job_panel(
     request: Request,
     job_id: str,
-    owner_id: str = Depends(require_owner),
+    identity: RequestIdentity = Depends(require_identity),
     store: JobStore = Depends(get_store),
 ) -> HTMLResponse:
-    job = store.get_job(job_id, user_id=owner_id)
+    job = store.get_job_for_access(
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
     if not job:
         raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
     logs = store.get_logs(job_id)
-    media_ctx = _job_media_context(job, owner_id)
+    media_ctx = _job_media_context(job)
     ctx = {
         "job": _enrich_job(job, store),
         "logs": logs,
@@ -346,13 +381,19 @@ def job_panel(
 
 @fastapi_application.get("/media/{job_id}/{kind}")
 async def media_file(
+    request: Request,
     job_id: str,
     kind: str,
     download: int | None = None,
-    owner_id: str = Depends(require_owner),
+    identity: RequestIdentity = Depends(require_identity),
     store: JobStore = Depends(get_store),
 ) -> FileResponse:
-    job = await run_in_threadpool(store.get_job, job_id, owner_id)
+    job = await run_in_threadpool(
+        store.get_job_for_access,
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
     if not job:
         raise HTTPException(status_code=404, detail=RETENTION_MESSAGE)
     settings = resolve_settings()
@@ -363,7 +404,6 @@ async def media_file(
         return resolve_job_media_path(
             job,
             kind,
-            user_id=owner_id,
             work_dir=work_dir,
             download=want_download,
         )

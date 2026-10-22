@@ -75,7 +75,80 @@ a:hover {
 }
 
 .site-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 1.75rem;
+}
+
+.site-auth {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+  padding-top: 0.35rem;
+}
+
+.auth-link {
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.auth-link:hover {
+  color: var(--text);
+}
+
+.auth-link-primary {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.auth-nickname {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.auth-logout-form {
+  margin: 0;
+}
+
+.auth-card {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.auth-form .field {
+  margin-bottom: 1rem;
+}
+
+.form-error {
+  color: var(--err);
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.auth-switch {
+  margin-top: 1.25rem;
+  text-align: center;
+}
+
+.nickname-ok {
+  color: var(--ok);
+}
+
+.nickname-bad {
+  color: var(--err);
 }
 
 .brand {

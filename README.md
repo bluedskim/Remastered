@@ -60,10 +60,13 @@ ffmpeg_path = "ffmpeg"
 | `REMASTERED_CONFIG` | 설정 TOML 경로 (Docker에서 `/config/config.toml` 등) |
 | `REMASTERED_OAUTH_LOCAL_PORT` | Docker·헤드리스 환경 OAuth 로컬 서버 포트 (예: `8095`) |
 | `REMASTERED_OAUTH_USE_CONSOLE` | `true`면 URL·코드 복사·붙여넣기 OAuth (`remastered auth --console`) |
-| `REMASTERED_WEB_PUBLIC_BASE_URL` | 공개 URL (예: `https://remastered.baem.app`) — OAuth 리다이렉트·프록시용 |
-| `REMASTERED_GOOGLE_CLIENT_ID` / `SECRET` | (선택) 예전 웹 Google 로그인용 — 현재 웹 UI는 미사용 |
-| `REMASTERED_TOKEN_ENCRYPTION_KEY` | (선택) 예전 웹 토큰 암호화용 — CLI·웹 익명 모드에서는 불필요 |
+| `REMASTERED_WEB_PUBLIC_BASE_URL` | 공개 URL (예: `https://remastered.baem.app`) — 쿠키 `Secure`·프록시용 |
 | `REMASTERED_WEB_SESSION_SECRET` | 익명 세션 쿠키 서명 (필수) |
+| `REMASTERED_JWT_SECRET` | 로그인 JWT 서명 (운영에서 필수) |
+| `REMASTERED_JWT_EXPIRY_SECONDS` | JWT 만료(초, 기본 86400) |
+| `REMASTERED_MAIL_MODE` | `log`(기본, 인증코드를 서버 로그에 출력) 또는 `resend` |
+| `RESEND_API_KEY` | `REMASTERED_MAIL_MODE=resend`일 때 Resend API 키 |
+| `MAIL_FROM` | 발신 주소 (Resend에 등록된 도메인) |
 | `REMASTERED_WEB_MAX_SOURCE_DURATION_SECONDS` | 소스 최대 길이(초) |
 | `REMASTERED_WEB_JOB_RETENTION_DAYS` | 완료 작업 파일 보존 일수 |
 | `REMASTERED_WEB_MAX_CONCURRENT_MEDIA_STREAMS` | 동시 `/media` 스트림 상한 (기본 12) |
@@ -76,7 +79,9 @@ ffmpeg_path = "ffmpeg"
 
 ### 웹 UI (공개 — remastered.baem.app)
 
-로그인 없이 YouTube URL을 **다운로드·마스터링**합니다. 브라우저 재생은 작업 완료 시 생성되는 **AAC(192k) M4A** 스트림을 쓰고, **WAV는 다운로드**(`?download=1`) 전용입니다. `<audio>`는 `preload="none"`입니다.
+**로그인은 선택**입니다. 익명 세션으로도 기존과 같이 YouTube URL을 **다운로드·마스터링**할 수 있습니다. 회원가입(이메일 인증) 후 로그인하면 작업이 계정에 연결되어 다른 기기에서도 목록을 볼 수 있습니다. 브라우저 재생은 작업 완료 시 생성되는 **AAC(192k) M4A** 스트림을 쓰고, **WAV는 다운로드**(`?download=1`) 전용입니다. `<audio>`는 `preload="none"`입니다.
+
+웹 인증 환경 변수 예시는 저장소 루트의 [`.env.example`](.env.example)를 참고하세요.
 
 ```bash
 export REMASTERED_WEB_PUBLIC_BASE_URL=https://remastered.baem.app

@@ -25,7 +25,6 @@ def test_resolve_inline_generates_playback_when_missing(tmp_path: Path) -> None:
         resolved = resolve_job_media_path(
             job,
             "audio",
-            user_id="u1",
             work_dir=tmp_path,
             download=False,
         )

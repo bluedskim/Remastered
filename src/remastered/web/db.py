@@ -12,7 +12,7 @@ from uuid import uuid4
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -128,7 +128,39 @@ class JobStore:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_client_ip ON jobs(client_ip)")
+        self._migrate_auth_schema(conn)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+    def _migrate_auth_schema(self, conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS auth_users (
+                id TEXT PRIMARY KEY,
+                login_id TEXT NOT NULL UNIQUE,
+                nickname TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS email_verifications (
+                email TEXT PRIMARY KEY,
+                code_hash TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                sent_at TEXT NOT NULL,
+                failed_attempts INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS verification_send_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip TEXT NOT NULL,
+                email TEXT NOT NULL,
+                sent_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_verification_send_email
+                ON verification_send_log(email, sent_at);
+            CREATE INDEX IF NOT EXISTS idx_verification_send_ip
+                ON verification_send_log(ip, sent_at);
+            """
+        )
 
     @staticmethod
     def _backfill_legacy_jobs(conn: sqlite3.Connection) -> None:
@@ -343,6 +375,180 @@ class JobStore:
         if row is None:
             return None
         return self._row_to_job(row)
+
+    def get_job_for_access(
+        self,
+        job_id: str,
+        *,
+        account_id: str | None,
+        anon_id: str,
+    ) -> dict[str, Any] | None:
+        owners = [anon_id]
+        if account_id:
+            owners.append(account_id)
+        placeholders = ",".join("?" for _ in owners)
+        with self._conn() as conn:
+            row = conn.execute(
+                f"SELECT * FROM jobs WHERE id = ? AND user_id IN ({placeholders})",
+                (job_id, *owners),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_job(row)
+
+    def list_jobs_for_access(
+        self,
+        *,
+        account_id: str | None,
+        anon_id: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        if account_id:
+            return self.list_jobs(account_id, limit=limit)
+        return self.list_jobs(anon_id, limit=limit)
+
+    def claim_jobs(self, anon_id: str, account_id: str) -> int:
+        if not anon_id or not account_id or anon_id == account_id:
+            return 0
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                UPDATE jobs SET user_id = ?, updated_at = ?
+                WHERE user_id = ?
+                """,
+                (account_id, _utc_now(), anon_id),
+            )
+        return int(cur.rowcount)
+
+    def create_auth_user(
+        self,
+        *,
+        login_id: str,
+        nickname: str,
+        password_hash: str,
+    ) -> str:
+        user_id = f"user-{uuid4().hex}"
+        now = _utc_now()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO auth_users (
+                    id, login_id, nickname, password_hash, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, login_id, nickname, password_hash, now, now),
+            )
+        return user_id
+
+    def get_auth_user_by_login_id(self, login_id: str) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM auth_users WHERE login_id = ?", (login_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_auth_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM auth_users WHERE id = ?", (user_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def is_nickname_taken(self, nickname: str) -> bool:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM auth_users WHERE nickname = ? COLLATE NOCASE",
+                (nickname,),
+            ).fetchone()
+        return row is not None
+
+    def upsert_email_verification(
+        self,
+        *,
+        email: str,
+        code_hash: str,
+        expires_at: str,
+        sent_at: str,
+    ) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO email_verifications (
+                    email, code_hash, expires_at, sent_at, failed_attempts
+                ) VALUES (?, ?, ?, ?, 0)
+                ON CONFLICT(email) DO UPDATE SET
+                    code_hash = excluded.code_hash,
+                    expires_at = excluded.expires_at,
+                    sent_at = excluded.sent_at,
+                    failed_attempts = 0
+                """,
+                (email, code_hash, expires_at, sent_at),
+            )
+
+    def get_email_verification(self, email: str) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM email_verifications WHERE email = ?", (email,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def delete_email_verification(self, email: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM email_verifications WHERE email = ?", (email,))
+
+    def increment_verification_failed_attempts(self, email: str) -> int:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                UPDATE email_verifications
+                SET failed_attempts = failed_attempts + 1
+                WHERE email = ?
+                """,
+                (email,),
+            )
+            row = conn.execute(
+                "SELECT failed_attempts FROM email_verifications WHERE email = ?",
+                (email,),
+            ).fetchone()
+        return int(row["failed_attempts"]) if row else 0
+
+    def record_verification_send(self, *, ip: str, email: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO verification_send_log (ip, email, sent_at)
+                VALUES (?, ?, ?)
+                """,
+                (ip, email, _utc_now()),
+            )
+
+    def count_verification_sends_since(
+        self,
+        *,
+        email: str | None = None,
+        ip: str | None = None,
+        since_iso: str,
+    ) -> int:
+        with self._conn() as conn:
+            if email is not None:
+                row = conn.execute(
+                    """
+                    SELECT COUNT(*) AS c FROM verification_send_log
+                    WHERE email = ? AND sent_at >= ?
+                    """,
+                    (email, since_iso),
+                ).fetchone()
+            elif ip is not None:
+                row = conn.execute(
+                    """
+                    SELECT COUNT(*) AS c FROM verification_send_log
+                    WHERE ip = ? AND sent_at >= ?
+                    """,
+                    (ip, since_iso),
+                ).fetchone()
+            else:
+                return 0
+        return int(row["c"])
 
     def list_jobs(self, user_id: str, limit: int = 50) -> list[dict[str, Any]]:
         with self._conn() as conn:

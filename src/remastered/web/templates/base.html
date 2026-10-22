@@ -19,6 +19,17 @@
           <span class="brand-tagline">YouTube 오디오를 레퍼런스에 맞춰 리마스터</span>
         </span>
       </a>
+      <nav class="site-auth" aria-label="계정">
+        {% if auth_user %}
+        <span class="auth-nickname">{{ auth_user.nickname }}</span>
+        <form class="auth-logout-form" method="post" action="/logout">
+          <button type="submit" class="btn btn-ghost btn-sm">로그아웃</button>
+        </form>
+        {% else %}
+        <a class="auth-link" href="/login">로그인</a>
+        <a class="auth-link auth-link-primary" href="/signup">회원가입</a>
+        {% endif %}
+      </nav>
     </header>
     <main class="site-main">
       {% block content %}{% endblock %}
