@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 
 from remastered.web.download_filenames import build_attachment_content_disposition
+from remastered.web.job_storage import job_media_storage_owner_id
 from remastered.web.stream_audio import playback_path_for_wav, transcode_wav_for_playback
 
 logger = logging.getLogger(__name__)
@@ -27,14 +28,14 @@ def resolve_job_media_path(
     job: dict,
     kind: str,
     *,
-    user_id: str,
     work_dir: Path,
     download: bool = False,
 ) -> Path:
     wav = _wav_path_for_kind(job, kind)
     if wav is None:
         raise HTTPException(status_code=404, detail=RETENTION_MESSAGE)
-    user_root = (work_dir / "users" / user_id).resolve()
+    storage_owner = job_media_storage_owner_id(job, work_dir)
+    user_root = (work_dir / "users" / storage_owner).resolve()
     wav = wav.resolve()
     try:
         wav.relative_to(user_root)
@@ -82,11 +83,12 @@ def media_file_response(
     return FileResponse(path, media_type=media_type, headers=headers)
 
 
-def media_exists(path_str: str | None, user_id: str, work_dir: Path) -> bool:
+def media_exists(path_str: str | None, job: dict, work_dir: Path) -> bool:
     if not path_str:
         return False
     try:
-        user_root = (work_dir / "users" / user_id).resolve()
+        storage_owner = job_media_storage_owner_id(job, work_dir)
+        user_root = (work_dir / "users" / storage_owner).resolve()
         path = Path(path_str).resolve()
         path.relative_to(user_root)
     except ValueError:

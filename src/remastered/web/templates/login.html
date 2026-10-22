@@ -1,18 +1,23 @@
 {% extends "base.html" %}
-{% block title %}로그인 — Remastered{% endblock %}
+{% block title %}로그인 · Remastered{% endblock %}
 {% block content %}
-<div class="card" style="max-width:420px;margin:2rem auto">
-  <h2>로그인</h2>
-  <p class="muted">LAN에서 접근할 때 설정한 웹 비밀번호를 입력하세요.</p>
-  {% if request.query_params.get('error') %}
-  <p class="oauth-err">비밀번호가 올바르지 않습니다.</p>
+<section class="card auth-card">
+  <h1 class="card-title">로그인</h1>
+  {% if error %}
+  <p class="form-error" role="alert">{{ error }}</p>
   {% endif %}
-  <form method="post" action="/login" class="grid">
-    <div>
-      <label for="password">비밀번호</label>
-      <input type="password" id="password" name="password" required autofocus />
-    </div>
-    <button type="submit">들어가기</button>
+  <form method="post" action="/login" class="auth-form">
+    <label class="field">
+      <span class="field-label">이메일</span>
+      <input type="email" name="login_id" required autocomplete="email"
+             value="{{ login_id | default('') }}" placeholder="you@example.com" />
+    </label>
+    <label class="field">
+      <span class="field-label">비밀번호</span>
+      <input type="password" name="password" required autocomplete="current-password" minlength="8" />
+    </label>
+    <button type="submit" class="btn btn-primary btn-block">로그인</button>
   </form>
-</div>
+  <p class="auth-switch muted small">계정이 없으신가요? <a href="/signup">회원가입</a></p>
+</section>
 {% endblock %}
