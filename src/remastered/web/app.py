@@ -55,6 +55,7 @@ TERMINAL_JOB_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 PRIVACY_NOTICE = (
     "저장 항목: 익명 세션 식별자, 작업 URL·로그·생성 파일 경로. "
+    "회원 가입 시 이메일·닉네임·비밀번호(해시)를 추가로 저장합니다. "
     "작업 파일은 보관 기간 후 삭제됩니다."
 )
 
