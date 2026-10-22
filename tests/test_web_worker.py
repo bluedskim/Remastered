@@ -105,7 +105,9 @@ def test_worker_starts_and_picks_job(
         upload_enabled=False,
     )
 
-    def fake_pipeline(url, reference, settings, progress=None, on_downloaded=None):
+    def fake_pipeline(
+        url, reference, settings, progress=None, on_downloaded=None, stereo_width=None
+    ):
         if on_downloaded:
             on_downloaded("Worker Test", "vid")
         audio = settings.work_dir / "vid" / "audio.wav"

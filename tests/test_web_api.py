@@ -26,7 +26,12 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.delenv("REMASTERED_TOKEN_ENCRYPTION_KEY", raising=False)
 
     def fake_web_pipeline(
-        url: str, reference: Path, settings, progress=None, on_downloaded=None
+        url: str,
+        reference: Path,
+        settings,
+        progress=None,
+        on_downloaded=None,
+        stereo_width=None,
     ):
         prog = progress
         if prog:

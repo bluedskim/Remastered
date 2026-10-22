@@ -32,7 +32,12 @@ def media_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr("remastered.web.worker.transcode_wav_for_playback", fake_transcode)
 
     def fake_web_pipeline(
-        url: str, reference: Path, settings, progress=None, on_downloaded=None
+        url: str,
+        reference: Path,
+        settings,
+        progress=None,
+        on_downloaded=None,
+        stereo_width=None,
     ):
         owner_work = settings.work_dir
         if on_downloaded:
