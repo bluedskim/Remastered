@@ -36,7 +36,7 @@ def get_or_create_owner_id(request: Request) -> str:
 class RequestIdentity:
     anon_id: str
     account_id: str | None
-    nickname: str | None
+    login_id: str | None
 
     @property
     def job_owner_id(self) -> str:
@@ -58,19 +58,21 @@ def get_account_from_request(request: Request) -> tuple[str | None, str | None]:
     if not payload:
         return None, None
     user_id = payload.get("sub")
-    nickname = payload.get("nickname")
     if not user_id:
         return None, None
-    return str(user_id), str(nickname) if nickname else None
+    login_id = payload.get("login_id")
+    if not login_id:
+        login_id = payload.get("nickname")
+    return str(user_id), str(login_id) if login_id else None
 
 
 def resolve_identity(request: Request) -> RequestIdentity:
     anon_id = get_or_create_owner_id(request)
-    account_id, nickname = get_account_from_request(request)
+    account_id, login_id = get_account_from_request(request)
     return RequestIdentity(
         anon_id=anon_id,
         account_id=account_id,
-        nickname=nickname,
+        login_id=login_id,
     )
 
 

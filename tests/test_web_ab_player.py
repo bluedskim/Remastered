@@ -87,7 +87,7 @@ def test_job_players_download_when_logged_in(jinja_env: Environment) -> None:
         ab_compare_ok=True,
         mastered_download_filename="t (Remastered).wav",
         rights_notice_short="Rights notice",
-        auth_user={"nickname": "u", "id": "uid"},
+        auth_user={"id": "uid", "email_display": "u@x.com", "email_full": "u@x.com"},
     )
     assert "/media/job-abc/mastered?download=1" in html
     assert "/signup?next=" not in html

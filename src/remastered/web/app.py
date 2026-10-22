@@ -13,6 +13,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from remastered.config import resolve_settings
 from remastered.web.db import WEB_STAGES, JobStore
+from remastered.web.auth_display import format_account_email_display
 from remastered.web.auth_redirect import request_prefers_auth_redirect, signup_url
 from remastered.web.auth_routes import register_auth_routes
 from remastered.web.identity import (
@@ -59,7 +60,7 @@ DOWNLOAD_REQUIRES_SIGN_IN = "Sign in required to download the remastered file."
 
 PRIVACY_NOTICE = (
     "We store: anonymous session id, job URLs, logs, and output file paths. "
-    "If you sign up, we also store email, nickname, and a password hash. "
+    "If you sign up, we also store email and a password hash. "
     "Job files are deleted after the retention period."
 )
 
@@ -197,10 +198,12 @@ def _enrich_job(job: dict, store: JobStore) -> dict:
 
 def _auth_template_context(identity: RequestIdentity) -> dict:
     if identity.account_id:
+        email = identity.login_id or ""
         return {
             "auth_user": {
-                "nickname": identity.nickname,
                 "id": identity.account_id,
+                "email_display": format_account_email_display(email),
+                "email_full": email,
             }
         }
     return {"auth_user": None}

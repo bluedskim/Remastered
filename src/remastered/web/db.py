@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -141,17 +141,69 @@ class JobStore:
         self._migrate_auth_schema(conn)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
-    def _migrate_auth_schema(self, conn: sqlite3.Connection) -> None:
+    @staticmethod
+    def _auth_users_needs_nickname_migration(conn: sqlite3.Connection) -> bool:
+        if not JobStore._table_exists(conn, "auth_users"):
+            return False
+        nickname_notnull = False
+        for row in conn.execute("PRAGMA table_info(auth_users)").fetchall():
+            if row[1] == "nickname" and row[3]:
+                nickname_notnull = True
+        if nickname_notnull:
+            return True
+        index_sql = conn.execute(
+            """
+            SELECT sql FROM sqlite_master
+            WHERE type = 'index' AND tbl_name = 'auth_users' AND sql IS NOT NULL
+            """
+        ).fetchall()
+        for row in index_sql:
+            sql = (row[0] or "").upper()
+            if "NICKNAME" in sql and "UNIQUE" in sql:
+                return True
+        return False
+
+    @staticmethod
+    def _rebuild_auth_users_optional_nickname(conn: sqlite3.Connection) -> None:
         conn.executescript(
             """
-            CREATE TABLE IF NOT EXISTS auth_users (
+            CREATE TABLE auth_users_new (
                 id TEXT PRIMARY KEY,
                 login_id TEXT NOT NULL UNIQUE,
-                nickname TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                nickname TEXT,
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            INSERT INTO auth_users_new (
+                id, login_id, nickname, password_hash, created_at, updated_at
+            )
+            SELECT id, login_id, nickname, password_hash, created_at, updated_at
+            FROM auth_users;
+            DROP TABLE auth_users;
+            ALTER TABLE auth_users_new RENAME TO auth_users;
+            """
+        )
+
+    def _migrate_auth_schema(self, conn: sqlite3.Connection) -> None:
+        if not self._table_exists(conn, "auth_users"):
+            conn.execute(
+                """
+                CREATE TABLE auth_users (
+                    id TEXT PRIMARY KEY,
+                    login_id TEXT NOT NULL UNIQUE,
+                    nickname TEXT,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        elif self._auth_users_needs_nickname_migration(conn):
+            self._rebuild_auth_users_optional_nickname(conn)
+
+        conn.executescript(
+            """
             CREATE TABLE IF NOT EXISTS email_verifications (
                 email TEXT PRIMARY KEY,
                 code_hash TEXT NOT NULL,
@@ -436,7 +488,6 @@ class JobStore:
         self,
         *,
         login_id: str,
-        nickname: str,
         password_hash: str,
     ) -> str:
         user_id = f"user-{uuid4().hex}"
@@ -446,9 +497,9 @@ class JobStore:
                 """
                 INSERT INTO auth_users (
                     id, login_id, nickname, password_hash, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, NULL, ?, ?, ?)
                 """,
-                (user_id, login_id, nickname, password_hash, now, now),
+                (user_id, login_id, password_hash, now, now),
             )
         return user_id
 
@@ -465,14 +516,6 @@ class JobStore:
                 "SELECT * FROM auth_users WHERE id = ?", (user_id,)
             ).fetchone()
         return dict(row) if row else None
-
-    def is_nickname_taken(self, nickname: str) -> bool:
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM auth_users WHERE nickname = ? COLLATE NOCASE",
-                (nickname,),
-            ).fetchone()
-        return row is not None
 
     def upsert_email_verification(
         self,

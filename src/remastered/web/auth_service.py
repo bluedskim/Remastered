@@ -9,7 +9,6 @@ from remastered.web.auth_settings import AuthSettings
 from remastered.web.auth_validation import (
     VERIFICATION_CODE_REGEX,
     require_valid_email,
-    require_valid_nickname,
     require_valid_password,
 )
 from remastered.web.db import JobStore
@@ -33,10 +32,6 @@ class AuthService:
     def __init__(self, store: JobStore, settings: AuthSettings | None = None) -> None:
         self.store = store
         self.settings = settings or AuthSettings()
-
-    def is_nickname_available(self, raw_nickname: str) -> bool:
-        nickname = require_valid_nickname(raw_nickname)
-        return not self.store.is_nickname_taken(nickname)
 
     def send_verification_code(self, raw_email: str, client_ip: str) -> None:
         email = require_valid_email(raw_email)
@@ -92,12 +87,10 @@ class AuthService:
         *,
         login_id: str,
         password: str,
-        nickname: str,
         verification_code: str,
         anon_id: str,
     ) -> dict[str, str]:
         email = require_valid_email(login_id)
-        nick = require_valid_nickname(nickname)
         require_valid_password(password)
         code = verification_code.strip()
         if not VERIFICATION_CODE_REGEX.match(code):
@@ -105,14 +98,11 @@ class AuthService:
 
         if self.store.get_auth_user_by_login_id(email):
             raise AuthError("This email is already registered.", status_code=409)
-        if self.store.is_nickname_taken(nick):
-            raise AuthError("This nickname is already taken.", status_code=409)
 
         self._verify_and_consume_code(email, code)
 
         user_id = self.store.create_auth_user(
             login_id=email,
-            nickname=nick,
             password_hash=hash_secret(password),
         )
         self.store.claim_jobs(anon_id, user_id)

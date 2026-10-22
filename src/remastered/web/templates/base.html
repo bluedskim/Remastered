@@ -28,7 +28,7 @@
       </a>
       <nav class="site-auth" aria-label="Account">
         {% if auth_user %}
-        <span class="auth-nickname">{{ auth_user.nickname }}</span>
+        <span class="auth-email" title="{{ auth_user.email_full }}">{{ auth_user.email_display }}</span>
         <form class="auth-logout-form" method="post" action="/logout">
           <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
         </form>

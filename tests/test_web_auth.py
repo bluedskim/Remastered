@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 
 from remastered.web.app import fastapi_application
 from remastered.web.auth_jwt import AUTH_COOKIE_NAME
-from remastered.web.auth_validation import is_valid_nickname
 from remastered.web.auth_service import AuthService
 from remastered.web.db import JobStore
 
@@ -41,14 +40,6 @@ def _extract_code_from_logs(caplog: pytest.LogCaptureFixture) -> str:
     raise AssertionError("verification code not found in logs")
 
 
-def test_nickname_validation() -> None:
-    assert is_valid_nickname("ab")
-    assert is_valid_nickname("한글닉")
-    assert is_valid_nickname("user_12")
-    assert not is_valid_nickname("a")
-    assert not is_valid_nickname("toolongnickname1")
-
-
 def test_signup_login_logout_flow(
     auth_client: TestClient,
     caplog: pytest.LogCaptureFixture,
@@ -67,7 +58,6 @@ def test_signup_login_logout_flow(
             "login_id": "user@example.com",
             "password": "password123",
             "password_confirm": "password123",
-            "nickname": "테스터",
             "verification_code": code,
         },
         follow_redirects=False,
@@ -76,8 +66,9 @@ def test_signup_login_logout_flow(
     assert AUTH_COOKIE_NAME in signup.cookies
 
     home = auth_client.get("/")
-    assert "테스터" in home.text
+    assert "user@example.com" in home.text
     assert "Log out" in home.text
+    assert "nickname" not in home.text.lower()
 
     logout = auth_client.post("/logout", follow_redirects=False)
     assert logout.status_code == 303
@@ -95,10 +86,7 @@ def test_signup_login_logout_flow(
 def test_claim_anon_jobs_on_signup(
     auth_client: TestClient,
     caplog: pytest.LogCaptureFixture,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("REMASTERED_MAIL_MODE", "log")
     create = auth_client.post(
         "/jobs",
         data={
@@ -119,7 +107,6 @@ def test_claim_anon_jobs_on_signup(
             "login_id": "claim@example.com",
             "password": "password123",
             "password_confirm": "password123",
-            "nickname": "클레임",
             "verification_code": code,
         },
         follow_redirects=False,
@@ -145,7 +132,6 @@ def test_verification_expiry_and_attempts(tmp_path: Path) -> None:
         service.signup(
             login_id="exp@example.com",
             password="password123",
-            nickname="만료",
             verification_code="123456",
             anon_id="anon-test",
         )
@@ -165,7 +151,6 @@ def test_verification_expiry_and_attempts(tmp_path: Path) -> None:
             service.signup(
                 login_id="fail@example.com",
                 password="password123",
-                nickname="실패",
                 verification_code="000000",
                 anon_id="anon-test",
             )
@@ -173,7 +158,6 @@ def test_verification_expiry_and_attempts(tmp_path: Path) -> None:
         service.signup(
             login_id="fail@example.com",
             password="password123",
-            nickname="실패",
             verification_code="000000",
             anon_id="anon-test",
         )

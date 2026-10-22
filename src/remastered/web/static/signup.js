@@ -6,8 +6,6 @@
   const emailInput = document.getElementById("signup-email");
   const sendBtn = document.getElementById("send-verification-btn");
   const sendStatus = document.getElementById("send-verification-status");
-  const nicknameInput = document.getElementById("signup-nickname");
-  const nicknameStatus = document.getElementById("nickname-status");
 
   let cooldownTimer = null;
 
@@ -66,37 +64,5 @@
       sendStatus.textContent = "Network error. Please try again.";
       sendBtn.disabled = false;
     }
-  });
-
-  let nicknameTimer = null;
-  nicknameInput.addEventListener("input", function () {
-    if (nicknameTimer) clearTimeout(nicknameTimer);
-    const value = nicknameInput.value.trim();
-    if (!value) {
-      nicknameStatus.textContent = "";
-      return;
-    }
-    nicknameTimer = setTimeout(async function () {
-      try {
-        const resp = await fetch(
-          "/auth/nickname-available?nickname=" + encodeURIComponent(value)
-        );
-        const data = await resp.json();
-        if (data.message) {
-          nicknameStatus.textContent = data.message;
-          nicknameStatus.className = "muted small nickname-bad";
-          return;
-        }
-        if (data.available) {
-          nicknameStatus.textContent = "Nickname is available.";
-          nicknameStatus.className = "muted small nickname-ok";
-        } else {
-          nicknameStatus.textContent = "Nickname is already taken.";
-          nicknameStatus.className = "muted small nickname-bad";
-        }
-      } catch (e) {
-        nicknameStatus.textContent = "";
-      }
-    }, 300);
   });
 })();

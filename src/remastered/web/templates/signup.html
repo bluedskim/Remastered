@@ -32,12 +32,6 @@
       <span class="field-label">Confirm password</span>
       <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password" />
     </label>
-    <label class="field">
-      <span class="field-label">Nickname (2–12 characters)</span>
-      <input type="text" name="nickname" id="signup-nickname" required
-             value="{{ nickname | default('') }}" maxlength="12" autocomplete="nickname" />
-      <span class="muted small" id="nickname-status" aria-live="polite"></span>
-    </label>
     <button type="submit" class="btn btn-gradient btn-xl">Create account</button>
   </form>
   <p class="auth-switch muted small">Already have an account? <a href="{{ login_href | default('/login') }}">Log in</a></p>
