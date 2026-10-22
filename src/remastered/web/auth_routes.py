@@ -7,10 +7,6 @@ from fastapi.templating import Jinja2Templates
 from remastered.web.auth_jwt import AUTH_COOKIE_NAME, issue_token
 from remastered.web.auth_service import AuthError, AuthService
 from remastered.web.auth_settings import AuthSettings, auth_cookie_secure
-from remastered.web.auth_validation import (
-    INVALID_NICKNAME_MESSAGE,
-    is_valid_nickname,
-)
 from remastered.web.db import JobStore
 from remastered.web.auth_redirect import (
     login_url,
@@ -38,7 +34,6 @@ def _set_auth_cookie(
 ) -> None:
     token = issue_token(
         user_id=user["id"],
-        nickname=user["nickname"],
         login_id=user["login_id"],
         settings=auth,
     )
@@ -150,24 +145,12 @@ def register_auth_routes(
             return JSONResponse({"message": str(exc)}, status_code=400)
         return JSONResponse({"ok": True})
 
-    @router.get("/auth/nickname-available")
-    def nickname_available(
-        nickname: str,
-        auth: AuthService = Depends(_auth_service),
-    ):
-        if not is_valid_nickname(nickname):
-            return JSONResponse(
-                {"available": False, "message": INVALID_NICKNAME_MESSAGE},
-            )
-        return JSONResponse({"available": auth.is_nickname_available(nickname)})
-
     @router.post("/signup")
     def signup_submit(
         request: Request,
         login_id: str = Form(...),
         password: str = Form(...),
         password_confirm: str = Form(...),
-        nickname: str = Form(...),
         verification_code: str = Form(...),
         next: str = Form(""),
         auth: AuthService = Depends(_auth_service),
@@ -185,7 +168,6 @@ def register_auth_routes(
                     "auth_user": None,
                     "error": "Passwords do not match.",
                     "login_id": login_id,
-                    "nickname": nickname,
                     "resend_cooldown_seconds": auth_settings.verification_resend_cooldown_seconds,
                     "next": next_path,
                     "login_href": login_url(next_path),
@@ -196,7 +178,6 @@ def register_auth_routes(
             user = auth.signup(
                 login_id=login_id,
                 password=password,
-                nickname=nickname,
                 verification_code=verification_code,
                 anon_id=identity.anon_id,
             )
@@ -209,7 +190,6 @@ def register_auth_routes(
                     "auth_user": None,
                     "error": exc.message,
                     "login_id": login_id,
-                    "nickname": nickname,
                     "resend_cooldown_seconds": auth_settings.verification_resend_cooldown_seconds,
                     "next": next_path,
                     "login_href": login_url(next_path),
@@ -225,7 +205,6 @@ def register_auth_routes(
                     "auth_user": None,
                     "error": str(exc),
                     "login_id": login_id,
-                    "nickname": nickname,
                     "resend_cooldown_seconds": auth_settings.verification_resend_cooldown_seconds,
                     "next": next_path,
                     "login_href": login_url(next_path),

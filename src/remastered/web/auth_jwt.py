@@ -13,7 +13,6 @@ AUTH_COOKIE_NAME = "remastered_auth"
 def issue_token(
     *,
     user_id: str,
-    nickname: str,
     login_id: str,
     settings: AuthSettings | None = None,
 ) -> str:
@@ -21,7 +20,6 @@ def issue_token(
     now = datetime.now(timezone.utc)
     payload: dict[str, Any] = {
         "sub": user_id,
-        "nickname": nickname,
         "login_id": login_id,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=auth.jwt_expiry_seconds)).timestamp()),

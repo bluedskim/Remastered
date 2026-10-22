@@ -207,7 +207,6 @@ def _signup_for_download(client: TestClient, caplog: pytest.LogCaptureFixture) -
             "login_id": "dl-user@example.com",
             "password": "password123",
             "password_confirm": "password123",
-            "nickname": "dluser",
             "verification_code": code,
         },
         follow_redirects=False,
