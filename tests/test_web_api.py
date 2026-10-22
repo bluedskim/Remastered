@@ -234,6 +234,36 @@ def test_duplicate_submission_redirects_to_same_job(client: TestClient) -> None:
     assert first.headers["location"] == second.headers["location"]
 
 
+def test_duplicate_submission_treats_playlist_url_variants_as_same(
+    client: TestClient,
+) -> None:
+    client.get("/")
+    vid = "dQw4w9WgXcQ"
+    first = client.post(
+        "/jobs",
+        data={
+            "youtube_url": f"https://www.youtube.com/watch?v={vid}&list=RD{vid}&start_radio=1",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    second = client.post(
+        "/jobs",
+        data={
+            "youtube_url": f"https://youtu.be/{vid}",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    assert first.status_code == 303
+    assert second.status_code == 303
+    assert first.headers["location"] == second.headers["location"]
+    job_id = first.headers["location"].split("/")[-1]
+    job = client.app.state.store.get_job(job_id)
+    assert job is not None
+    assert job["youtube_url"] == f"https://www.youtube.com/watch?v={vid}"
+
+
 def test_rapid_submits_queue_both_jobs(client: TestClient) -> None:
     client.get("/")
     first = client.post(
