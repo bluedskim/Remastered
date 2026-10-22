@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from remastered.web.app import app as asgi_app, fastapi_application
+from remastered.web.auth_jwt import AUTH_COOKIE_NAME
 from remastered.web.media import RETENTION_MESSAGE
 from remastered.web.stream_audio import playback_path_for_wav
 
@@ -24,6 +26,11 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.delenv("REMASTERED_GOOGLE_CLIENT_ID", raising=False)
     monkeypatch.delenv("REMASTERED_GOOGLE_CLIENT_SECRET", raising=False)
     monkeypatch.delenv("REMASTERED_TOKEN_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("REMASTERED_MAIL_MODE", "log")
+    monkeypatch.setenv(
+        "REMASTERED_JWT_SECRET",
+        "test-jwt-secret-key-at-least-32-bytes!!",
+    )
 
     def fake_web_pipeline(
         url: str,
@@ -184,7 +191,35 @@ def test_missing_media_retention_message(client: TestClient) -> None:
     assert RETENTION_MESSAGE in media_resp.json()["detail"]
 
 
-def test_media_download_disposition(client: TestClient) -> None:
+def _signup_for_download(client: TestClient, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("INFO")
+    client.post("/auth/send-verification", data={"login_id": "dl-user@example.com"})
+    code = None
+    for record in caplog.records:
+        match = re.search(r"Email verification code for .+: (\d{6})", record.message)
+        if match:
+            code = match.group(1)
+            break
+    assert code is not None
+    resp = client.post(
+        "/signup",
+        data={
+            "login_id": "dl-user@example.com",
+            "password": "password123",
+            "password_confirm": "password123",
+            "nickname": "dluser",
+            "verification_code": code,
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert AUTH_COOKIE_NAME in resp.cookies
+
+
+def test_media_download_disposition(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     client.get("/")
     resp = client.post(
         "/jobs",
@@ -212,6 +247,15 @@ def test_media_download_disposition(client: TestClient) -> None:
 
     audio_download = client.get(f"/media/{job_id}/audio?download=1")
     assert audio_download.status_code == 403
+
+    anon_master = client.get(
+        f"/media/{job_id}/mastered?download=1",
+        follow_redirects=False,
+    )
+    assert anon_master.status_code == 303
+    assert f"/signup?next=%2Fjobs%2F{job_id}" == anon_master.headers["location"]
+
+    _signup_for_download(client, caplog)
 
     inline = client.get(f"/media/{job_id}/mastered")
     assert inline.headers.get("content-disposition", "").lower().startswith("inline")

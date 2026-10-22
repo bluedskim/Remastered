@@ -36,6 +36,8 @@ def test_job_players_ab_compare_template(jinja_env: Environment) -> None:
     assert "controls" not in html.split("data-ab-compare")[1].split("ab-downloads")[0]
     assert "Download original" not in html
     assert "Download remastered" in html
+    assert "/signup?next=" in html
+    assert "Sign up free to download" in html
     assert "/audio?download" not in html
     assert "Rights notice" in html
     assert 'data-ab-repeat' in html
@@ -75,6 +77,20 @@ def test_ab_player_js_repeat_loop_without_native_loop_attribute() -> None:
     ended_idx = source.index("addEventListener(\"ended\"")
     ended_block = source[ended_idx : ended_idx + 120]
     assert "handleTrackEnded" in ended_block
+
+
+def test_job_players_download_when_logged_in(jinja_env: Environment) -> None:
+    html = jinja_env.get_template("partials/job_players.html").render(
+        job={"id": "job-abc"},
+        audio_ok=True,
+        mastered_ok=True,
+        ab_compare_ok=True,
+        mastered_download_filename="t (Remastered).wav",
+        rights_notice_short="Rights notice",
+        auth_user={"nickname": "u", "id": "uid"},
+    )
+    assert "/media/job-abc/mastered?download=1" in html
+    assert "/signup?next=" not in html
 
 
 def test_job_players_single_when_only_mastered(jinja_env: Environment) -> None:

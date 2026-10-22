@@ -33,7 +33,12 @@
     </div>
     <p class="small muted ab-keys-hint">Space play/pause · A original · B remastered · R repeat</p>
     <div class="ab-downloads">
+      {% if auth_user %}
       <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>Download remastered</a>
+      {% else %}
+      <a class="btn btn-pill btn-secondary" href="/signup?next=/jobs/{{ job.id }}">Download remastered</a>
+      <p class="small muted download-auth-hint">Sign up free to download. <a href="/login?next=/jobs/{{ job.id }}">Already have an account? Log in</a></p>
+      {% endif %}
     </div>
   </div>
 
@@ -47,7 +52,12 @@
   <div class="player player-simple">
     <p class="player-label"><strong>Remastered</strong></p>
     <audio controls preload="auto" src="/media/{{ job.id }}/mastered"></audio>
+    {% if auth_user %}
     <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>Download remastered</a>
+    {% else %}
+    <a class="btn btn-pill btn-secondary" href="/signup?next=/jobs/{{ job.id }}">Download remastered</a>
+    <p class="small muted download-auth-hint">Sign up free to download. <a href="/login?next=/jobs/{{ job.id }}">Already have an account? Log in</a></p>
+    {% endif %}
   </div>
   {% endif %}
 

@@ -5,7 +5,7 @@ from functools import partial
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
@@ -13,6 +13,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from remastered.config import resolve_settings
 from remastered.web.db import WEB_STAGES, JobStore
+from remastered.web.auth_redirect import request_prefers_auth_redirect, signup_url
 from remastered.web.auth_routes import register_auth_routes
 from remastered.web.identity import (
     RequestIdentity,
@@ -53,6 +54,8 @@ STAGE_LABELS = {
 }
 
 TERMINAL_JOB_STATUSES = frozenset({"completed", "failed", "cancelled"})
+
+DOWNLOAD_REQUIRES_SIGN_IN = "Sign in required to download the remastered file."
 
 PRIVACY_NOTICE = (
     "We store: anonymous session id, job URLs, logs, and output file paths. "
@@ -383,6 +386,7 @@ def job_panel(
         "stages": WEB_STAGES,
         "privacy_notice": PRIVACY_NOTICE,
         **media_ctx,
+        **_auth_template_context(identity),
     }
     # HTMX: 286 stops hx-trigger polling (see htmx.org/docs/#polling)
     status_code = 286 if job["status"] in TERMINAL_JOB_STATUSES else status.HTTP_200_OK
@@ -402,7 +406,7 @@ async def media_file(
     download: int | None = None,
     identity: RequestIdentity = Depends(require_identity),
     store: JobStore = Depends(get_store),
-) -> FileResponse:
+) -> Response:
     job = await run_in_threadpool(
         store.get_job_for_access,
         job_id,
@@ -414,6 +418,14 @@ async def media_file(
     settings = resolve_settings()
     work_dir = settings.work_dir
     want_download = bool(download)
+
+    if want_download and kind == "mastered" and not identity.account_id:
+        if request_prefers_auth_redirect(request):
+            return RedirectResponse(
+                signup_url(f"/jobs/{job_id}"),
+                status_code=303,
+            )
+        raise HTTPException(status_code=401, detail=DOWNLOAD_REQUIRES_SIGN_IN)
 
     def _resolve() -> Path:
         return resolve_job_media_path(
