@@ -29,6 +29,7 @@ from remastered.web.job_titles import job_display_title
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
+from remastered.youtube_url import normalize_youtube_url
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
@@ -232,7 +233,7 @@ async def create_job(
     if reference_path is None:
         raise HTTPException(status_code=400, detail="레퍼런스 트랙을 선택하거나 업로드하세요.")
 
-    youtube_url = youtube_url.strip()
+    youtube_url = normalize_youtube_url(youtube_url)
     duplicate_id = await run_in_threadpool(
         partial(
             store.find_recent_duplicate_job,
