@@ -116,7 +116,7 @@ def test_index_and_create_job(client: TestClient) -> None:
     assert "every 2s" not in detail.text
     assert 'id="job-players"' in detail.text
     assert 'data-ab-compare' in detail.text
-    assert "/static/ab-player.js" in detail.text
+    assert "/static/ab-player.js?v=" in detail.text
     assert 'preload="auto"' in detail.text
 
 
