@@ -3,6 +3,7 @@
 
   var DRIFT_SEC = 0.05;
   var SYNC_MS = 250;
+  var HAVE_FUTURE_DATA = 3;
 
   function isTypingTarget(el) {
     if (!el || !el.tagName) return false;
@@ -15,16 +16,6 @@
     var m = Math.floor(sec / 60);
     var s = Math.floor(sec % 60);
     return m + ":" + (s < 10 ? "0" : "") + s;
-  }
-
-  function waitCanPlay(audio) {
-    return new Promise(function (resolve) {
-      if (audio.readyState >= 2) {
-        resolve();
-        return;
-      }
-      audio.addEventListener("canplay", function () { resolve(); }, { once: true });
-    });
   }
 
   function initAbPlayer(root) {
@@ -46,6 +37,8 @@
     var activeSide = "remastered";
     var userWantsPlay = false;
     var seeking = false;
+    var buffering = false;
+    var softPausing = false;
     var syncTimer = null;
 
     function audible() {
@@ -70,10 +63,15 @@
       }
     }
 
-    function setPlayIcon(playing) {
+    function setPlayIcon(wantsPlay) {
       if (!playBtn) return;
-      playBtn.textContent = playing ? "❚❚" : "▶";
-      playBtn.setAttribute("aria-label", playing ? "일시정지" : "재생");
+      playBtn.textContent = wantsPlay ? "❚❚" : "▶";
+      playBtn.setAttribute("aria-label", wantsPlay ? "일시정지" : "재생");
+    }
+
+    function setBufferingUi(on) {
+      root.classList.toggle("ab-buffering", on);
+      if (playBtn) playBtn.setAttribute("aria-busy", on ? "true" : "false");
     }
 
     function duration() {
@@ -93,47 +91,142 @@
       }
     }
 
-    function syncDrift() {
-      if (!userWantsPlay) return;
-      var master = audible();
-      var slave = mutedOther();
-      if (master.paused) return;
-      var delta = slave.currentTime - master.currentTime;
-      if (Math.abs(delta) > DRIFT_SEC) {
-        slave.currentTime = master.currentTime;
+    function alignTime(audio, t) {
+      if (!isFinite(t)) return;
+      if (Math.abs(audio.currentTime - t) > DRIFT_SEC) {
+        audio.currentTime = t;
       }
     }
 
-    function pauseBoth() {
-      userWantsPlay = false;
-      original.pause();
-      remastered.pause();
-      setPlayIcon(false);
+    function alignBothToMaster() {
+      var t = audible().currentTime;
+      alignTime(original, t);
+      alignTime(remastered, t);
     }
 
-    function playBothFromGesture() {
+    function syncDrift() {
+      if (!userWantsPlay) return;
+      if (original.seeking || remastered.seeking || seeking) return;
+      if (original.readyState < HAVE_FUTURE_DATA || remastered.readyState < HAVE_FUTURE_DATA) {
+        return;
+      }
+      var master = audible();
+      var slave = mutedOther();
+      if (master.paused && slave.paused && !buffering) return;
+      var delta = slave.currentTime - master.currentTime;
+      if (Math.abs(delta) > DRIFT_SEC) {
+        alignTime(slave, master.currentTime);
+      }
+    }
+
+    function userPauseBoth() {
+      userWantsPlay = false;
+      buffering = false;
+      softPausing = true;
+      original.pause();
+      remastered.pause();
+      softPausing = false;
+      setPlayIcon(false);
+      setBufferingUi(false);
+    }
+
+    function softPauseOther(waitingAudio) {
+      var other = waitingAudio === original ? remastered : original;
+      if (other.paused) return;
+      softPausing = true;
+      other.pause();
+      softPausing = false;
+    }
+
+    function playPromises() {
+      return [original.play(), remastered.play()];
+    }
+
+    function handlePlayRejection(err) {
+      if (err && err.name === "NotAllowedError") {
+        userPauseBoth();
+      }
+    }
+
+    function startPlaybackFromGesture() {
       userWantsPlay = true;
-      var t = audible().currentTime;
-      original.currentTime = t;
-      remastered.currentTime = t;
-      return Promise.all([waitCanPlay(original), waitCanPlay(remastered)]).then(function () {
-        return Promise.all([original.play(), remastered.play()]);
-      }).then(function () {
-        setPlayIcon(true);
-      }).catch(function () {
-        pauseBoth();
-      });
+      alignBothToMaster();
+      setPlayIcon(true);
+      setBufferingUi(false);
+      var p1;
+      var p2;
+      try {
+        p1 = original.play();
+        p2 = remastered.play();
+      } catch (err) {
+        handlePlayRejection(err);
+        return;
+      }
+      Promise.all([p1, p2]).catch(handlePlayRejection);
+    }
+
+    function resumeAfterBuffer() {
+      if (!userWantsPlay) return;
+      alignBothToMaster();
+      buffering = false;
+      setBufferingUi(false);
+      setPlayIcon(true);
+      var p1;
+      var p2;
+      try {
+        p1 = original.play();
+        p2 = remastered.play();
+      } catch (err) {
+        handlePlayRejection(err);
+        return;
+      }
+      Promise.all([p1, p2]).catch(handlePlayRejection);
+    }
+
+    function onAudioWaiting(audio) {
+      if (!userWantsPlay) return;
+      buffering = true;
+      setBufferingUi(true);
+      setPlayIcon(true);
+      softPauseOther(audio);
+    }
+
+    function onAudioCanPlay() {
+      if (!userWantsPlay || !buffering) return;
+      resumeAfterBuffer();
+    }
+
+    function onAudioPlaying() {
+      if (!userWantsPlay) return;
+      if (buffering) {
+        resumeAfterBuffer();
+        return;
+      }
+      setPlayIcon(true);
+      setBufferingUi(false);
     }
 
     function setActiveSide(side) {
       if (side !== "original" && side !== "remastered") return;
-      var master = audible();
-      var t = master.currentTime;
+      var prevMaster = audible();
+      var t = prevMaster.currentTime;
       activeSide = side;
       applyMute();
-      original.currentTime = t;
-      remastered.currentTime = t;
+      alignTime(original, t);
+      alignTime(remastered, t);
       updateTimeUi();
+      if (userWantsPlay) {
+        var p1;
+        var p2;
+        try {
+          p1 = original.play();
+          p2 = remastered.play();
+        } catch (err) {
+          handlePlayRejection(err);
+          return;
+        }
+        Promise.all([p1, p2]).catch(handlePlayRejection);
+      }
     }
 
     function onSeekInput() {
@@ -142,15 +235,15 @@
       var d = duration();
       var ratio = Number(seek.value) / 1000;
       var t = d * ratio;
-      original.currentTime = t;
-      remastered.currentTime = t;
+      alignTime(original, t);
+      alignTime(remastered, t);
       updateTimeUi();
     }
 
     function onSeekCommit() {
       seeking = false;
       if (userWantsPlay) {
-        playBothFromGesture();
+        startPlaybackFromGesture();
       }
     }
 
@@ -158,10 +251,10 @@
 
     if (playBtn) {
       playBtn.addEventListener("click", function () {
-        if (userWantsPlay && !audible().paused) {
-          pauseBoth();
+        if (userWantsPlay) {
+          userPauseBoth();
         } else {
-          playBothFromGesture();
+          startPlaybackFromGesture();
         }
       });
     }
@@ -186,15 +279,16 @@
       audio.addEventListener("loadedmetadata", updateTimeUi);
       audio.addEventListener("ended", function () {
         if (original.ended && remastered.ended) {
-          pauseBoth();
+          userPauseBoth();
           updateTimeUi();
         }
       });
       audio.addEventListener("waiting", function () {
-        if (userWantsPlay) pauseBoth();
+        onAudioWaiting(audio);
       });
-      audio.addEventListener("stalled", function () {
-        if (userWantsPlay) pauseBoth();
+      audio.addEventListener("canplay", onAudioCanPlay);
+      audio.addEventListener("playing", function () {
+        onAudioPlaying();
       });
     });
 
@@ -212,8 +306,8 @@
       if (isTypingTarget(document.activeElement)) return;
       if (e.code === "Space") {
         e.preventDefault();
-        if (userWantsPlay && !audible().paused) pauseBoth();
-        else playBothFromGesture();
+        if (userWantsPlay) userPauseBoth();
+        else startPlaybackFromGesture();
       } else if (e.key === "a" || e.key === "A") {
         setActiveSide("original");
       } else if (e.key === "b" || e.key === "B") {
