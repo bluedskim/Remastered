@@ -120,22 +120,61 @@ a:hover {
   margin: 0 auto;
 }
 
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
 .auth-form .field {
-  margin-bottom: 1rem;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.auth-form .field-label {
+  margin-bottom: 0;
+}
+
+.auth-email-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.55rem;
+}
+
+.auth-email-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.auth-email-row .btn-secondary {
+  flex-shrink: 0;
+  align-self: stretch;
+  padding-left: 0.85rem;
+  padding-right: 0.85rem;
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .auth-email-row {
+    flex-direction: column;
+  }
+
+  .auth-email-row .btn-secondary {
+    width: 100%;
+  }
+}
+
+.auth-form .btn-gradient {
+  margin-top: 0.15rem;
 }
 
 .form-error {
   color: var(--err);
   margin: 0 0 1rem;
   font-size: 0.9rem;
-}
-
-.field-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
 }
 
 .auth-switch {
@@ -288,8 +327,11 @@ input[type="file"]::file-selector-button:hover {
 }
 
 input[type="text"],
+input[type="email"],
 input[type="url"],
 input[type="password"],
+input[type="number"],
+input[type="tel"],
 textarea,
 select {
   width: 100%;

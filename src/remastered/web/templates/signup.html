@@ -9,13 +9,13 @@
   <form method="post" action="/signup" class="auth-form" id="signup-form">
     <label class="field">
       <span class="field-label">이메일</span>
-      <input type="email" name="login_id" id="signup-email" required autocomplete="email"
-             value="{{ login_id | default('') }}" placeholder="you@example.com" />
-    </label>
-    <div class="field-row">
-      <button type="button" class="btn btn-secondary" id="send-verification-btn">인증코드 보내기</button>
+      <div class="auth-email-row">
+        <input type="email" name="login_id" id="signup-email" required autocomplete="email"
+               value="{{ login_id | default('') }}" placeholder="you@example.com" />
+        <button type="button" class="btn btn-secondary" id="send-verification-btn">인증코드 보내기</button>
+      </div>
       <span class="muted small" id="send-verification-status" aria-live="polite"></span>
-    </div>
+    </label>
     <label class="field">
       <span class="field-label">인증코드 (6자리)</span>
       <input type="text" name="verification_code" inputmode="numeric" pattern="[0-9]{6}"
@@ -35,7 +35,7 @@
              value="{{ nickname | default('') }}" maxlength="12" autocomplete="nickname" />
       <span class="muted small" id="nickname-status" aria-live="polite"></span>
     </label>
-    <button type="submit" class="btn btn-primary btn-block">가입</button>
+    <button type="submit" class="btn btn-gradient btn-xl">가입</button>
   </form>
   <p class="auth-switch muted small">이미 계정이 있으신가요? <a href="/login">로그인</a></p>
 </section>
