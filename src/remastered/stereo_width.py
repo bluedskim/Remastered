@@ -8,7 +8,7 @@ from scipy import signal
 
 StereoWidthMode = Literal["preserve", "follow_reference"]
 
-DEFAULT_STEREO_WIDTH_MODE: StereoWidthMode = "preserve"
+DEFAULT_STEREO_WIDTH_MODE: StereoWidthMode = "follow_reference"
 VALID_STEREO_WIDTH_MODES = frozenset({"preserve", "follow_reference"})
 
 _MONO_SIDE_MID_THRESHOLD_DB = -30.0
@@ -145,6 +145,6 @@ def preserve_stereo_width(
 
 
 def stereo_width_label(mode: str | None) -> str:
-    if mode == "follow_reference":
-        return "레퍼런스 따라가기"
-    return "원본 유지 (기본)"
+    if mode == "preserve":
+        return "원본 유지"
+    return "레퍼런스 따라가기 (기본)"
