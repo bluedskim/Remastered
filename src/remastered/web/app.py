@@ -31,13 +31,18 @@ from remastered.web.job_titles import job_display_title
 from remastered.web.job_ui import enrich_job_ui
 from remastered.web.reference_display import build_reference_options
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
+from remastered.web.static_assets import init_static_hashes, static_url
+from remastered.web.static_cache import StaticAndHtmlCacheMiddleware
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
 from remastered.youtube_url import normalize_youtube_url
 
 PACKAGE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = PACKAGE_DIR / "static"
+init_static_hashes(STATIC_DIR)
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
 templates.env.globals["job_display_title"] = job_display_title
+templates.env.globals["static_url"] = static_url
 
 STAGE_LABELS = {
     "download": "다운로드",
@@ -63,6 +68,7 @@ def _job_db_path() -> Path:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    app.state.static_hashes = init_static_hashes(STATIC_DIR)
     store = JobStore(_job_db_path())
     worker = build_worker(store)
     worker.start()
@@ -91,6 +97,7 @@ fastapi_application.add_middleware(
     MediaStreamLimitMiddleware,
     max_streams=ws_init.max_concurrent_media_streams,
 )
+fastapi_application.add_middleware(StaticAndHtmlCacheMiddleware)
 
 
 @fastapi_application.get("/health")
