@@ -28,6 +28,8 @@ from remastered.web.media import (
 from remastered.web.job_queue import job_status_display
 from remastered.web.notices import rights_notice_lines, rights_notice_short
 from remastered.web.job_titles import job_display_title
+from remastered.web.job_ui import enrich_job_ui
+from remastered.web.reference_display import build_reference_options
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
@@ -168,7 +170,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 def _enrich_job(job: dict, store: JobStore) -> dict:
-    data = dict(job)
+    data = enrich_job_ui(job)
     data["status_display"] = job_status_display(job, store)
     return data
 
@@ -186,6 +188,7 @@ def _dashboard_context(
         "jobs": jobs,
         "shared_references": shared_refs,
         "user_references": user_refs,
+        "reference_options": build_reference_options(shared_refs, user_refs),
         "stage_labels": STAGE_LABELS,
         "privacy_notice": PRIVACY_NOTICE,
         "rights_notice_lines": rights_notice_lines(ws.job_retention_days),
@@ -298,6 +301,7 @@ def job_detail(
             "logs": logs,
             "stage_labels": STAGE_LABELS,
             "stages": WEB_STAGES,
+            "privacy_notice": PRIVACY_NOTICE,
             **media_ctx,
         },
     )
@@ -320,6 +324,7 @@ def job_panel(
         "logs": logs,
         "stage_labels": STAGE_LABELS,
         "stages": WEB_STAGES,
+        "privacy_notice": PRIVACY_NOTICE,
         **media_ctx,
     }
     # HTMX: 286 stops hx-trigger polling (see htmx.org/docs/#polling)

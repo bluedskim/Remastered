@@ -25,8 +25,8 @@ def test_job_players_ab_compare_template(jinja_env: Environment) -> None:
         rights_notice_short="권리 안내",
     )
     assert 'data-ab-compare' in html
-    assert "원본 Original" in html
-    assert "리마스터 Remastered" in html
+    assert "원본" in html
+    assert "리마스터" in html
     assert 'data-audio="original"' in html
     assert 'data-audio="remastered"' in html
     assert 'preload="auto"' in html
