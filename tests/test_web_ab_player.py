@@ -24,7 +24,6 @@ def test_job_players_ab_compare_template(jinja_env: Environment) -> None:
         audio_ok=True,
         mastered_ok=True,
         ab_compare_ok=True,
-        audio_download_filename="t (Original).wav",
         mastered_download_filename="t (Remastered).wav",
         rights_notice_short="Rights notice",
     )
@@ -35,7 +34,9 @@ def test_job_players_ab_compare_template(jinja_env: Environment) -> None:
     assert 'data-audio="remastered"' in html
     assert 'preload="auto"' in html
     assert "controls" not in html.split("data-ab-compare")[1].split("ab-downloads")[0]
-    assert "Download original" in html
+    assert "Download original" not in html
+    assert "Download remastered" in html
+    assert "/audio?download" not in html
     assert "Rights notice" in html
     assert 'data-ab-repeat' in html
     assert "Repeat (R)" in html
@@ -82,7 +83,6 @@ def test_job_players_single_when_only_mastered(jinja_env: Environment) -> None:
         audio_ok=False,
         mastered_ok=True,
         ab_compare_ok=False,
-        audio_download_filename=None,
         mastered_download_filename="t (Remastered).wav",
         rights_notice_short="Rights",
     )

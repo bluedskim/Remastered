@@ -152,13 +152,10 @@ def _job_media_context(job: dict) -> dict[str, bool | str | None]:
     mastered_ok = media_exists(mastered_path, job, work)
     had_paths = bool(audio_path or mastered_path)
     expired = job["status"] == "completed" and had_paths and not (audio_ok or mastered_ok)
-    audio_download_filename: str | None = None
     mastered_download_filename: str | None = None
-    if audio_ok and audio_path:
-        audio_download_filename = media_download_filename(job, "audio", Path(audio_path))
     if mastered_ok and mastered_path:
         mastered_download_filename = media_download_filename(
-            job, "mastered", Path(mastered_path)
+            job, Path(mastered_path)
         )
 
     return {
@@ -167,7 +164,6 @@ def _job_media_context(job: dict) -> dict[str, bool | str | None]:
         "ab_compare_ok": audio_ok and mastered_ok,
         "files_expired": expired,
         "retention_message": RETENTION_MESSAGE,
-        "audio_download_filename": audio_download_filename,
         "mastered_download_filename": mastered_download_filename,
         "rights_notice_short": rights_notice_short(ws.job_retention_days),
     }
