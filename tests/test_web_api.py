@@ -210,6 +210,10 @@ def test_media_download_disposition(client: TestClient) -> None:
     panel = client.get(f"/jobs/{job_id}/panel")
     assert 'download="봄날 (Remastered).wav"' in panel.text
 
+    detail = client.get(f"/jobs/{job_id}")
+    assert "rights-notice-inline" in detail.text
+    assert "14일 후" in detail.text
+
 
 def test_job_title_on_dashboard_and_detail(client: TestClient) -> None:
     client.get("/")
