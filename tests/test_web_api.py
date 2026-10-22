@@ -73,6 +73,9 @@ def test_home_without_google_env(client: TestClient) -> None:
     assert "새 작업" in resp.text
     assert "Google" not in resp.text
     assert client.get("/dashboard", follow_redirects=False).headers["location"] == "/"
+    assert "fCV9oqtwyVA" not in resp.text
+    assert 'id="youtube_url"' in resp.text
+    assert 'placeholder="https://www.youtube.com/watch?v=..."' in resp.text
 
 
 def test_index_and_create_job(client: TestClient) -> None:
