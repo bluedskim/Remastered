@@ -548,10 +548,38 @@ button,
 }
 
 .job-url {
-  margin: 0 0 1rem;
+  margin: 0 0 0.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.job-reference {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin: 0.35rem 0 1rem;
+}
+
+.job-reference-key {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ref-genre--compact {
+  font-size: 0.68rem;
+  padding: 0.12rem 0.4rem;
+}
+
+.job-card-ref {
+  margin: 0 0 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  line-height: 1.35;
 }
 
 .job-error {

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from remastered.web.reference_display import reference_display_for_job
 from remastered.youtube_url import extract_youtube_video_id
 
 _PROGRESS_LABELS = (
@@ -88,4 +89,7 @@ def enrich_job_ui(job: dict[str, Any]) -> dict[str, Any]:
     data["status_pill_class"] = status_pill_class(job.get("status") or "")
     data["progress_steps"] = job_progress_steps(job)
     data["youtube_thumbnail"] = youtube_thumbnail_url(job)
+    ref = reference_display_for_job(job.get("reference_path"))
+    data["reference_genre"] = ref["genre"]
+    data["reference_label"] = ref["label"]
     return data
