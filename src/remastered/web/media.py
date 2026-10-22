@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
 
+from remastered.web.download_filenames import build_attachment_content_disposition
 from remastered.web.stream_audio import playback_path_for_wav
 
 RETENTION_MESSAGE = (
@@ -46,15 +47,26 @@ def resolve_job_media_path(
     return wav
 
 
-def media_file_response(path: Path, kind: str, *, download: bool = False) -> FileResponse:
+def media_file_response(
+    path: Path,
+    kind: str,
+    *,
+    download: bool = False,
+    job: dict | None = None,
+) -> FileResponse:
     if path.suffix.lower() in {".m4a", ".mp4"}:
         media_type = "audio/mp4"
     else:
         media_type = "audio/wav"
-    disposition = "attachment" if download else "inline"
+    if download and job is not None:
+        disposition = build_attachment_content_disposition(job, kind, path)
+    elif download:
+        disposition = f'attachment; filename="{path.name}"'
+    else:
+        disposition = f'inline; filename="{path.name}"'
     headers = {
         "Accept-Ranges": "bytes",
-        "Content-Disposition": f'{disposition}; filename="{path.name}"',
+        "Content-Disposition": disposition,
     }
     return FileResponse(path, media_type=media_type, headers=headers)
 

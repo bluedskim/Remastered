@@ -193,7 +193,22 @@ def test_media_download_disposition(client: TestClient) -> None:
     inline = client.get(f"/media/{job_id}/mastered")
     assert inline.headers.get("content-disposition", "").lower().startswith("inline")
     attach = client.get(f"/media/{job_id}/mastered?download=1")
-    assert "attachment" in attach.headers.get("content-disposition", "").lower()
+    disposition = attach.headers.get("content-disposition", "")
+    assert "attachment" in disposition.lower()
+    assert 'filename="Test Track (Remastered).wav"' in disposition
+    assert "filename*=UTF-8''" in disposition
+    assert "Test%20Track%20%28Remastered%29.wav" in disposition
+
+    store = client.app.state.store
+    job = store.get_job(job_id)
+    assert job is not None
+    store.update_job(job_id, title="봄날")
+    korean = client.get(f"/media/{job_id}/mastered?download=1")
+    k_disp = korean.headers.get("content-disposition", "")
+    assert "filename*=UTF-8''" in k_disp
+    assert "%EB%B4%84%EB%82%A0" in k_disp  # 봄날 UTF-8 percent-encoded
+    panel = client.get(f"/jobs/{job_id}/panel")
+    assert 'download="봄날 (Remastered).wav"' in panel.text
 
 
 def test_job_title_on_dashboard_and_detail(client: TestClient) -> None:
