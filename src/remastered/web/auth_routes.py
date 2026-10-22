@@ -12,6 +12,12 @@ from remastered.web.auth_validation import (
     is_valid_nickname,
 )
 from remastered.web.db import JobStore
+from remastered.web.auth_redirect import (
+    login_url,
+    post_auth_redirect_target,
+    safe_next_path,
+    signup_url,
+)
 from remastered.web.identity import client_ip, resolve_identity
 from remastered.web.settings import WebSettings
 
@@ -53,10 +59,14 @@ def register_auth_routes(
     privacy_notice: str,
 ) -> None:
     @router.get("/login", response_class=HTMLResponse)
-    def login_page(request: Request) -> HTMLResponse:
+    def login_page(request: Request, next: str | None = None) -> HTMLResponse:
         identity = resolve_identity(request)
+        next_path = safe_next_path(next)
         if identity.account_id:
-            return RedirectResponse("/", status_code=303)
+            return RedirectResponse(
+                post_auth_redirect_target(next_path),
+                status_code=303,
+            )
         return templates.TemplateResponse(
             request,
             "login.html",
@@ -64,6 +74,8 @@ def register_auth_routes(
                 "privacy_notice": privacy_notice,
                 "auth_user": None,
                 "error": None,
+                "next": next_path,
+                "signup_href": signup_url(next_path),
             },
         )
 
@@ -72,6 +84,7 @@ def register_auth_routes(
         request: Request,
         login_id: str = Form(...),
         password: str = Form(...),
+        next: str = Form(""),
         auth: AuthService = Depends(_auth_service),
     ):
         identity = resolve_identity(request)
@@ -80,6 +93,7 @@ def register_auth_routes(
         try:
             user = auth.login(login_id, password, identity.anon_id)
         except AuthError as exc:
+            next_path = safe_next_path(next)
             return templates.TemplateResponse(
                 request,
                 "login.html",
@@ -88,18 +102,27 @@ def register_auth_routes(
                     "auth_user": None,
                     "error": exc.message,
                     "login_id": login_id,
+                    "next": next_path,
+                    "signup_href": signup_url(next_path),
                 },
                 status_code=exc.status_code,
             )
-        response = RedirectResponse("/", status_code=303)
+        response = RedirectResponse(
+            post_auth_redirect_target(safe_next_path(next)),
+            status_code=303,
+        )
         _set_auth_cookie(response, user=user, ws=ws, auth=auth_settings)
         return response
 
     @router.get("/signup", response_class=HTMLResponse)
-    def signup_page(request: Request) -> HTMLResponse:
+    def signup_page(request: Request, next: str | None = None) -> HTMLResponse:
         identity = resolve_identity(request)
+        next_path = safe_next_path(next)
         if identity.account_id:
-            return RedirectResponse("/", status_code=303)
+            return RedirectResponse(
+                post_auth_redirect_target(next_path),
+                status_code=303,
+            )
         auth_settings = AuthSettings()
         return templates.TemplateResponse(
             request,
@@ -108,6 +131,8 @@ def register_auth_routes(
                 "privacy_notice": privacy_notice,
                 "auth_user": None,
                 "resend_cooldown_seconds": auth_settings.verification_resend_cooldown_seconds,
+                "next": next_path,
+                "login_href": login_url(next_path),
             },
         )
 
@@ -144,11 +169,13 @@ def register_auth_routes(
         password_confirm: str = Form(...),
         nickname: str = Form(...),
         verification_code: str = Form(...),
+        next: str = Form(""),
         auth: AuthService = Depends(_auth_service),
     ):
         identity = resolve_identity(request)
         ws = WebSettings()
         auth_settings = AuthSettings()
+        next_path = safe_next_path(next)
         if password != password_confirm:
             return templates.TemplateResponse(
                 request,
@@ -160,6 +187,8 @@ def register_auth_routes(
                     "login_id": login_id,
                     "nickname": nickname,
                     "resend_cooldown_seconds": auth_settings.verification_resend_cooldown_seconds,
+                    "next": next_path,
+                    "login_href": login_url(next_path),
                 },
                 status_code=400,
             )
@@ -182,6 +211,8 @@ def register_auth_routes(
                     "login_id": login_id,
                     "nickname": nickname,
                     "resend_cooldown_seconds": auth_settings.verification_resend_cooldown_seconds,
+                    "next": next_path,
+                    "login_href": login_url(next_path),
                 },
                 status_code=exc.status_code,
             )
@@ -196,10 +227,15 @@ def register_auth_routes(
                     "login_id": login_id,
                     "nickname": nickname,
                     "resend_cooldown_seconds": auth_settings.verification_resend_cooldown_seconds,
+                    "next": next_path,
+                    "login_href": login_url(next_path),
                 },
                 status_code=400,
             )
-        response = RedirectResponse("/", status_code=303)
+        response = RedirectResponse(
+            post_auth_redirect_target(next_path),
+            status_code=303,
+        )
         _set_auth_cookie(response, user=user, ws=ws, auth=auth_settings)
         return response
 

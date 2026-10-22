@@ -7,6 +7,9 @@
   <p class="form-error" role="alert">{{ error }}</p>
   {% endif %}
   <form method="post" action="/login" class="auth-form">
+    {% if next %}
+    <input type="hidden" name="next" value="{{ next }}" />
+    {% endif %}
     <label class="field">
       <span class="field-label">Email</span>
       <input type="email" name="login_id" required autocomplete="email"
@@ -18,6 +21,6 @@
     </label>
     <button type="submit" class="btn btn-gradient btn-xl">Log in</button>
   </form>
-  <p class="auth-switch muted small">No account? <a href="/signup">Sign up</a></p>
+  <p class="auth-switch muted small">No account? <a href="{{ signup_href | default('/signup') }}">Sign up</a></p>
 </section>
 {% endblock %}

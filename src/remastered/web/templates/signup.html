@@ -7,6 +7,9 @@
   <p class="form-error" role="alert">{{ error }}</p>
   {% endif %}
   <form method="post" action="/signup" class="auth-form" id="signup-form">
+    {% if next %}
+    <input type="hidden" name="next" value="{{ next }}" />
+    {% endif %}
     <label class="field">
       <span class="field-label">Email</span>
       <div class="auth-email-row">
@@ -37,7 +40,7 @@
     </label>
     <button type="submit" class="btn btn-gradient btn-xl">Create account</button>
   </form>
-  <p class="auth-switch muted small">Already have an account? <a href="/login">Log in</a></p>
+  <p class="auth-switch muted small">Already have an account? <a href="{{ login_href | default('/login') }}">Log in</a></p>
 </section>
 <script src="{{ static_url('signup.js') }}"></script>
 {% endblock %}
