@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from remastered.stereo_width import stereo_width_label
 from remastered.web.reference_display import reference_display_for_job
 from remastered.youtube_url import extract_youtube_video_id
 
@@ -92,4 +93,5 @@ def enrich_job_ui(job: dict[str, Any]) -> dict[str, Any]:
     ref = reference_display_for_job(job.get("reference_path"))
     data["reference_genre"] = ref["genre"]
     data["reference_label"] = ref["label"]
+    data["stereo_width_label"] = stereo_width_label(job.get("stereo_width_mode"))
     return data

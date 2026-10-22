@@ -6,6 +6,7 @@ from typing import Callable
 from remastered.config import RemasteredSettings
 from remastered.download import download_audio
 from remastered.master import run_matchering
+from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE, StereoWidthMode
 from remastered.paths import ensure_dir, job_dir
 from remastered.pipeline import PipelineProgress
 
@@ -19,6 +20,7 @@ def run_web_master_pipeline(
     settings: RemasteredSettings,
     progress: PipelineProgress | None = None,
     on_downloaded: OnDownloaded | None = None,
+    stereo_width: StereoWidthMode = DEFAULT_STEREO_WIDTH_MODE,
 ) -> dict[str, Path | str]:
     """웹 작업: 다운로드 → 마스터링만 수행합니다."""
     prog = progress or PipelineProgress()
@@ -42,6 +44,8 @@ def run_web_master_pipeline(
         bit_depth=settings.bit_depth,
         preview=settings.preview,
         stem="mastered",
+        stereo_width=stereo_width,
+        log_line=prog.log,
     )
     prog.log(f"마스터 WAV: {master_out.output_path.name}")
     prog.stage_done("master")

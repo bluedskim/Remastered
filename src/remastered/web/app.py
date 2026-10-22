@@ -37,6 +37,7 @@ from remastered.web.static_assets import init_static_hashes, static_url
 from remastered.web.static_cache import StaticAndHtmlCacheMiddleware
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
+from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE, VALID_STEREO_WIDTH_MODES
 from remastered.youtube_url import normalize_youtube_url
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -267,6 +268,7 @@ async def create_job(
     reference_name: str = Form(""),
     reference_source: str = Form("shared"),
     reference_upload: UploadFile | None = File(None),
+    stereo_width_mode: str = Form(DEFAULT_STEREO_WIDTH_MODE),
 ) -> RedirectResponse:
     ip = client_ip(request)
     ws = _web_settings()
@@ -310,6 +312,9 @@ async def create_job(
     if duplicate_id:
         return RedirectResponse(f"/jobs/{duplicate_id}", status_code=303)
 
+    if stereo_width_mode not in VALID_STEREO_WIDTH_MODES:
+        stereo_width_mode = DEFAULT_STEREO_WIDTH_MODE
+
     job_id = store.create_job(
         user_id=owner_id,
         youtube_url=youtube_url,
@@ -319,6 +324,7 @@ async def create_job(
         privacy="private",
         upload_enabled=False,
         client_ip=ip,
+        stereo_width_mode=stereo_width_mode,
     )
     store.append_log(job_id, "작업이 대기열에 추가되었습니다.")
     worker.enqueue(job_id)

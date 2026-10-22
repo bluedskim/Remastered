@@ -13,6 +13,7 @@ from remastered.pipeline import PipelineProgress
 from remastered.web.cleanup import cleanup_old_jobs
 from remastered.web.db import WEB_STAGES, JobStore
 from remastered.web.limits import validate_youtube_source_limits
+from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE, VALID_STEREO_WIDTH_MODES
 from remastered.web.pipeline_web import run_web_master_pipeline
 from remastered.web.stream_audio import transcode_wav_for_playback
 
@@ -130,12 +131,17 @@ class JobWorker:
                     source_video_id=video_id,
                 )
 
+            stereo_width = job.get("stereo_width_mode") or DEFAULT_STEREO_WIDTH_MODE
+            if stereo_width not in VALID_STEREO_WIDTH_MODES:
+                stereo_width = DEFAULT_STEREO_WIDTH_MODE
+
             result = run_web_master_pipeline(
                 job["youtube_url"],
                 reference,
                 job_settings,
                 progress,
                 on_downloaded=on_downloaded,
+                stereo_width=stereo_width,
             )
             audio_wav = result.get("audio")
             mastered_wav = result.get("mastered")

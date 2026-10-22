@@ -12,7 +12,7 @@ from uuid import uuid4
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -105,6 +105,7 @@ class JobStore:
                     stage_state TEXT NOT NULL DEFAULT '{}',
                     files_cleaned INTEGER NOT NULL DEFAULT 0,
                     client_ip TEXT,
+                    stereo_width_mode TEXT NOT NULL DEFAULT 'preserve',
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
                 """
@@ -120,6 +121,13 @@ class JobStore:
             cols = self._job_columns(conn)
             if "client_ip" not in cols:
                 conn.execute("ALTER TABLE jobs ADD COLUMN client_ip TEXT")
+            cols = self._job_columns(conn)
+            if "stereo_width_mode" not in cols:
+                conn.execute(
+                    """
+                    ALTER TABLE jobs ADD COLUMN stereo_width_mode TEXT NOT NULL DEFAULT 'preserve'
+                    """
+                )
             self._backfill_legacy_jobs(conn)
 
         self._backfill_job_titles_from_logs(conn)
@@ -292,6 +300,7 @@ class JobStore:
         privacy: str,
         upload_enabled: bool,
         client_ip: str | None = None,
+        stereo_width_mode: str = "preserve",
     ) -> str:
         job_id = uuid4().hex
         now = _utc_now()
@@ -305,8 +314,8 @@ class JobStore:
                 INSERT INTO jobs (
                     id, user_id, created_at, updated_at, status, stage, youtube_url,
                     reference_path, title, description, privacy, upload_enabled,
-                    stage_state, client_ip
-                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?)
+                    stage_state, client_ip, stereo_width_mode
+                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job_id,
@@ -321,6 +330,7 @@ class JobStore:
                     1 if upload_enabled else 0,
                     json.dumps(stage_state),
                     client_ip,
+                    stereo_width_mode,
                 ),
             )
         return job_id
