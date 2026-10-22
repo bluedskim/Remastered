@@ -33,7 +33,11 @@ class StaticAndHtmlCacheMiddleware:
         hashes = get_static_hashes()
         versioned_static = is_versioned_static_request(path, query, hashes)
         is_static = path.startswith("/static/")
-        is_html_route = not is_static and path not in ("/health",) and not path.startswith("/media/")
+        is_html_route = (
+            not is_static
+            and path not in ("/health", "/favicon.ico")
+            and not path.startswith("/media/")
+        )
 
         async def send_wrapper(message: Message) -> None:
             if message["type"] != "http.response.start":

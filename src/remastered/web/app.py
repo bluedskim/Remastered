@@ -108,6 +108,16 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@fastapi_application.get("/favicon.ico", include_in_schema=False)
+def favicon_ico() -> FileResponse:
+    path = STATIC_DIR / "favicon.ico"
+    return FileResponse(
+        path,
+        media_type="image/vnd.microsoft.icon",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 def get_store(request: Request) -> JobStore:
     return request.app.state.store
 

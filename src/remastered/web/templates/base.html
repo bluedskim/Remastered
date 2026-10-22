@@ -3,7 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#07060f" />
   <title>{% block title %}Remastered{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ static_url('favicon.svg') }}" />
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ static_url('favicon-32.png') }}" />
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ static_url('favicon-16.png') }}" />
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ static_url('apple-touch-icon.png') }}" />
+  <link rel="manifest" href="{{ static_url('site.webmanifest') }}" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" crossorigin="anonymous" />
   <link rel="stylesheet" href="{{ static_url('style.css') }}" />
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
