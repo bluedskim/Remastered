@@ -10,15 +10,15 @@ def reference_display_meta(filename: str) -> dict[str, str]:
     if len(parts) >= 3:
         return {"genre": parts[0], "label": f"{parts[1]} — {parts[2]}"}
     if len(parts) == 2:
-        return {"genre": "레퍼런스", "label": f"{parts[0]} — {parts[1]}"}
-    return {"genre": "레퍼런스", "label": stem or filename}
+        return {"genre": "Reference", "label": f"{parts[0]} — {parts[1]}"}
+    return {"genre": "Reference", "label": stem or filename}
 
 
 def reference_display_for_job(reference_path: str | None) -> dict[str, str]:
     """Friendly reference label for a job; never includes directory paths."""
     name = Path(reference_path or "").name
     if not name:
-        return {"genre": "레퍼런스", "label": "—"}
+        return {"genre": "Reference", "label": "—"}
     return reference_display_meta(name)
 
 

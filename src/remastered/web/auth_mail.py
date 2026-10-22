@@ -9,20 +9,20 @@ from remastered.web.auth_settings import AuthSettings
 logger = logging.getLogger(__name__)
 
 RESEND_URL = "https://api.resend.com/emails"
-SUBJECT = "Remastered 회원가입 인증코드"
+SUBJECT = "Remastered sign-up verification code"
 
 
-def verification_body_korean(code: str, ttl_minutes: int) -> str:
+def verification_body_english(code: str, ttl_minutes: int) -> str:
     return (
-        f"Remastered 회원가입 인증코드: {code}\n\n"
-        f"이 코드는 {ttl_minutes}분 후에 만료됩니다. "
-        f"요청하지 않았다면 이 메일을 무시하셔도 됩니다."
+        f"Your Remastered verification code is: {code}\n\n"
+        f"This code expires in {ttl_minutes} minutes. "
+        f"If you did not request this, you can ignore this email."
     )
 
 
 def send_verification_email(to_email: str, code: str, settings: AuthSettings | None = None) -> None:
     auth = settings or AuthSettings()
-    body = verification_body_korean(code, auth.verification_ttl_minutes)
+    body = verification_body_english(code, auth.verification_ttl_minutes)
     mode = (auth.mail_mode or "log").lower()
     if mode == "log":
         logger.info(

@@ -26,17 +26,17 @@ def run_web_master_pipeline(
     prog = progress or PipelineProgress()
 
     prog.stage_start("download")
-    prog.log("YouTube 오디오 다운로드 중…")
+    prog.log("Downloading YouTube audio…")
     work = ensure_dir(settings.work_dir)
     dl = download_audio(url, job_dir(work, "download"), yt_dlp_path=settings.yt_dlp_path)
     job = job_dir(work, dl.video_id)
-    prog.log(f"다운로드 완료: {dl.title}")
+    prog.log(f"Download complete: {dl.title}")
     if on_downloaded:
         on_downloaded(dl.title, dl.video_id)
     prog.stage_done("download")
 
     prog.stage_start("master")
-    prog.log("matchering 마스터링 중…")
+    prog.log("Running matchering…")
     master_out = run_matchering(
         dl.audio_path,
         reference,
@@ -47,7 +47,7 @@ def run_web_master_pipeline(
         stereo_width=stereo_width,
         log_line=prog.log,
     )
-    prog.log(f"마스터 WAV: {master_out.output_path.name}")
+    prog.log(f"Master WAV: {master_out.output_path.name}")
     prog.stage_done("master")
 
     result: dict[str, Path | str] = {

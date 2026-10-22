@@ -1,19 +1,16 @@
 from __future__ import annotations
 
 
-def rights_notice_lines(retention_days: int) -> list[str]:
-    days = max(0, int(retention_days))
+def rights_notice_lines(days: int) -> list[str]:
     return [
-        "본인이 권리를 가진 곡이거나 사용 허락을 받은 곡만 마스터링해 주세요.",
-        "마스터링 결과물의 저작권은 원저작권자에게 있으며, 무단 배포·상업적 이용 책임은 사용자에게 있습니다.",
-        f"업로드된 파일과 결과물은 {days}일 후 자동 삭제됩니다.",
+        "Only master tracks you own or are licensed to use.",
+        "Copyright in the result remains with the rights holder; you are responsible for distribution and commercial use.",
+        f"Uploaded files and outputs are deleted automatically after {days} days.",
     ]
 
 
-def rights_notice_short(retention_days: int) -> str:
-    days = max(0, int(retention_days))
+def rights_notice_short(days: int) -> str:
     return (
-        "본인이 권리를 가진 곡 또는 사용 허락을 받은 곡만 이용해 주세요. "
-        "저작권·무단 배포·상업적 이용 책임은 사용자에게 있으며, "
-        f"파일은 {days}일 후 자동 삭제됩니다."
+        "Use only music you have rights to. You are responsible for copyright and unauthorized use; "
+        f"files are deleted after {days} days."
     )

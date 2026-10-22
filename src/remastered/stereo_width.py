@@ -146,5 +146,5 @@ def preserve_stereo_width(
 
 def stereo_width_label(mode: str | None) -> str:
     if mode == "preserve":
-        return "원본 유지"
-    return "레퍼런스 따라가기 (기본)"
+        return "Keep original width"
+    return "Follow reference (default)"

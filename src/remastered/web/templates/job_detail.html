@@ -2,7 +2,7 @@
 {% block title %}{{ job_display_title(job) }} — Remastered{% endblock %}
 {% block content %}
 <nav class="breadcrumb">
-  <a href="/">← 목록</a>
+  <a href="/">← Back to list</a>
 </nav>
 <div id="job-status"
      {% if job.status not in ('completed', 'failed', 'cancelled') %}

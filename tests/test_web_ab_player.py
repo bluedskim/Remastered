@@ -26,19 +26,19 @@ def test_job_players_ab_compare_template(jinja_env: Environment) -> None:
         ab_compare_ok=True,
         audio_download_filename="t (Original).wav",
         mastered_download_filename="t (Remastered).wav",
-        rights_notice_short="권리 안내",
+        rights_notice_short="Rights notice",
     )
     assert 'data-ab-compare' in html
-    assert "원본" in html
-    assert "리마스터" in html
+    assert "Original" in html
+    assert "Remastered" in html
     assert 'data-audio="original"' in html
     assert 'data-audio="remastered"' in html
     assert 'preload="auto"' in html
     assert "controls" not in html.split("data-ab-compare")[1].split("ab-downloads")[0]
-    assert "원본 다운로드" in html
-    assert "권리 안내" in html
+    assert "Download original" in html
+    assert "Rights notice" in html
     assert 'data-ab-repeat' in html
-    assert "반복 재생 (R)" in html
+    assert "Repeat (R)" in html
 
 
 def test_ab_player_js_does_not_cancel_play_on_waiting_or_stalled() -> None:
@@ -84,7 +84,7 @@ def test_job_players_single_when_only_mastered(jinja_env: Environment) -> None:
         ab_compare_ok=False,
         audio_download_filename=None,
         mastered_download_filename="t (Remastered).wav",
-        rights_notice_short="권리",
+        rights_notice_short="Rights",
     )
     assert "data-ab-compare" not in html
     assert "<audio controls" in html

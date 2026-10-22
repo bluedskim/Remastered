@@ -1,8 +1,7 @@
-<ol class="progress-stepper" aria-label="작업 진행 단계">
+<ol class="progress-stepper" aria-label="Job progress">
   {% for step in job.progress_steps %}
   <li class="progress-step progress-step--{{ step.state }}">
-    <span class="progress-dot" aria-hidden="true"></span>
-    <span class="progress-label">{{ step.label }}</span>
+    <span class="progress-step-label">{{ step.label }}</span>
   </li>
   {% endfor %}
 </ol>

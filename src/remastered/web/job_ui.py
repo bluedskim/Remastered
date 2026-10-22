@@ -8,9 +8,9 @@ from remastered.web.reference_display import reference_display_for_job
 from remastered.youtube_url import extract_youtube_video_id
 
 _PROGRESS_LABELS = (
-    ("download", "다운로드"),
-    ("master", "마스터링"),
-    ("done", "완료"),
+    ("download", "Download"),
+    ("master", "Mastering"),
+    ("done", "Done"),
 )
 
 
@@ -40,13 +40,13 @@ def format_relative_time(created_at: str) -> str:
     delta = now - created.astimezone(timezone.utc)
     seconds = int(delta.total_seconds())
     if seconds < 60:
-        return "방금 전"
+        return "Just now"
     if seconds < 3600:
-        return f"{seconds // 60}분 전"
+        return f"{seconds // 60} min ago"
     if seconds < 86400:
-        return f"{seconds // 3600}시간 전"
+        return f"{seconds // 3600} hr ago"
     if seconds < 172800:
-        return "어제"
+        return "Yesterday"
     return created.strftime("%Y-%m-%d %H:%M")
 
 
@@ -79,7 +79,7 @@ def job_progress_steps(job: dict[str, Any]) -> list[dict[str, str]]:
         done_state = "running"
     else:
         done_state = "pending"
-    steps.append({"key": "done", "label": "완료", "state": done_state})
+    steps.append({"key": "done", "label": "Done", "state": done_state})
     return steps
 
 

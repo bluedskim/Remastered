@@ -48,16 +48,16 @@ templates.env.globals["job_display_title"] = job_display_title
 templates.env.globals["static_url"] = static_url
 
 STAGE_LABELS = {
-    "download": "다운로드",
-    "master": "마스터링",
+    "download": "Download",
+    "master": "Mastering",
 }
 
 TERMINAL_JOB_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 PRIVACY_NOTICE = (
-    "저장 항목: 익명 세션 식별자, 작업 URL·로그·생성 파일 경로. "
-    "회원 가입 시 이메일·닉네임·비밀번호(해시)를 추가로 저장합니다. "
-    "작업 파일은 보관 기간 후 삭제됩니다."
+    "We store: anonymous session id, job URLs, logs, and output file paths. "
+    "If you sign up, we also store email, nickname, and a password hash. "
+    "Job files are deleted after the retention period."
 )
 
 
@@ -184,7 +184,7 @@ def _owner_references_dir(owner_id: str) -> Path:
 async def http_exception_handler(request: Request, exc: HTTPException):
     if exc.status_code == 429:
         return HTMLResponse(
-            f"<h1>429</h1><p>{exc.detail}</p><p><a href='/'>돌아가기</a></p>",
+            f"<h1>429</h1><p>{exc.detail}</p><p><a href='/'>Back to home</a></p>",
             status_code=429,
         )
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
@@ -297,7 +297,9 @@ async def create_job(
             reference_path = candidate
 
     if reference_path is None:
-        raise HTTPException(status_code=400, detail="레퍼런스 트랙을 선택하거나 업로드하세요.")
+        raise HTTPException(
+            status_code=400, detail="Select or upload a reference track."
+        )
 
     youtube_url = normalize_youtube_url(youtube_url)
     duplicate_id = await run_in_threadpool(
@@ -326,7 +328,7 @@ async def create_job(
         client_ip=ip,
         stereo_width_mode=stereo_width_mode,
     )
-    store.append_log(job_id, "작업이 대기열에 추가되었습니다.")
+    store.append_log(job_id, "Job added to the queue.")
     worker.enqueue(job_id)
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
 
@@ -344,7 +346,7 @@ def job_detail(
         anon_id=identity.anon_id,
     )
     if not job:
-        raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
+        raise HTTPException(status_code=404, detail="Job not found.")
     logs = store.get_logs(job_id)
     media_ctx = _job_media_context(job)
     return templates.TemplateResponse(
@@ -375,7 +377,7 @@ def job_panel(
         anon_id=identity.anon_id,
     )
     if not job:
-        raise HTTPException(status_code=404, detail="작업을 찾을 수 없습니다.")
+        raise HTTPException(status_code=404, detail="Job not found.")
     logs = store.get_logs(job_id)
     media_ctx = _job_media_context(job)
     ctx = {

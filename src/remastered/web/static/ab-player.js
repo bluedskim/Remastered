@@ -93,14 +93,14 @@
         btn.setAttribute("aria-pressed", side === activeSide ? "true" : "false");
       });
       if (activeLabel) {
-        activeLabel.textContent = activeSide === "original" ? "원본" : "리마스터";
+        activeLabel.textContent = activeSide === "original" ? "Original" : "Remastered";
       }
     }
 
     function setPlayIcon(wantsPlay) {
       if (!playBtn) return;
       playBtn.textContent = wantsPlay ? "❚❚" : "▶";
-      playBtn.setAttribute("aria-label", wantsPlay ? "일시정지" : "재생");
+      playBtn.setAttribute("aria-label", wantsPlay ? "Pause" : "Play");
     }
 
     function setBufferingUi(on) {

@@ -20,7 +20,7 @@ from remastered.web.stream_audio import transcode_wav_for_playback
 logger = logging.getLogger(__name__)
 
 ORPHAN_REQUEUE_MESSAGE = (
-    "서버 재시작으로 중단된 작업을 대기열에 다시 넣었습니다."
+    "Job re-queued after the server restarted while it was running."
 )
 
 
@@ -83,7 +83,7 @@ class JobWorker:
                 return
             user_id = (job.get("user_id") or "").strip()
             if not user_id:
-                self.store.update_job(job_id, status="failed", error="user_id 없음")
+                self.store.update_job(job_id, status="failed", error="Missing user_id")
                 return
 
             self.store.update_job(job_id, status="running", stage="download", error=None)
@@ -118,7 +118,7 @@ class JobWorker:
 
             reference = Path(job["reference_path"])
             if not reference.is_file():
-                raise FileNotFoundError(f"레퍼런스 파일 없음: {reference}")
+                raise FileNotFoundError(f"Reference file not found: {reference}")
 
             user_work = self.settings.work_dir / "users" / user_id
             user_work.mkdir(parents=True, exist_ok=True)
@@ -149,12 +149,12 @@ class JobWorker:
                 try:
                     transcode_wav_for_playback(audio_wav)
                 except Exception as exc:  # noqa: BLE001
-                    log(f"재생용 오디오 변환 실패(원본): {exc}")
+                    log(f"Playback transcode failed (original): {exc}")
             if isinstance(mastered_wav, Path):
                 try:
                     transcode_wav_for_playback(mastered_wav)
                 except Exception as exc:  # noqa: BLE001
-                    log(f"재생용 오디오 변환 실패(마스터): {exc}")
+                    log(f"Playback transcode failed (mastered): {exc}")
             self.store.update_job(
                 job_id,
                 status="completed",
@@ -171,11 +171,11 @@ class JobWorker:
                     "upload": "skipped",
                 },
             )
-            log("마스터링이 완료되었습니다.")
+            log("Mastering complete.")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Job %s failed", job_id)
             try:
-                self.store.append_log(job_id, f"오류: {exc}")
+                self.store.append_log(job_id, f"Error: {exc}")
                 self.store.append_log(job_id, traceback.format_exc())
                 self.store.update_job(
                     job_id,

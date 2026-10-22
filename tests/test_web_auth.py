@@ -77,7 +77,7 @@ def test_signup_login_logout_flow(
 
     home = auth_client.get("/")
     assert "테스터" in home.text
-    assert "로그아웃" in home.text
+    assert "Log out" in home.text
 
     logout = auth_client.post("/logout", follow_redirects=False)
     assert logout.status_code == 303
@@ -152,7 +152,7 @@ def test_verification_expiry_and_attempts(tmp_path: Path) -> None:
     from remastered.web.auth_service import AuthError
 
     assert isinstance(exc.value, AuthError)
-    assert "만료" in exc.value.message
+    assert "expired" in exc.value.message.lower()
 
     store.upsert_email_verification(
         email="fail@example.com",
@@ -177,4 +177,4 @@ def test_verification_expiry_and_attempts(tmp_path: Path) -> None:
             verification_code="000000",
             anon_id="anon-test",
         )
-    assert "새 인증코드" in locked.value.message
+    assert "new verification code" in locked.value.message.lower()

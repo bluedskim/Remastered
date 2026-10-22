@@ -20,9 +20,9 @@ from remastered.stereo_width import (
 
 def test_default_mode_and_labels() -> None:
     assert DEFAULT_STEREO_WIDTH_MODE == "follow_reference"
-    assert "기본" in stereo_width_label("follow_reference")
-    assert "기본" not in stereo_width_label("preserve")
-    assert stereo_width_label(None) == "레퍼런스 따라가기 (기본)"
+    assert "default" in stereo_width_label("follow_reference").lower()
+    assert "default" not in stereo_width_label("preserve").lower()
+    assert stereo_width_label(None) == "Follow reference (default)"
 
 
 def _write_wide_stereo_wav(path: Path, duration: float = 4.0, sr: int = 44100) -> None:

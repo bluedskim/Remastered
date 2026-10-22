@@ -78,8 +78,8 @@ def _load_oauth_client_config() -> dict[str, Any]:
                 }
             }
     raise FileNotFoundError(
-        "Google OAuth 설정이 없습니다. REMASTERED_GOOGLE_CLIENT_ID/SECRET 또는 "
-        "web 유형 client_secrets.json을 설정하세요."
+        "Google OAuth is not configured. Set REMASTERED_GOOGLE_CLIENT_ID/SECRET or "
+        "a web client_secrets.json."
     )
 
 
@@ -118,11 +118,11 @@ def fetch_userinfo(access_token: str) -> dict[str, Any]:
 
 def upsert_user_from_credentials(store: JobStore, creds: Credentials) -> str:
     if not creds.token:
-        raise ValueError("OAuth 응답에 access token이 없습니다.")
+        raise ValueError("OAuth response did not include an access token.")
     info = fetch_userinfo(creds.token)
     google_sub = info.get("id") or info.get("sub")
     if not google_sub:
-        raise ValueError("Google 사용자 ID를 확인할 수 없습니다.")
+        raise ValueError("Could not determine Google user id.")
     encrypted = encrypt_token(creds.to_json())
     return store.upsert_user(
         google_sub=str(google_sub),
@@ -136,7 +136,7 @@ def upsert_user_from_credentials(store: JobStore, creds: Credentials) -> str:
 def get_user_credentials(store: JobStore, user_id: str) -> Credentials:
     row = store.get_user(user_id)
     if not row or not row.get("encrypted_token"):
-        raise PermissionError("YouTube 연동이 필요합니다. 다시 로그인하세요.")
+        raise PermissionError("YouTube access is required. Please sign in again.")
     token_json = decrypt_token(row["encrypted_token"])
     # 기존 youtube.upload 토큰도 로드 가능 (스코프는 토큰 JSON에 포함)
     creds = Credentials.from_authorized_user_info(json.loads(token_json))
@@ -144,7 +144,7 @@ def get_user_credentials(store: JobStore, user_id: str) -> Credentials:
         creds.refresh(Request())
         store.update_user_token(user_id, encrypt_token(creds.to_json()))
     if not creds.valid:
-        raise PermissionError("YouTube 토큰이 만료되었습니다. 다시 로그인하세요.")
+        raise PermissionError("YouTube token expired. Please sign in again.")
     return creds
 
 

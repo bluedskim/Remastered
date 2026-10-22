@@ -3,7 +3,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-DOWNLOAD_TITLE_LOG_RE = re.compile(r"^다운로드 완료:\s*(.+?)\s*$")
+DOWNLOAD_TITLE_LOG_RE = re.compile(
+    r"^(?:Download complete|다운로드 완료):\s*(.+?)\s*$"
+)
 
 
 def parse_title_from_log_message(message: str) -> str | None:
@@ -27,5 +29,5 @@ def job_display_title(job: dict[str, Any]) -> str:
     if title:
         return title
     if job.get("status") in ("pending", "running"):
-        return "제목 확인 중…"
+        return "Checking title…"
     return (job.get("youtube_url") or "").strip()

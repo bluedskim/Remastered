@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}로그인 · Remastered{% endblock %}
+{% block title %}Log in · Remastered{% endblock %}
 {% block content %}
 <section class="card auth-card">
-  <h1 class="card-title">로그인</h1>
+  <h1 class="card-title">Log in</h1>
   {% if error %}
   <p class="form-error" role="alert">{{ error }}</p>
   {% endif %}
   <form method="post" action="/login" class="auth-form">
     <label class="field">
-      <span class="field-label">이메일</span>
+      <span class="field-label">Email</span>
       <input type="email" name="login_id" required autocomplete="email"
              value="{{ login_id | default('') }}" placeholder="you@example.com" />
     </label>
     <label class="field">
-      <span class="field-label">비밀번호</span>
+      <span class="field-label">Password</span>
       <input type="password" name="password" required autocomplete="current-password" minlength="8" />
     </label>
-    <button type="submit" class="btn btn-gradient btn-xl">로그인</button>
+    <button type="submit" class="btn btn-gradient btn-xl">Log in</button>
   </form>
-  <p class="auth-switch muted small">계정이 없으신가요? <a href="/signup">회원가입</a></p>
+  <p class="auth-switch muted small">No account? <a href="/signup">Sign up</a></p>
 </section>
 {% endblock %}

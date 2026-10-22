@@ -26,4 +26,4 @@ def test_format_relative_time_recent() -> None:
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc).isoformat()
-    assert format_relative_time(now) == "방금 전"
+    assert format_relative_time(now) == "Just now"

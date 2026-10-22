@@ -156,7 +156,7 @@ def register_auth_routes(
                 {
                     "privacy_notice": privacy_notice,
                     "auth_user": None,
-                    "error": "비밀번호 확인이 일치하지 않습니다.",
+                    "error": "Passwords do not match.",
                     "login_id": login_id,
                     "nickname": nickname,
                     "resend_cooldown_seconds": auth_settings.verification_resend_cooldown_seconds,
