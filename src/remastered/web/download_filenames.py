@@ -38,16 +38,14 @@ def resolve_download_title_stem(job: dict[str, Any]) -> str:
     return _id_fallback_stem(job)
 
 
-def _kind_label_and_ext(kind: str, media_path: Path) -> tuple[str, str]:
-    label = "(Original)" if kind == "audio" else "(Remastered)"
+def _remastered_suffix(media_path: Path) -> str:
     ext = media_path.suffix if media_path.suffix else ".wav"
-    return label, ext
+    return f" (Remastered){ext}"
 
 
-def media_download_filename(job: dict[str, Any], kind: str, media_path: Path) -> str:
-    """Human-facing UTF-8 download basename (no directory components)."""
-    label, ext = _kind_label_and_ext(kind, media_path)
-    suffix = f" {label}{ext}"
+def media_download_filename(job: dict[str, Any], media_path: Path) -> str:
+    """Human-facing UTF-8 remastered download basename (no directory components)."""
+    suffix = _remastered_suffix(media_path)
     max_stem_len = max(1, MAX_DOWNLOAD_FILENAME_LEN - len(suffix))
     stem = resolve_download_title_stem(job)
     if len(stem) > max_stem_len:
@@ -60,11 +58,9 @@ def media_download_filename(job: dict[str, Any], kind: str, media_path: Path) ->
 def _ascii_fallback_filename(
     utf8_filename: str,
     job: dict[str, Any],
-    kind: str,
     media_path: Path,
 ) -> str:
-    label, ext = _kind_label_and_ext(kind, media_path)
-    suffix = f" {label}{ext}"
+    suffix = _remastered_suffix(media_path)
     utf8_stem = utf8_filename[: -len(suffix)] if utf8_filename.endswith(suffix) else utf8_filename
 
     if any(ord(ch) >= 128 for ch in utf8_stem):
@@ -91,10 +87,9 @@ def _ascii_fallback_filename(
 
 def build_attachment_content_disposition(
     job: dict[str, Any],
-    kind: str,
     media_path: Path,
 ) -> str:
-    utf8_name = media_download_filename(job, kind, media_path)
-    ascii_name = _ascii_fallback_filename(utf8_name, job, kind, media_path)
+    utf8_name = media_download_filename(job, media_path)
+    ascii_name = _ascii_fallback_filename(utf8_name, job, media_path)
     encoded = quote(utf8_name, safe="")
     return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded}'

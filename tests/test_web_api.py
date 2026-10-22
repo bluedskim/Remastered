@@ -203,6 +203,16 @@ def test_media_download_disposition(client: TestClient) -> None:
     else:
         pytest.fail("job did not complete")
 
+    audio_inline = client.get(f"/media/{job_id}/audio")
+    assert audio_inline.status_code == 200
+    audio_cd = audio_inline.headers.get("content-disposition", "")
+    assert audio_cd.lower() == "inline"
+    assert "attachment" not in audio_cd.lower()
+    assert "(original)" not in audio_cd.lower()
+
+    audio_download = client.get(f"/media/{job_id}/audio?download=1")
+    assert audio_download.status_code == 403
+
     inline = client.get(f"/media/{job_id}/mastered")
     assert inline.headers.get("content-disposition", "").lower().startswith("inline")
     attach = client.get(f"/media/{job_id}/mastered?download=1")

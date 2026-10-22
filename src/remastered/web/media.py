@@ -17,6 +17,8 @@ RETENTION_MESSAGE = (
     "(14 days by default)."
 )
 
+ORIGINAL_DOWNLOAD_FORBIDDEN = "Downloading the original audio is not available."
+
 
 def _wav_path_for_kind(job: dict, kind: str) -> Path | None:
     key = {"audio": "audio_path", "mastered": "mastered_path"}.get(kind)
@@ -45,6 +47,8 @@ def resolve_job_media_path(
     if not wav.is_file():
         raise HTTPException(status_code=404, detail=RETENTION_MESSAGE)
     if download:
+        if kind == "audio":
+            raise HTTPException(status_code=403, detail=ORIGINAL_DOWNLOAD_FORBIDDEN)
         return wav
     playback = playback_path_for_wav(wav)
     if playback.is_file():
@@ -71,8 +75,10 @@ def media_file_response(
         media_type = "audio/mp4"
     else:
         media_type = "audio/wav"
-    if download and job is not None:
-        disposition = build_attachment_content_disposition(job, kind, path)
+    if kind == "audio":
+        disposition = "inline"
+    elif download and job is not None:
+        disposition = build_attachment_content_disposition(job, path)
     elif download:
         disposition = f'attachment; filename="{path.name}"'
     else:

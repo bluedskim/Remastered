@@ -33,7 +33,6 @@
     </div>
     <p class="small muted ab-keys-hint">Space play/pause · A original · B remastered · R repeat</p>
     <div class="ab-downloads">
-      <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/audio?download=1"{% if audio_download_filename %} download="{{ audio_download_filename }}"{% endif %}>Download original</a>
       <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>Download remastered</a>
     </div>
   </div>
@@ -42,7 +41,6 @@
   <div class="player player-simple">
     <p class="player-label"><strong>Original</strong></p>
     <audio controls preload="auto" src="/media/{{ job.id }}/audio"></audio>
-    <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/audio?download=1"{% if audio_download_filename %} download="{{ audio_download_filename }}"{% endif %}>Download</a>
   </div>
 
   {% elif mastered_ok %}
