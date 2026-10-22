@@ -1,19 +1,28 @@
-<section class="card">
-  <h2>작업 상태</h2>
-  <p class="job-title"><strong>{{ job_display_title(job) }}</strong></p>
-  <p class="muted">ID: {{ job.id }}</p>
-  <p class="muted small" style="overflow:hidden;text-overflow:ellipsis">{{ job.youtube_url }}</p>
-  <p>상태: <strong class="status-{{ job.status }}">{{ job.status_display }}</strong>
-    {% if job.error %}<span class="oauth-err"> — {{ job.error }}</span>{% endif %}
-  </p>
-
-  <div class="stages">
-    {% for stage in stages %}
-    <div class="stage {{ job.stage_state.get(stage, 'pending') }}">
-      {{ stage_labels.get(stage, stage) }}<br />
-      <small>{{ job.stage_state.get(stage, 'pending') }}</small>
+<section class="card job-overview">
+  <div class="job-overview-grid">
+    {% if job.youtube_thumbnail %}
+    <img
+      class="job-thumb"
+      src="{{ job.youtube_thumbnail }}"
+      alt=""
+      width="480"
+      height="360"
+      loading="lazy"
+      decoding="async"
+    />
+    {% endif %}
+    <div class="job-overview-copy">
+      <h1 class="job-title">{{ job_display_title(job) }}</h1>
+      <p class="job-meta">
+        <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+        <time class="small muted" datetime="{{ job.created_at }}">{{ job.relative_time }}</time>
+      </p>
+      <p class="job-url small muted">{{ job.youtube_url }}</p>
+      {% if job.error %}
+      <p class="oauth-err job-error">{{ job.error }}</p>
+      {% endif %}
+      {% include "partials/job_progress.html" %}
     </div>
-    {% endfor %}
   </div>
 
   {% if files_expired %}
@@ -21,8 +30,8 @@
   {% endif %}
 </section>
 
-<section class="card">
-  <h3>로그</h3>
+<section class="card card-logs">
+  <h2 class="section-title">로그</h2>
   <div class="log-box">
     {% for line in logs %}
     <div class="log-line">[{{ line.created_at[11:19] }}] {{ line.message }}</div>

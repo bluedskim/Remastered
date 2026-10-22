@@ -1,7 +1,9 @@
 {% extends "base.html" %}
-{% block title %}작업 {{ job.id[:8] }} — Remastered{% endblock %}
+{% block title %}{{ job_display_title(job) }} — Remastered{% endblock %}
 {% block content %}
-<p><a href="/">← 목록</a></p>
+<nav class="breadcrumb">
+  <a href="/">← 목록</a>
+</nav>
 <div id="job-status"
      {% if job.status not in ('completed', 'failed', 'cancelled') %}
      hx-get="/jobs/{{ job.id }}/panel"

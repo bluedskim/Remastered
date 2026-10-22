@@ -1,6 +1,6 @@
 {% if audio_ok or mastered_ok %}
-<section class="card">
-  <h3>오디오</h3>
+<section class="card card-player">
+  <h2 class="section-title">미리듣기</h2>
 
   {% if ab_compare_ok %}
   <div class="ab-compare" data-ab-compare>
@@ -10,10 +10,10 @@
     </p>
     <div class="ab-segment" role="group" aria-label="원본과 리마스터 비교">
       <button type="button" class="ab-segment-btn" data-ab-side="original" aria-pressed="false">
-        원본 Original
+        원본
       </button>
       <button type="button" class="ab-segment-btn" data-ab-side="remastered" aria-pressed="true">
-        리마스터 Remastered
+        리마스터
       </button>
     </div>
     <div class="ab-audio-host" aria-hidden="true">
@@ -32,23 +32,23 @@
     </div>
     <p class="small muted ab-keys-hint">Space 재생/일시정지 · A 원본 · B 리마스터</p>
     <div class="ab-downloads">
-      <a class="btn btn-secondary" href="/media/{{ job.id }}/audio?download=1"{% if audio_download_filename %} download="{{ audio_download_filename }}"{% endif %}>원본 다운로드</a>
-      <a class="btn btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>리마스터 다운로드</a>
+      <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/audio?download=1"{% if audio_download_filename %} download="{{ audio_download_filename }}"{% endif %}>원본 다운로드</a>
+      <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>리마스터 다운로드</a>
     </div>
   </div>
 
   {% elif audio_ok %}
-  <div class="player">
-    <p><strong>원본</strong></p>
+  <div class="player player-simple">
+    <p class="player-label"><strong>원본</strong></p>
     <audio controls preload="auto" src="/media/{{ job.id }}/audio"></audio>
-    <a class="btn btn-secondary" href="/media/{{ job.id }}/audio?download=1"{% if audio_download_filename %} download="{{ audio_download_filename }}"{% endif %}>다운로드</a>
+    <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/audio?download=1"{% if audio_download_filename %} download="{{ audio_download_filename }}"{% endif %}>다운로드</a>
   </div>
 
   {% elif mastered_ok %}
-  <div class="player">
-    <p><strong>마스터 결과</strong></p>
+  <div class="player player-simple">
+    <p class="player-label"><strong>마스터 결과</strong></p>
     <audio controls preload="auto" src="/media/{{ job.id }}/mastered"></audio>
-    <a class="btn btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>다운로드</a>
+    <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>리마스터 다운로드</a>
   </div>
   {% endif %}
 

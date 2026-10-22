@@ -1,49 +1,58 @@
 {% extends "base.html" %}
+{% block title %}Remastered — 리마스터{% endblock %}
 {% block content %}
-<section class="card hero">
-  <h2>YouTube 오디오 리마스터</h2>
-  <p class="muted">
-    matchering으로 레퍼런스에 맞춰 마스터링하고, 브라우저에서 결과를 들을 수 있습니다.
-  </p>
-</section>
-
-<section class="card legal compact">
-  <p class="small muted"><strong>개인정보:</strong> {{ privacy_notice }}</p>
-</section>
-
-<section class="card">
-  <h2>새 작업</h2>
-  <form id="create-job-form" method="post" action="/jobs" enctype="multipart/form-data" class="grid">
-    <div>
-      <label for="youtube_url">YouTube URL</label>
-      <input type="url" id="youtube_url" name="youtube_url" value="https://www.youtube.com/watch?v=fCV9oqtwyVA" placeholder="https://www.youtube.com/watch?v=..." required />
-    </div>
-    <div>
-      <label for="reference_name">공용 레퍼런스 (/references)</label>
-      <select id="reference_name" name="reference_name">
-        {% if not shared_references %}
-        <option value="">— 선택 —</option>
-        {% endif %}
-        {% for ref in shared_references %}
-        <option value="{{ ref }}"{% if loop.first %} selected{% endif %}>{{ ref }}</option>
-        {% endfor %}
-      </select>
-      <input type="hidden" name="reference_source" value="shared" id="reference_source" />
-    </div>
-    {% if user_references %}
-    <div>
-      <label>내 레퍼런스</label>
-      <p class="muted small">{% for ref in user_references %}{{ ref }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
-    </div>
-    {% endif %}
-    <div>
-      <label for="reference_upload">레퍼런스 파일 업로드 (내 폴더에 저장)</label>
-      <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" />
-    </div>
-    <p class="muted small">
-      제한: 소스 최대 {{ limits.max_source_duration_seconds // 60 }}분 ·
-      {{ limits.max_source_bytes // (1024*1024) }}MB
+<section class="card card-hero card-glow">
+  <div class="hero-copy">
+    <h1 class="hero-title">YouTube 오디오 리마스터</h1>
+    <p class="hero-lead muted">
+      레퍼런스 트랙에 맞춰 마스터링하고, 브라우저에서 원본과 결과를 바로 비교해 들을 수 있습니다.
     </p>
+  </div>
+
+  <h2 class="section-title" id="new-job-heading">새 작업</h2>
+  <form id="create-job-form" method="post" action="/jobs" enctype="multipart/form-data" class="job-form" aria-labelledby="new-job-heading">
+    <div class="field">
+      <label for="youtube_url">YouTube URL</label>
+      <input class="input-lg" type="url" id="youtube_url" name="youtube_url" value="https://www.youtube.com/watch?v=fCV9oqtwyVA" placeholder="https://www.youtube.com/watch?v=..." required />
+    </div>
+
+    <div class="field">
+      <span class="field-label">레퍼런스 트랙</span>
+      {% if reference_options %}
+      <div class="ref-picker" role="radiogroup" aria-label="레퍼런스 선택">
+        {% for opt in reference_options %}
+        <label class="ref-card">
+          <input
+            type="radio"
+            name="reference_name"
+            value="{{ opt.name }}"
+            data-reference-source="{{ opt.source }}"
+            {% if loop.first %}checked{% endif %}
+          />
+          <span class="ref-card-body">
+            <span class="ref-genre">{{ opt.genre }}</span>
+            <span class="ref-title">{{ opt.label }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted small">공용 레퍼런스가 없습니다. 아래에서 파일을 업로드하세요.</p>
+      <input type="hidden" name="reference_name" value="" />
+      {% endif %}
+      <input type="hidden" name="reference_source" value="{% if reference_options %}{{ reference_options[0].source }}{% else %}shared{% endif %}" id="reference_source" />
+    </div>
+
+    <div class="field field-upload">
+      <label for="reference_upload">내 레퍼런스 업로드</label>
+      <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" />
+      <p class="hint small muted">선택 시 업로드한 파일이 이번 작업의 레퍼런스로 사용됩니다.</p>
+    </div>
+
+    <p class="limits-hint small muted">
+      소스 최대 {{ limits.max_source_duration_seconds // 60 }}분 · {{ limits.max_source_bytes // (1024*1024) }}MB
+    </p>
+
     <div class="notice-box" role="note" aria-label="저작권 및 이용 안내">
       <ul class="rights-notice small muted">
         {% for line in rights_notice_lines %}
@@ -51,36 +60,54 @@
         {% endfor %}
       </ul>
     </div>
-    <button type="submit" id="create-job-submit">작업 시작</button>
+
+    <button type="submit" class="btn btn-gradient btn-xl" id="create-job-submit">작업 시작</button>
   </form>
 </section>
 
 <section class="card">
-  <h2>내 작업</h2>
+  <h2 class="section-title">내 작업</h2>
   {% if not jobs %}
-  <p class="muted">아직 작업이 없습니다.</p>
+  <p class="muted empty-state">아직 작업이 없습니다. 위에서 첫 작업을 시작해 보세요.</p>
   {% else %}
-  <table class="jobs">
-    <thead>
-      <tr><th>시간</th><th>제목</th><th>상태</th><th>단계</th></tr>
-    </thead>
-    <tbody>
-      {% for job in jobs %}
-      <tr>
-        <td><a href="/jobs/{{ job.id }}">{{ job.created_at[:19] }}</a></td>
-        <td class="job-title" style="max-width:280px;overflow:hidden;text-overflow:ellipsis">{{ job_display_title(job) }}</td>
-        <td class="status-{{ job.status }}">{{ job.status_display }}</td>
-        <td>{{ stage_labels.get(job.stage, job.stage) }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <ul class="job-list">
+    {% for job in jobs %}
+    <li>
+      <a class="job-card" href="/jobs/{{ job.id }}">
+        <div class="job-card-head">
+          <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
+          <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+        </div>
+        {% include "partials/job_progress.html" %}
+        <p class="job-card-meta small muted">
+          <time datetime="{{ job.created_at }}">{{ job.relative_time }}</time>
+        </p>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
   {% endif %}
 </section>
+
 <script>
 (function () {
   const form = document.getElementById("create-job-form");
   const btn = document.getElementById("create-job-submit");
+  const sourceInput = document.getElementById("reference_source");
+  const refRadios = form ? form.querySelectorAll('input[name="reference_name"][type="radio"]') : [];
+
+  function syncReferenceSource() {
+    if (!sourceInput) return;
+    const checked = form.querySelector('input[name="reference_name"][type="radio"]:checked');
+    if (checked && checked.dataset.referenceSource) {
+      sourceInput.value = checked.dataset.referenceSource;
+    }
+  }
+  refRadios.forEach(function (radio) {
+    radio.addEventListener("change", syncReferenceSource);
+  });
+  syncReferenceSource();
+
   if (!form || !btn) return;
   let submitted = false;
   form.addEventListener("submit", function (e) {
@@ -90,6 +117,7 @@
     }
     submitted = true;
     btn.disabled = true;
+    btn.classList.add("is-loading");
     btn.textContent = "처리 중…";
   });
 })();

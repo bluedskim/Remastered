@@ -22,3 +22,4 @@ docker/data/input/*
 !docker/data/input/.gitkeep
 docker/data/output/*
 !docker/data/output/.gitkeep
+.screenshot-work/
