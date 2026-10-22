@@ -26,6 +26,7 @@ from remastered.web.media import (
     resolve_job_media_path,
 )
 from remastered.web.job_queue import job_status_display
+from remastered.web.notices import rights_notice_lines, rights_notice_short
 from remastered.web.job_titles import job_display_title
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.settings import WebSettings
@@ -118,7 +119,8 @@ def _list_reference_files(references_dir: Path) -> list[str]:
     )
 
 
-def _job_media_context(job: dict, owner_id: str) -> dict[str, bool | str]:
+def _job_media_context(job: dict, owner_id: str) -> dict[str, bool | str | None]:
+    ws = _web_settings()
     settings = resolve_settings()
     work = settings.work_dir
     audio_path = job.get("audio_path")
@@ -143,6 +145,7 @@ def _job_media_context(job: dict, owner_id: str) -> dict[str, bool | str]:
         "retention_message": RETENTION_MESSAGE,
         "audio_download_filename": audio_download_filename,
         "mastered_download_filename": mastered_download_filename,
+        "rights_notice_short": rights_notice_short(ws.job_retention_days),
     }
 
 
@@ -184,6 +187,7 @@ def _dashboard_context(
         "user_references": user_refs,
         "stage_labels": STAGE_LABELS,
         "privacy_notice": PRIVACY_NOTICE,
+        "rights_notice_lines": rights_notice_lines(ws.job_retention_days),
         "limits": ws,
     }
 

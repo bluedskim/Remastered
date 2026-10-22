@@ -44,6 +44,13 @@
       제한: 소스 최대 {{ limits.max_source_duration_seconds // 60 }}분 ·
       {{ limits.max_source_bytes // (1024*1024) }}MB
     </p>
+    <div class="notice-box" role="note" aria-label="저작권 및 이용 안내">
+      <ul class="rights-notice small muted">
+        {% for line in rights_notice_lines %}
+        <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+    </div>
     <button type="submit" id="create-job-submit">작업 시작</button>
   </form>
 </section>

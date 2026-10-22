@@ -16,5 +16,6 @@
     <a class="btn btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>다운로드</a>
   </div>
   {% endif %}
+  <p class="rights-notice-inline small muted">{{ rights_notice_short }}</p>
 </section>
 {% endif %}

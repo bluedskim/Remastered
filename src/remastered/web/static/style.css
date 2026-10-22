@@ -196,6 +196,29 @@ table.jobs td {
   margin: 0.35rem 0;
 }
 
+.notice-box {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.65rem 0.85rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.rights-notice {
+  margin: 0;
+  padding-left: 1.15rem;
+  list-style: disc;
+}
+
+.rights-notice li {
+  margin: 0.2rem 0;
+}
+
+.rights-notice-inline {
+  margin: 1rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
 .user-bar {
   display: flex;
   flex-wrap: wrap;
