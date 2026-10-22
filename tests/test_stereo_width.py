@@ -10,10 +10,19 @@ import soundfile as sf
 
 from remastered.master import run_matchering
 from remastered.stereo_width import (
+    DEFAULT_STEREO_WIDTH_MODE,
     preserve_stereo_width,
     stereo_lr_correlation,
     stereo_side_mid_ratio_db,
+    stereo_width_label,
 )
+
+
+def test_default_mode_and_labels() -> None:
+    assert DEFAULT_STEREO_WIDTH_MODE == "follow_reference"
+    assert "기본" in stereo_width_label("follow_reference")
+    assert "기본" not in stereo_width_label("preserve")
+    assert stereo_width_label(None) == "레퍼런스 따라가기 (기본)"
 
 
 def _write_wide_stereo_wav(path: Path, duration: float = 4.0, sr: int = 44100) -> None:
