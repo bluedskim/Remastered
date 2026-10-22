@@ -11,9 +11,9 @@ from remastered.web.notices import rights_notice_lines, rights_notice_short
 
 def test_rights_notice_helpers_use_retention_days() -> None:
     lines = rights_notice_lines(21)
-    assert any("21일 후" in line for line in lines)
-    assert "권리를 가진" in lines[0]
-    assert rights_notice_short(21).count("21일") == 1
+    assert any("21 days" in line for line in lines)
+    assert "own" in lines[0].lower() or "licensed" in lines[0].lower()
+    assert str(21) in rights_notice_short(21)
 
 
 @pytest.fixture
@@ -34,5 +34,5 @@ def test_home_shows_rights_notice_with_retention(notice_client: TestClient) -> N
     resp = notice_client.get("/")
     assert resp.status_code == 200
     assert "notice-box" in resp.text
-    assert "21일 후 자동 삭제" in resp.text
-    assert "무단 배포" in resp.text
+    assert "deleted automatically after 21 days" in resp.text
+    assert "copyright" in resp.text.lower()

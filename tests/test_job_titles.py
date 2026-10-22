@@ -9,7 +9,7 @@ from remastered.web.job_titles import job_display_title, parse_title_from_log_me
 
 def test_job_display_title_pending() -> None:
     assert job_display_title({"status": "pending", "youtube_url": "https://youtu.be/x"}) == (
-        "제목 확인 중…"
+        "Checking title…"
     )
 
 
@@ -18,7 +18,8 @@ def test_job_display_title_from_field() -> None:
 
 
 def test_parse_title_from_log_message() -> None:
-    assert parse_title_from_log_message("다운로드 완료: Yesterday") == "Yesterday"
+    assert parse_title_from_log_message("Download complete: Yesterday") == "Yesterday"
+    assert parse_title_from_log_message("다운로드 완료: Legacy") == "Legacy"
 
 
 def test_title_backfill_on_db_open(tmp_path: Path) -> None:

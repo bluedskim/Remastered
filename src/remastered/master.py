@@ -122,9 +122,9 @@ def run_matchering(
     """matchering으로 target을 reference에 맞춰 마스터링합니다."""
     ensure_dir(out_dir)
     if not target_wav.is_file():
-        raise FileNotFoundError(f"타깃 파일 없음: {target_wav}")
+        raise FileNotFoundError(f"Target file not found: {target_wav}")
     if not reference_wav.is_file():
-        raise FileNotFoundError(f"레퍼런스 파일 없음: {reference_wav}")
+        raise FileNotFoundError(f"Reference file not found: {reference_wav}")
 
     def _log(msg: str) -> None:
         if log_line:
@@ -167,19 +167,19 @@ def run_matchering(
         )
         target_snapshot = np.copy(target)
         sm_orig = stereo_side_mid_ratio_db(target_snapshot)
-        _log(f"스테레오 폭(원본 Side/Mid): {sm_orig:.2f} dB")
+        _log(f"Stereo width (original Side/Mid): {sm_orig:.2f} dB")
 
         pre_limiter, final_amp = _matchering_no_limiter(target, reference, config)
         sm_pre = stereo_side_mid_ratio_db(pre_limiter)
-        _log(f"스테레오 폭(마스터링 직후, 보정 전): {sm_pre:.2f} dB")
+        _log(f"Stereo width (after mastering, before correction): {sm_pre:.2f} dB")
 
         corrected = preserve_stereo_width(target_snapshot, pre_limiter, sample_rate)
         sm_corr = stereo_side_mid_ratio_db(corrected)
-        _log(f"스테레오 폭(폭 보정 후): {sm_corr:.2f} dB")
+        _log(f"Stereo width (after width correction): {sm_corr:.2f} dB")
 
         final = _finalize_limited(corrected, final_amp, config)
         sm_final = stereo_side_mid_ratio_db(final)
-        _log(f"스테레오 폭(리미터 적용 후): {sm_final:.2f} dB")
+        _log(f"Stereo width (after limiter): {sm_final:.2f} dB")
 
         from matchering.saver import save
 
@@ -190,7 +190,7 @@ def run_matchering(
             create_preview(target_snapshot, final, config, None, preview_result)
 
     if not output_path.is_file():
-        raise RuntimeError("matchering이 출력 파일을 생성하지 않았습니다")
+        raise RuntimeError("matchering did not produce an output file")
 
     logger.info("마스터링 완료: %s", output_path)
     return MasterResult(output_path=output_path, preview_path=preview_path if preview else None)

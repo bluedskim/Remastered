@@ -208,7 +208,7 @@ class JobStore:
     @staticmethod
     def _backfill_job_titles_from_logs(conn: sqlite3.Connection) -> None:
         """완료된 작업의 로그에서 YouTube 제목을 복원합니다."""
-        pattern = re.compile(r"^다운로드 완료:\s*(.+?)\s*$")
+        pattern = re.compile(r"^(?:Download complete|다운로드 완료):\s*(.+?)\s*$")
         rows = conn.execute(
             """
             SELECT id FROM jobs
@@ -753,7 +753,7 @@ class JobStore:
 
     def reset_interrupted(self) -> None:
         self.requeue_orphaned_running_jobs(
-            "서버 재시작으로 중단된 작업을 대기열에 다시 넣었습니다."
+            "Job re-queued after the server restarted while it was running."
         )
 
     def requeue_orphaned_running_jobs(self, message: str) -> int:

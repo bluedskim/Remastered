@@ -13,7 +13,8 @@ from remastered.web.stream_audio import playback_path_for_wav, transcode_wav_for
 logger = logging.getLogger(__name__)
 
 RETENTION_MESSAGE = (
-    "오디오 파일이 없습니다. 보관 기간(기본 14일)이 지난 경우 삭제되었을 수 있습니다."
+    "Audio files are unavailable. They may have been removed after the retention period "
+    "(14 days by default)."
 )
 
 

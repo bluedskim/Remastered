@@ -23,7 +23,7 @@ DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = int(
 )
 
 _PLAYLIST_UNSUPPORTED = (
-    "YouTube 재생목록·라디오(Mix)는 지원하지 않습니다. 단일 영상 URL을 사용해 주세요."
+    "YouTube playlists and Mix radio are not supported. Use a single video URL."
 )
 
 
@@ -72,7 +72,7 @@ def _extract_info_with_ydl(
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=download)
     if info is None:
-        raise RuntimeError(f"영상 정보를 가져올 수 없습니다: {url}")
+        raise RuntimeError(f"Could not fetch video info: {url}")
     return _coerce_single_video_info(info)
 
 
@@ -92,8 +92,8 @@ def _run_timed(
             return future.result(timeout=timeout_seconds)
         except FuturesTimeoutError:
             raise RuntimeError(
-                f"YouTube {'다운로드' if download else '조회'} 시간 제한"
-                f"({int(timeout_seconds)}초)을 초과했습니다."
+                f"YouTube {'download' if download else 'lookup'} timed out after "
+                f"{int(timeout_seconds)} seconds."
             ) from None
 
 
@@ -177,7 +177,7 @@ def download_audio(
     if not audio_path.is_file():
         wav_candidates = list(out_dir.glob(f"{video_id}*.wav"))
         if not wav_candidates:
-            raise FileNotFoundError(f"다운로드된 WAV를 찾을 수 없습니다: {out_dir}")
+            raise FileNotFoundError(f"Downloaded WAV not found in: {out_dir}")
         audio_path = wav_candidates[0]
 
     thumb_path = _pick_thumbnail(out_dir, video_id)

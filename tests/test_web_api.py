@@ -75,9 +75,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 def test_home_without_google_env(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "새 작업" in resp.text
+    assert "New job" in resp.text
     text = resp.text
-    assert text.index("레퍼런스 따라가기 (기본)") < text.index("원본 유지")
+    assert text.index("Follow reference (default)") < text.index("Keep original width")
     assert 'name="stereo_width_mode" value="follow_reference" checked' in text
     assert "Google" not in resp.text
     assert client.get("/dashboard", follow_redirects=False).headers["location"] == "/"
@@ -89,7 +89,7 @@ def test_home_without_google_env(client: TestClient) -> None:
 def test_index_and_create_job(client: TestClient) -> None:
     home = client.get("/")
     assert home.status_code == 200
-    assert "새 작업" in home.text
+    assert "New job" in home.text
     assert "YouTube에 업로드" not in home.text
 
     resp = client.post(
@@ -178,7 +178,7 @@ def test_missing_media_retention_message(client: TestClient) -> None:
         mastered_path=str(work / "users" / owner_id / "missing2.wav"),
     )
     panel = client.get(f"/jobs/{job_id}/panel")
-    assert RETENTION_MESSAGE.split("。")[0] in panel.text or "보관 기간" in panel.text
+    assert RETENTION_MESSAGE.split(".")[0] in panel.text or "retention" in panel.text.lower()
     media_resp = client.get(f"/media/{job_id}/mastered")
     assert media_resp.status_code == 404
     assert RETENTION_MESSAGE in media_resp.json()["detail"]
@@ -225,8 +225,8 @@ def test_media_download_disposition(client: TestClient) -> None:
 
     detail = client.get(f"/jobs/{job_id}")
     assert "rights-notice-inline" in detail.text
-    assert "14일 후" in detail.text
-    assert "레퍼런스" in detail.text
+    assert "deleted after" in detail.text
+    assert "Reference" in detail.text
     assert "ref" in detail.text.lower()
     assert "/references/" not in detail.text
     assert "users/" not in detail.text
@@ -325,4 +325,4 @@ def test_rapid_submits_queue_both_jobs(client: TestClient) -> None:
     store = client.app.state.store
     assert store.queue_position(job_b_id) >= 1
     detail = client.get(second.headers["location"])
-    assert "대기" in detail.text
+    assert "Queued" in detail.text

@@ -41,7 +41,7 @@ class AuthService:
     def send_verification_code(self, raw_email: str, client_ip: str) -> None:
         email = require_valid_email(raw_email)
         if self.store.get_auth_user_by_login_id(email):
-            raise AuthError("이미 가입된 이메일입니다.", status_code=409)
+            raise AuthError("This email is already registered.", status_code=409)
 
         since = (
             datetime.now(timezone.utc) - timedelta(hours=1)
@@ -51,7 +51,7 @@ class AuthService:
             >= self.settings.verification_max_sends_per_email_per_hour
         ):
             raise AuthError(
-                "인증코드 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+                "Too many verification code requests. Please try again later.",
                 status_code=429,
             )
         if (
@@ -59,7 +59,7 @@ class AuthService:
             >= self.settings.verification_max_sends_per_ip_per_hour
         ):
             raise AuthError(
-                "인증코드 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+                "Too many verification code requests. Please try again later.",
                 status_code=429,
             )
 
@@ -71,7 +71,7 @@ class AuthService:
             )
             if datetime.now(timezone.utc) < cooldown_end:
                 raise AuthError(
-                    "잠시 후 다시 인증코드를 요청해 주세요.",
+                    "Please wait before requesting another verification code.",
                     status_code=429,
                 )
 
@@ -101,12 +101,12 @@ class AuthService:
         require_valid_password(password)
         code = verification_code.strip()
         if not VERIFICATION_CODE_REGEX.match(code):
-            raise AuthError("인증코드 형식이 올바르지 않습니다.")
+            raise AuthError("Verification code must be 6 digits.")
 
         if self.store.get_auth_user_by_login_id(email):
-            raise AuthError("이미 가입된 이메일입니다.", status_code=409)
+            raise AuthError("This email is already registered.", status_code=409)
         if self.store.is_nickname_taken(nick):
-            raise AuthError("이미 사용 중인 닉네임입니다.", status_code=409)
+            raise AuthError("This nickname is already taken.", status_code=409)
 
         self._verify_and_consume_code(email, code)
 
@@ -124,29 +124,33 @@ class AuthService:
         email = require_valid_email(login_id)
         user = self.store.get_auth_user_by_login_id(email)
         if user is None or not verify_secret(password, user["password_hash"]):
-            raise AuthError("이메일 또는 비밀번호가 올바르지 않습니다.", status_code=401)
+            raise AuthError("Invalid email or password.", status_code=401)
         self.store.claim_jobs(anon_id, user["id"])
         return user
 
     def _verify_and_consume_code(self, email: str, code: str) -> None:
         verification = self.store.get_email_verification(email)
         if verification is None:
-            raise AuthError("인증코드를 찾을 수 없거나 만료되었습니다.")
+            raise AuthError("Verification code not found or expired.")
 
         expires_at = _parse_utc(verification["expires_at"])
         if datetime.now(timezone.utc) > expires_at:
             self.store.delete_email_verification(email)
-            raise AuthError("인증코드가 만료되었습니다.")
+            raise AuthError("Verification code has expired.")
 
         if verification["failed_attempts"] >= self.settings.verification_max_attempts:
             self.store.delete_email_verification(email)
-            raise AuthError("인증 시도 횟수를 초과했습니다. 새 인증코드를 요청해 주세요.")
+            raise AuthError(
+                "Too many failed attempts. Please request a new verification code."
+            )
 
         if not verify_secret(code, verification["code_hash"]):
             attempts = self.store.increment_verification_failed_attempts(email)
             if attempts >= self.settings.verification_max_attempts:
                 self.store.delete_email_verification(email)
-                raise AuthError("인증 시도 횟수를 초과했습니다. 새 인증코드를 요청해 주세요.")
-            raise AuthError("인증코드가 올바르지 않습니다.")
+                raise AuthError(
+                "Too many failed attempts. Please request a new verification code."
+            )
+            raise AuthError("Incorrect verification code.")
 
         self.store.delete_email_verification(email)

@@ -32,12 +32,12 @@
 </section>
 
 <section class="card card-logs">
-  <h2 class="section-title">로그</h2>
+  <h2 class="section-title">Log</h2>
   <div class="log-box">
     {% for line in logs %}
     <div class="log-line">[{{ line.created_at[11:19] }}] {{ line.message }}</div>
     {% else %}
-    <div class="log-line muted">로그 없음</div>
+    <div class="log-line muted">No log entries</div>
     {% endfor %}
   </div>
 </section>

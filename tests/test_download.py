@@ -33,8 +33,8 @@ def test_coerce_single_video_from_playlist_entries() -> None:
     assert coerced["id"] == "first"
 
 
-def test_coerce_playlist_without_entries_fails_korean() -> None:
-    with pytest.raises(RuntimeError, match="재생목록"):
+def test_coerce_playlist_without_entries_fails() -> None:
+    with pytest.raises(RuntimeError, match="playlist"):
         _coerce_single_video_info({"_type": "playlist", "entries": []})
 
 

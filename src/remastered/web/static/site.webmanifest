@@ -1,6 +1,7 @@
 {
   "name": "Remastered",
   "short_name": "Remastered",
+  "description": "YouTube audio download and matchering mastering in your browser.",
   "display": "standalone",
   "background_color": "#07060f",
   "theme_color": "#07060f",

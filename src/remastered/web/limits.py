@@ -15,13 +15,16 @@ def validate_youtube_source_limits(youtube_url: str) -> None:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"영상 길이가 제한({ws.max_source_duration_seconds}초)을 초과합니다 "
-                f"({int(duration)}초)."
+                f"Video length exceeds the limit ({ws.max_source_duration_seconds}s); "
+                f"got {int(duration)}s."
             ),
         )
     size = info.get("filesize") or info.get("filesize_approx") or 0
     if size and size > ws.max_source_bytes:
         raise HTTPException(
             status_code=400,
-            detail=f"영상 크기가 제한({ws.max_source_bytes // (1024 * 1024)}MB)을 초과합니다.",
+            detail=(
+                f"Video size exceeds the limit "
+                f"({ws.max_source_bytes // (1024 * 1024)} MB)."
+            ),
         )

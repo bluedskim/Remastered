@@ -22,7 +22,8 @@
       return;
     }
     sendBtn.disabled = true;
-    sendStatus.textContent = remaining + "초 후 다시 요청할 수 있습니다.";
+    sendStatus.textContent =
+      "You can request another code in " + remaining + " seconds.";
   }
 
   function startCooldown() {
@@ -37,11 +38,11 @@
   sendBtn.addEventListener("click", async function () {
     const email = (emailInput.value || "").trim();
     if (!email) {
-      sendStatus.textContent = "이메일을 입력해 주세요.";
+      sendStatus.textContent = "Enter your email address.";
       return;
     }
     sendBtn.disabled = true;
-    sendStatus.textContent = "전송 중…";
+    sendStatus.textContent = "Sending…";
     try {
       const body = new URLSearchParams();
       body.set("login_id", email);
@@ -54,14 +55,15 @@
         return {};
       });
       if (!resp.ok) {
-        sendStatus.textContent = data.message || "인증코드 전송에 실패했습니다.";
+        sendStatus.textContent =
+          data.message || "Could not send verification code.";
         sendBtn.disabled = false;
         return;
       }
-      sendStatus.textContent = "인증코드를 이메일로 보냈습니다.";
+      sendStatus.textContent = "Verification code sent to your email.";
       startCooldown();
     } catch (e) {
-      sendStatus.textContent = "네트워크 오류가 발생했습니다.";
+      sendStatus.textContent = "Network error. Please try again.";
       sendBtn.disabled = false;
     }
   });
@@ -86,10 +88,10 @@
           return;
         }
         if (data.available) {
-          nicknameStatus.textContent = "사용 가능한 닉네임입니다.";
+          nicknameStatus.textContent = "Nickname is available.";
           nicknameStatus.className = "muted small nickname-ok";
         } else {
-          nicknameStatus.textContent = "이미 사용 중인 닉네임입니다.";
+          nicknameStatus.textContent = "Nickname is already taken.";
           nicknameStatus.className = "muted small nickname-bad";
         }
       } catch (e) {

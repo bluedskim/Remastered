@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Remaster YouTube audio to a reference track and compare original vs remastered in your browser." />
   <meta name="theme-color" content="#07060f" />
   <title>{% block title %}Remastered{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{{ static_url('favicon.svg') }}" />
@@ -22,18 +23,18 @@
         <span class="brand-mark" aria-hidden="true">◆</span>
         <span class="brand-text">
           <span class="brand-name">Remastered</span>
-          <span class="brand-tagline">YouTube 오디오를 레퍼런스에 맞춰 리마스터</span>
+          <span class="brand-tagline">Remaster YouTube audio to your reference track</span>
         </span>
       </a>
-      <nav class="site-auth" aria-label="계정">
+      <nav class="site-auth" aria-label="Account">
         {% if auth_user %}
         <span class="auth-nickname">{{ auth_user.nickname }}</span>
         <form class="auth-logout-form" method="post" action="/logout">
-          <button type="submit" class="btn btn-ghost btn-sm">로그아웃</button>
+          <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
         </form>
         {% else %}
-        <a class="auth-link" href="/login">로그인</a>
-        <a class="auth-link auth-link-primary" href="/signup">회원가입</a>
+        <a class="auth-link" href="/login">Log in</a>
+        <a class="auth-link auth-link-primary" href="/signup">Sign up</a>
         {% endif %}
       </nav>
     </header>
@@ -41,7 +42,7 @@
       {% block content %}{% endblock %}
     </main>
     <footer class="site-footer small muted">
-      <p>개인정보: {{ privacy_notice | default("세션·작업 메타데이터만 저장합니다.") }}</p>
+      <p>Privacy: {{ privacy_notice | default("We store session and job metadata only.") }}</p>
     </footer>
   </div>
 </body>
