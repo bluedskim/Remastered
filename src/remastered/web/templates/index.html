@@ -63,6 +63,26 @@
           autocomplete="off"
           disabled
         />
+        <input type="hidden" name="reference_youtube_title" id="reference_youtube_title" value="" />
+        <div id="ref-youtube-preview" class="ref-yt-preview" hidden>
+          <img
+            id="ref-yt-preview-img"
+            class="ref-yt-preview-img"
+            src=""
+            alt=""
+            width="320"
+            height="180"
+            loading="lazy"
+            decoding="async"
+          />
+          <div class="ref-yt-preview-text">
+            <p id="ref-yt-preview-title" class="ref-yt-preview-title"></p>
+            <p id="ref-yt-preview-author" class="ref-yt-preview-author muted small"></p>
+          </div>
+        </div>
+        <p id="ref-yt-preview-error" class="ref-yt-preview-error small muted" hidden>
+          Couldn't load video info
+        </p>
       </div>
 
       <div class="ref-source-panel" id="ref-panel-upload" role="tabpanel" aria-labelledby="ref-tab-upload" hidden>
@@ -145,7 +165,16 @@
     upload: document.getElementById("ref-panel-upload"),
   };
   const youtubeInput = document.getElementById("reference_youtube_url");
+  const youtubeTitleInput = document.getElementById("reference_youtube_title");
   const uploadInput = document.getElementById("reference_upload");
+  const ytPreview = document.getElementById("ref-youtube-preview");
+  const ytPreviewImg = document.getElementById("ref-yt-preview-img");
+  const ytPreviewTitle = document.getElementById("ref-yt-preview-title");
+  const ytPreviewAuthor = document.getElementById("ref-yt-preview-author");
+  const ytPreviewError = document.getElementById("ref-yt-preview-error");
+  let youtubeMetaTitle = "";
+  let youtubeMetaTimer = null;
+  let youtubeMetaRequest = 0;
 
   function extractVideoId(text) {
     const raw = (text || "").trim();
@@ -174,11 +203,77 @@
   }
 
   function youtubeSummary() {
+    if (youtubeMetaTitle) return "Reference: " + youtubeMetaTitle + " (YouTube URL)";
     const raw = (youtubeInput && youtubeInput.value || "").trim();
     if (!raw) return "Reference: YouTube URL";
     const id = extractVideoId(raw);
     if (id) return "Reference: " + id + " (YouTube URL)";
     return "Reference: " + raw + " (YouTube URL)";
+  }
+
+  function clearYoutubePreview() {
+    youtubeMetaTitle = "";
+    if (youtubeTitleInput) youtubeTitleInput.value = "";
+    if (ytPreview) ytPreview.setAttribute("hidden", "");
+    if (ytPreviewError) ytPreviewError.setAttribute("hidden", "");
+    if (ytPreviewImg) ytPreviewImg.removeAttribute("src");
+    if (ytPreviewTitle) ytPreviewTitle.textContent = "";
+    if (ytPreviewAuthor) ytPreviewAuthor.textContent = "";
+  }
+
+  function showYoutubePreview(meta) {
+    if (!meta || !ytPreview) return;
+    youtubeMetaTitle = meta.title || "";
+    if (youtubeTitleInput) youtubeTitleInput.value = youtubeMetaTitle;
+    if (ytPreviewImg) {
+      ytPreviewImg.src = meta.thumbnail_url || "";
+      ytPreviewImg.alt = meta.title ? "Thumbnail for " + meta.title : "";
+    }
+    if (ytPreviewTitle) ytPreviewTitle.textContent = meta.title || "";
+    if (ytPreviewAuthor) {
+      ytPreviewAuthor.textContent = meta.author_name || "";
+      ytPreviewAuthor.hidden = !meta.author_name;
+    }
+    if (ytPreviewError) ytPreviewError.setAttribute("hidden", "");
+    ytPreview.removeAttribute("hidden");
+    updateSummary();
+  }
+
+  function showYoutubePreviewError() {
+    if (ytPreview) ytPreview.setAttribute("hidden", "");
+    if (ytPreviewError) ytPreviewError.removeAttribute("hidden");
+  }
+
+  function scheduleYoutubeMetaFetch() {
+    if (youtubeMetaTimer) clearTimeout(youtubeMetaTimer);
+    youtubeMetaTimer = setTimeout(fetchYoutubeMeta, 400);
+  }
+
+  function fetchYoutubeMeta() {
+    const raw = (youtubeInput && youtubeInput.value || "").trim();
+    if (!raw || !extractVideoId(raw)) {
+      clearYoutubePreview();
+      updateSummary();
+      return;
+    }
+    const requestId = ++youtubeMetaRequest;
+    fetch("/api/youtube/meta?url=" + encodeURIComponent(raw))
+      .then(function (res) {
+        if (requestId !== youtubeMetaRequest) return null;
+        if (!res.ok) throw new Error("meta failed");
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data || requestId !== youtubeMetaRequest) return;
+        showYoutubePreview(data);
+      })
+      .catch(function () {
+        if (requestId !== youtubeMetaRequest) return;
+        youtubeMetaTitle = "";
+        if (youtubeTitleInput) youtubeTitleInput.value = "";
+        showYoutubePreviewError();
+        updateSummary();
+      });
   }
 
   function uploadSummary() {
@@ -246,6 +341,7 @@
     if (tab === "youtube") {
       if (youtubeInput && stored.youtubeUrl) youtubeInput.value = stored.youtubeUrl;
       activateMode("youtube", true);
+      scheduleYoutubeMetaFetch();
     } else if (tab === "upload") {
       if (uploadInput) uploadInput.value = "";
       activateMode("upload", true);
@@ -289,6 +385,11 @@
     });
     updateSummary();
     if (!skipPersist) writeStored();
+    if (mode === "youtube" && youtubeInput && youtubeInput.value.trim()) {
+      scheduleYoutubeMetaFetch();
+    } else if (mode !== "youtube") {
+      clearYoutubePreview();
+    }
   }
 
   tabs.forEach(function (tab) {
@@ -323,8 +424,10 @@
   }
   if (youtubeInput) {
     youtubeInput.addEventListener("input", function () {
+      clearYoutubePreview();
       updateSummary();
       writeStored();
+      scheduleYoutubeMetaFetch();
     });
   }
   if (uploadInput) {

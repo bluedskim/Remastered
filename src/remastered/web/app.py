@@ -49,6 +49,7 @@ from remastered.web.static_cache import StaticAndHtmlCacheMiddleware
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
 from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE, VALID_STEREO_WIDTH_MODES
+from remastered.web.youtube_meta import fetch_youtube_video_meta, try_fetch_youtube_video_meta
 from remastered.youtube_url import normalize_youtube_url
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -120,6 +121,20 @@ fastapi_application.add_middleware(StaticAndHtmlCacheMiddleware)
 @fastapi_application.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@fastapi_application.get("/api/youtube/meta")
+async def youtube_video_meta(url: str = "") -> JSONResponse:
+    raw = (url or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="URL is required.")
+    try:
+        meta = await run_in_threadpool(fetch_youtube_video_meta, raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return JSONResponse(meta.as_dict())
 
 
 @fastapi_application.get("/favicon.ico", include_in_schema=False)
@@ -281,6 +296,7 @@ async def create_job(
     reference_library: str = Form("shared"),
     reference_upload: UploadFile | None = File(None),
     reference_youtube_url: str = Form(""),
+    reference_youtube_title: str = Form(""),
     stereo_width_mode: str = Form(DEFAULT_STEREO_WIDTH_MODE),
 ) -> RedirectResponse:
     ip = client_ip(request)
@@ -289,6 +305,7 @@ async def create_job(
     reference_source_type = "preset"
     ref_youtube_url: str | None = None
     ref_video_id: str | None = None
+    ref_youtube_title: str | None = (reference_youtube_title or "").strip() or None
     owner_id = identity.job_owner_id
     owner_ref_dir = _owner_references_dir(owner_id)
 
@@ -323,6 +340,10 @@ async def create_job(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         reference_path = youtube_reference_path_key(ref_video_id)
         reference_source_type = "youtube"
+        if not ref_youtube_title:
+            meta = await run_in_threadpool(try_fetch_youtube_video_meta, ref_youtube_url)
+            if meta:
+                ref_youtube_title = meta.title
     else:
         name = Path(reference_name).name
         if name:
@@ -362,6 +383,7 @@ async def create_job(
         reference_source_type=reference_source_type,
         reference_youtube_url=ref_youtube_url,
         reference_video_id=ref_video_id,
+        reference_youtube_title=ref_youtube_title,
     )
     store.append_log(job_id, "Job added to the queue.")
     worker.enqueue(job_id)
