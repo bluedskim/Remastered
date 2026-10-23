@@ -95,5 +95,7 @@ def enrich_job_ui(job: dict[str, Any]) -> dict[str, Any]:
     data["reference_genre"] = ref["genre"]
     data["reference_label"] = ref["label"]
     data["reference_url"] = ref.get("url")
+    data["reference_thumbnail"] = ref.get("thumbnail_url")
+    data["reference_author"] = ref.get("author_name")
     data["stereo_width_label"] = stereo_width_label(job.get("stereo_width_mode"))
     return data

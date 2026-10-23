@@ -278,10 +278,13 @@ def test_job_page_renders_youtube_reference(youtube_ref_client: TestClient) -> N
     else:
         pytest.fail("job did not complete")
 
+    store.update_job(job_id, reference_youtube_title="Reference From YouTube")
     detail = youtube_ref_client.get(f"/jobs/{job_id}")
     assert detail.status_code == 200
     assert "Reference From YouTube" in detail.text
     assert "watch?v=abc123XYZ99" in detail.text
+    assert "ref-yt-thumb" in detail.text
+    assert "i.ytimg.com/vi/abc123XYZ99/hqdefault.jpg" in detail.text
 
 
 def test_worker_reference_download_failure_message(
