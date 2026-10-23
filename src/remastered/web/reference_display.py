@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from remastered.web.reference_youtube import is_youtube_reference_job
+
 
 def reference_display_meta(filename: str) -> dict[str, str]:
     """Derive genre badge and display label from a reference filename stem."""
@@ -20,6 +22,27 @@ def reference_display_for_job(reference_path: str | None) -> dict[str, str]:
     if not name:
         return {"genre": "Reference", "label": "—"}
     return reference_display_meta(name)
+
+
+def reference_ui_for_job(job: dict) -> dict[str, str | None]:
+    """UI fields for job reference display (preset, upload, or YouTube)."""
+    source_type = (job.get("reference_source_type") or "preset").strip()
+    if source_type == "youtube" or is_youtube_reference_job(job):
+        video_id = (job.get("reference_video_id") or "").strip()
+        title = (job.get("reference_youtube_title") or "").strip()
+        url = (job.get("reference_youtube_url") or "").strip()
+        label = title or (f"YouTube video {video_id}" if video_id else "YouTube video")
+        return {
+            "kind": "youtube",
+            "genre": "YouTube",
+            "label": label,
+            "url": url or None,
+        }
+    if source_type == "upload":
+        ref = reference_display_for_job(job.get("reference_path"))
+        return {"kind": "upload", "genre": ref["genre"], "label": ref["label"], "url": None}
+    ref = reference_display_for_job(job.get("reference_path"))
+    return {"kind": "preset", "genre": ref["genre"], "label": ref["label"], "url": None}
 
 
 def build_reference_options(shared: list[str], user: list[str]) -> list[dict[str, str]]:

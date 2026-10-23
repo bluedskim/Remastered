@@ -804,6 +804,22 @@ button,
   color: var(--muted);
 }
 
+.job-reference-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ref-youtube-label {
+  display: block;
+  margin-top: 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 .ref-genre--compact {
   font-size: 0.68rem;
   padding: 0.12rem 0.4rem;

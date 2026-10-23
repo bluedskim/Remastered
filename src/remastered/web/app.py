@@ -34,6 +34,11 @@ from remastered.web.notices import rights_notice_lines, rights_notice_short
 from remastered.web.job_titles import job_display_title
 from remastered.web.job_ui import enrich_job_ui
 from remastered.web.reference_display import build_reference_options
+from remastered.web.reference_youtube import (
+    ensure_reference_differs_from_source,
+    parse_reference_youtube_url,
+    youtube_reference_path_key,
+)
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.static_assets import init_static_hashes, static_url
 from remastered.web.static_cache import StaticAndHtmlCacheMiddleware
@@ -270,13 +275,19 @@ async def create_job(
     reference_name: str = Form(""),
     reference_source: str = Form("shared"),
     reference_upload: UploadFile | None = File(None),
+    reference_youtube_url: str = Form(""),
     stereo_width_mode: str = Form(DEFAULT_STEREO_WIDTH_MODE),
 ) -> RedirectResponse:
     ip = client_ip(request)
     ws = _web_settings()
-    reference_path: Path | None = None
+    reference_path: Path | str | None = None
+    reference_source_type = "preset"
+    ref_youtube_url: str | None = None
+    ref_video_id: str | None = None
     owner_id = identity.job_owner_id
     owner_ref_dir = _owner_references_dir(owner_id)
+
+    youtube_url = normalize_youtube_url(youtube_url)
 
     if reference_upload and reference_upload.filename:
         safe_name = Path(reference_upload.filename).name
@@ -289,21 +300,30 @@ async def create_job(
 
         await run_in_threadpool(_write_upload)
         reference_path = dest
-    elif reference_name:
-        name = Path(reference_name).name
-        if reference_source == "user":
-            candidate = owner_ref_dir / name
-        else:
-            candidate = ws.references_path / name
-        if candidate.is_file():
-            reference_path = candidate
+        reference_source_type = "upload"
+    else:
+        ref_url_raw = (reference_youtube_url or "").strip()
+        if ref_url_raw:
+            try:
+                ref_youtube_url, ref_video_id = parse_reference_youtube_url(ref_url_raw)
+                ensure_reference_differs_from_source(youtube_url, ref_youtube_url)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            reference_path = youtube_reference_path_key(ref_video_id)
+            reference_source_type = "youtube"
+        elif reference_name:
+            name = Path(reference_name).name
+            if reference_source == "user":
+                candidate = owner_ref_dir / name
+            else:
+                candidate = ws.references_path / name
+            if candidate.is_file():
+                reference_path = candidate
 
     if reference_path is None:
         raise HTTPException(
             status_code=400, detail="Select or upload a reference track."
         )
-
-    youtube_url = normalize_youtube_url(youtube_url)
     duplicate_id = await run_in_threadpool(
         partial(
             store.find_recent_duplicate_job,
@@ -329,6 +349,9 @@ async def create_job(
         upload_enabled=False,
         client_ip=ip,
         stereo_width_mode=stereo_width_mode,
+        reference_source_type=reference_source_type,
+        reference_youtube_url=ref_youtube_url,
+        reference_video_id=ref_video_id,
     )
     store.append_log(job_id, "Job added to the queue.")
     worker.enqueue(job_id)
