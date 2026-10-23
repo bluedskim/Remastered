@@ -1,6 +1,10 @@
 <div class="job-reference" aria-label="Reference track">
   <span class="job-reference-key">Reference</span>
   <span class="ref-genre ref-genre--compact">{{ job.reference_genre }}</span>
+  {% if job.reference_kind == "youtube" and job.reference_url %}
+  <a class="ref-title job-reference-link" href="{{ job.reference_url }}" target="_blank" rel="noopener noreferrer">{{ job.reference_label }}</a>
+  {% else %}
   <span class="ref-title">{{ job.reference_label }}</span>
+  {% endif %}
   <span class="job-stereo-width muted small">Stereo width: {{ job.stereo_width_label }}</span>
 </div>

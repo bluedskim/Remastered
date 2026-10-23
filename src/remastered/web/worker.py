@@ -15,6 +15,7 @@ from remastered.web.db import WEB_STAGES, JobStore
 from remastered.web.limits import validate_youtube_source_limits
 from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE, VALID_STEREO_WIDTH_MODES
 from remastered.web.pipeline_web import run_web_master_pipeline
+from remastered.web.reference_resolve import REFERENCE_DOWNLOAD_FAILED, resolve_reference_wav
 from remastered.web.stream_audio import transcode_wav_for_playback
 
 logger = logging.getLogger(__name__)
@@ -116,9 +117,34 @@ class JobWorker:
                 )
                 return
 
-            reference = Path(job["reference_path"])
-            if not reference.is_file():
-                raise FileNotFoundError(f"Reference file not found: {reference}")
+            try:
+                reference, ref_title = resolve_reference_wav(
+                    job, self.settings, log=log
+                )
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+                log(detail)
+                self.store.update_job(
+                    job_id,
+                    status="failed",
+                    error=detail,
+                    stage_state=stage_state,
+                )
+                return
+            except RuntimeError as exc:
+                message = str(exc).split(" (", 1)[0]
+                if not message.startswith("Could not download"):
+                    message = REFERENCE_DOWNLOAD_FAILED
+                log(message)
+                self.store.update_job(
+                    job_id,
+                    status="failed",
+                    error=message,
+                    stage_state=stage_state,
+                )
+                return
+            if ref_title:
+                self.store.update_job(job_id, reference_youtube_title=ref_title)
 
             user_work = self.settings.work_dir / "users" / user_id
             user_work.mkdir(parents=True, exist_ok=True)

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from remastered.stereo_width import stereo_width_label
-from remastered.web.reference_display import reference_display_for_job
+from remastered.web.reference_display import reference_ui_for_job
 from remastered.youtube_url import extract_youtube_video_id
 
 _PROGRESS_LABELS = (
@@ -90,8 +90,10 @@ def enrich_job_ui(job: dict[str, Any]) -> dict[str, Any]:
     data["status_pill_class"] = status_pill_class(job.get("status") or "")
     data["progress_steps"] = job_progress_steps(job)
     data["youtube_thumbnail"] = youtube_thumbnail_url(job)
-    ref = reference_display_for_job(job.get("reference_path"))
+    ref = reference_ui_for_job(job)
+    data["reference_kind"] = ref["kind"]
     data["reference_genre"] = ref["genre"]
     data["reference_label"] = ref["label"]
+    data["reference_url"] = ref.get("url")
     data["stereo_width_label"] = stereo_width_label(job.get("stereo_width_mode"))
     return data

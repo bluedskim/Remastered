@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -108,6 +108,10 @@ class JobStore:
                     files_cleaned INTEGER NOT NULL DEFAULT 0,
                     client_ip TEXT,
                     stereo_width_mode TEXT NOT NULL DEFAULT 'follow_reference',
+                    reference_source_type TEXT NOT NULL DEFAULT 'preset',
+                    reference_youtube_url TEXT,
+                    reference_video_id TEXT,
+                    reference_youtube_title TEXT,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
                 """
@@ -130,6 +134,22 @@ class JobStore:
                     ALTER TABLE jobs ADD COLUMN stereo_width_mode TEXT NOT NULL DEFAULT 'follow_reference'
                     """
                 )
+            cols = self._job_columns(conn)
+            if "reference_source_type" not in cols:
+                conn.execute(
+                    """
+                    ALTER TABLE jobs ADD COLUMN reference_source_type TEXT NOT NULL DEFAULT 'preset'
+                    """
+                )
+            cols = self._job_columns(conn)
+            if "reference_youtube_url" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN reference_youtube_url TEXT")
+            cols = self._job_columns(conn)
+            if "reference_video_id" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN reference_video_id TEXT")
+            cols = self._job_columns(conn)
+            if "reference_youtube_title" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN reference_youtube_title TEXT")
             self._backfill_legacy_jobs(conn)
 
         self._backfill_job_titles_from_logs(conn)
@@ -355,6 +375,10 @@ class JobStore:
         upload_enabled: bool,
         client_ip: str | None = None,
         stereo_width_mode: str = DEFAULT_STEREO_WIDTH_MODE,
+        reference_source_type: str = "preset",
+        reference_youtube_url: str | None = None,
+        reference_video_id: str | None = None,
+        reference_youtube_title: str | None = None,
     ) -> str:
         job_id = uuid4().hex
         now = _utc_now()
@@ -368,8 +392,10 @@ class JobStore:
                 INSERT INTO jobs (
                     id, user_id, created_at, updated_at, status, stage, youtube_url,
                     reference_path, title, description, privacy, upload_enabled,
-                    stage_state, client_ip, stereo_width_mode
-                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    stage_state, client_ip, stereo_width_mode,
+                    reference_source_type, reference_youtube_url, reference_video_id,
+                    reference_youtube_title
+                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job_id,
@@ -385,6 +411,10 @@ class JobStore:
                     json.dumps(stage_state),
                     client_ip,
                     stereo_width_mode,
+                    reference_source_type,
+                    reference_youtube_url,
+                    reference_video_id,
+                    reference_youtube_title,
                 ),
             )
         return job_id
@@ -413,6 +443,8 @@ class JobStore:
             "video_path",
             "stage_state",
             "files_cleaned",
+            "reference_youtube_title",
+            "reference_path",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
