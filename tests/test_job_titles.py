@@ -4,7 +4,11 @@ import sqlite3
 from pathlib import Path
 
 from remastered.web.db import JobStore
-from remastered.web.job_titles import job_display_title, parse_title_from_log_message
+from remastered.web.job_titles import (
+    job_display_title,
+    parse_title_from_log_message,
+    youtube_video_label,
+)
 
 
 def test_job_display_title_pending() -> None:
@@ -15,6 +19,21 @@ def test_job_display_title_pending() -> None:
 
 def test_job_display_title_from_field() -> None:
     assert job_display_title({"status": "completed", "title": "Yesterday"}) == "Yesterday"
+
+
+def test_job_display_title_failed_without_title_uses_video_id() -> None:
+    long_url = (
+        "https://www.youtube.com/watch?v=pyc5RAe0734"
+        "&list=RDpyc5RAe0734&start_radio=1"
+    )
+    job = {
+        "status": "failed",
+        "title": "",
+        "youtube_url": long_url,
+        "source_video_id": "",
+    }
+    assert job_display_title(job) == "YouTube video pyc5RAe0734"
+    assert youtube_video_label(job) == "YouTube video pyc5RAe0734"
 
 
 def test_parse_title_from_log_message() -> None:
