@@ -16,43 +16,62 @@
       <input class="input-lg" type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=..." required />
     </div>
 
-    <div class="field">
-      <span class="field-label">Reference track</span>
-      {% if reference_options %}
-      <div class="ref-picker" role="radiogroup" aria-label="Choose reference">
-        {% for opt in reference_options %}
-        <label class="ref-card">
-          <input
-            type="radio"
-            name="reference_name"
-            value="{{ opt.name }}"
-            data-reference-source="{{ opt.source }}"
-            {% if loop.first %}checked{% endif %}
-          />
-          <span class="ref-card-body">
-            <span class="ref-genre">{{ opt.genre }}</span>
-            <span class="ref-title">{{ opt.label }}</span>
-          </span>
-        </label>
-        {% endfor %}
+    <div class="field ref-source-field">
+      <span class="field-label" id="ref-source-label">Reference track</span>
+      <input type="hidden" name="reference_source" id="reference_source_mode" value="preset" />
+      <div class="ref-source-tabs" role="tablist" aria-labelledby="ref-source-label">
+        <button type="button" class="ref-source-tab" role="tab" id="ref-tab-preset" aria-selected="true" aria-controls="ref-panel-preset" data-ref-mode="preset">Preset</button>
+        <button type="button" class="ref-source-tab" role="tab" id="ref-tab-youtube" aria-selected="false" aria-controls="ref-panel-youtube" data-ref-mode="youtube" tabindex="-1">YouTube URL</button>
+        <button type="button" class="ref-source-tab" role="tab" id="ref-tab-upload" aria-selected="false" aria-controls="ref-panel-upload" data-ref-mode="upload" tabindex="-1">Upload file</button>
       </div>
-      {% else %}
-      <p class="muted small">No shared references available. Upload a file below.</p>
-      <input type="hidden" name="reference_name" value="" />
-      {% endif %}
-      <input type="hidden" name="reference_source" value="{% if reference_options %}{{ reference_options[0].source }}{% else %}shared{% endif %}" id="reference_source" />
-      <label class="ref-youtube-label" for="reference_youtube_url">Reference YouTube URL</label>
-      <input
-        class="input-lg"
-        type="url"
-        id="reference_youtube_url"
-        name="reference_youtube_url"
-        placeholder="https://www.youtube.com/watch?v=..."
-        autocomplete="off"
-      />
-      <p class="hint small muted">
-        Optional. If set, this video's audio is used as the reference (overrides the preset above).
-        An uploaded file still takes priority.
+
+      <div class="ref-source-panel" id="ref-panel-preset" role="tabpanel" aria-labelledby="ref-tab-preset">
+        {% if reference_options %}
+        <div class="ref-picker" role="radiogroup" aria-label="Choose preset reference">
+          {% for opt in reference_options %}
+          <label class="ref-card">
+            <input
+              type="radio"
+              name="reference_name"
+              value="{{ opt.name }}"
+              data-reference-library="{{ opt.source }}"
+              data-ref-label="{{ opt.label | e }}"
+              {% if loop.first %}checked{% endif %}
+            />
+            <span class="ref-card-body">
+              <span class="ref-genre">{{ opt.genre }}</span>
+              <span class="ref-title">{{ opt.label }}</span>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="muted small">No preset references available. Use YouTube URL or upload a file.</p>
+        <input type="hidden" name="reference_name" value="" data-ref-label="" />
+        {% endif %}
+        <input type="hidden" name="reference_library" id="reference_library" value="{% if reference_options %}{{ reference_options[0].source }}{% else %}shared{% endif %}" />
+      </div>
+
+      <div class="ref-source-panel" id="ref-panel-youtube" role="tabpanel" aria-labelledby="ref-tab-youtube" hidden>
+        <label class="visually-hidden" for="reference_youtube_url">Reference YouTube URL</label>
+        <input
+          class="input-lg"
+          type="url"
+          id="reference_youtube_url"
+          name="reference_youtube_url"
+          placeholder="https://www.youtube.com/watch?v=..."
+          autocomplete="off"
+          disabled
+        />
+      </div>
+
+      <div class="ref-source-panel" id="ref-panel-upload" role="tabpanel" aria-labelledby="ref-tab-upload" hidden>
+        <label for="reference_upload">Reference audio file</label>
+        <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" disabled />
+      </div>
+
+      <p class="ref-source-summary small" id="ref-source-summary" aria-live="polite">
+        Reference: {% if reference_options %}{{ reference_options[0].label }} (preset){% else %}— (preset){% endif %}
       </p>
     </div>
 
@@ -74,12 +93,6 @@
           </span>
         </label>
       </div>
-    </div>
-
-    <div class="field field-upload">
-      <label for="reference_upload">Upload your reference</label>
-      <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" />
-      <p class="hint small muted">If selected, the uploaded file is used as the reference for this job (highest priority).</p>
     </div>
 
     <p class="limits-hint small muted">
@@ -122,15 +135,207 @@
 <script>
 (function () {
   const form = document.getElementById("create-job-form");
-  const picker = form.querySelector(".ref-picker");
-  if (picker) {
-    picker.addEventListener("change", function (e) {
-      const input = e.target;
-      if (input.name !== "reference_name" || input.type !== "radio") return;
-      const source = input.getAttribute("data-reference-source");
-      if (source) document.getElementById("reference_source").value = source;
+  const modeInput = document.getElementById("reference_source_mode");
+  const libraryInput = document.getElementById("reference_library");
+  const summaryEl = document.getElementById("ref-source-summary");
+  const tabs = Array.from(form.querySelectorAll(".ref-source-tab"));
+  const panels = {
+    preset: document.getElementById("ref-panel-preset"),
+    youtube: document.getElementById("ref-panel-youtube"),
+    upload: document.getElementById("ref-panel-upload"),
+  };
+  const youtubeInput = document.getElementById("reference_youtube_url");
+  const uploadInput = document.getElementById("reference_upload");
+
+  function extractVideoId(text) {
+    const raw = (text || "").trim();
+    if (!raw) return "";
+    try {
+      const u = new URL(raw);
+      const host = u.hostname.replace(/^www\./, "");
+      if (host === "youtu.be") return (u.pathname.split("/").filter(Boolean)[0] || "").slice(0, 11);
+      if (host.includes("youtube.com")) {
+        if (u.pathname.startsWith("/shorts/")) {
+          return u.pathname.split("/")[2] || "";
+        }
+        return u.searchParams.get("v") || "";
+      }
+    } catch (e) {
+      return "";
+    }
+    return "";
+  }
+
+  function presetSummary() {
+    const checked = form.querySelector('input[name="reference_name"]:checked');
+    if (!checked) return "Reference: — (preset)";
+    const label = checked.getAttribute("data-ref-label") || checked.value || "—";
+    return "Reference: " + label + " (preset)";
+  }
+
+  function youtubeSummary() {
+    const raw = (youtubeInput && youtubeInput.value || "").trim();
+    if (!raw) return "Reference: YouTube URL";
+    const id = extractVideoId(raw);
+    if (id) return "Reference: " + id + " (YouTube URL)";
+    return "Reference: " + raw + " (YouTube URL)";
+  }
+
+  function uploadSummary() {
+    const file = uploadInput && uploadInput.files && uploadInput.files[0];
+    if (!file) return "Reference: choose a file";
+    return "Reference: " + file.name + " (upload)";
+  }
+
+  const STORAGE_KEY = "remastered.reference";
+
+  function readStored() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== "object") return null;
+      return data;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeStored() {
+    try {
+      const mode = modeInput.value || "preset";
+      const payload = { tab: mode };
+      if (mode === "preset") {
+        const checked = form.querySelector('input[name="reference_name"]:checked');
+        payload.presetName = checked ? checked.value : "";
+        payload.presetLibrary = libraryInput ? libraryInput.value : "shared";
+      } else if (mode === "youtube") {
+        payload.youtubeUrl = youtubeInput ? youtubeInput.value.trim() : "";
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch (err) {
+      /* ignore quota / private mode */
+    }
+  }
+
+  function selectPresetByName(name) {
+    const inputs = form.querySelectorAll('input[name="reference_name"]');
+    if (!inputs.length) return;
+    let target = null;
+    if (name) {
+      inputs.forEach(function (input) {
+        if (input.value === name) target = input;
+      });
+    }
+    if (!target) target = inputs[0];
+    target.checked = true;
+    const lib = target.getAttribute("data-reference-library");
+    if (lib && libraryInput) libraryInput.value = lib;
+  }
+
+  function restoreFromStorage() {
+    const stored = readStored();
+    if (!stored || !stored.tab) {
+      activateMode("preset", true);
+      updateSummary();
+      return;
+    }
+    let tab = stored.tab;
+    if (tab !== "preset" && tab !== "youtube" && tab !== "upload") tab = "preset";
+
+    if (tab === "youtube") {
+      if (youtubeInput && stored.youtubeUrl) youtubeInput.value = stored.youtubeUrl;
+      activateMode("youtube", true);
+    } else if (tab === "upload") {
+      if (uploadInput) uploadInput.value = "";
+      activateMode("upload", true);
+    } else {
+      selectPresetByName(stored.presetName || "");
+      if (stored.presetLibrary && libraryInput) libraryInput.value = stored.presetLibrary;
+      activateMode("preset", true);
+    }
+    updateSummary();
+  }
+
+  function updateSummary() {
+    const mode = modeInput.value || "preset";
+    if (mode === "youtube") summaryEl.textContent = youtubeSummary();
+    else if (mode === "upload") summaryEl.textContent = uploadSummary();
+    else summaryEl.textContent = presetSummary();
+  }
+
+  function setPanelEnabled(panel, enabled) {
+    if (!panel) return;
+    panel.querySelectorAll("input, select, textarea, button").forEach(function (el) {
+      if (el.classList.contains("ref-source-tab")) return;
+      el.disabled = !enabled;
     });
   }
+
+  function activateMode(mode, skipPersist) {
+    if (!panels[mode]) mode = "preset";
+    modeInput.value = mode;
+    tabs.forEach(function (tab) {
+      const active = tab.getAttribute("data-ref-mode") === mode;
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+      tab.tabIndex = active ? 0 : -1;
+    });
+    Object.keys(panels).forEach(function (key) {
+      const panel = panels[key];
+      const active = key === mode;
+      if (active) panel.removeAttribute("hidden");
+      else panel.setAttribute("hidden", "");
+      setPanelEnabled(panel, active);
+    });
+    updateSummary();
+    if (!skipPersist) writeStored();
+  }
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      activateMode(tab.getAttribute("data-ref-mode") || "preset");
+    });
+    tab.addEventListener("keydown", function (e) {
+      const idx = tabs.indexOf(tab);
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        tabs[(idx + 1) % tabs.length].focus();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        tabs[(idx - 1 + tabs.length) % tabs.length].focus();
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        activateMode(tab.getAttribute("data-ref-mode") || "preset");
+      }
+    });
+  });
+
+  const presetPicker = panels.preset && panels.preset.querySelector(".ref-picker");
+  if (presetPicker) {
+    presetPicker.addEventListener("change", function (e) {
+      const input = e.target;
+      if (input.name !== "reference_name" || input.type !== "radio") return;
+      const lib = input.getAttribute("data-reference-library");
+      if (lib && libraryInput) libraryInput.value = lib;
+      updateSummary();
+      writeStored();
+    });
+  }
+  if (youtubeInput) {
+    youtubeInput.addEventListener("input", function () {
+      updateSummary();
+      writeStored();
+    });
+  }
+  if (uploadInput) {
+    uploadInput.addEventListener("change", function () {
+      updateSummary();
+      writeStored();
+    });
+  }
+
+  restoreFromStorage();
+
   const btn = document.getElementById("create-job-submit");
   let submitted = false;
   form.addEventListener("submit", function (e) {
@@ -138,6 +343,7 @@
       e.preventDefault();
       return;
     }
+    writeStored();
     submitted = true;
     btn.disabled = true;
     btn.classList.add("is-loading");

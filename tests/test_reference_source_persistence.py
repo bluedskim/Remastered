@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import socket
+import threading
+import time
+from pathlib import Path
+
+import httpx
+import pytest
+import uvicorn
+from playwright.sync_api import sync_playwright
+
+from remastered.web.app import fastapi_application
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+@pytest.fixture(scope="module")
+def ref_persist_site(tmp_path_factory):
+    from _pytest.monkeypatch import MonkeyPatch
+
+    monkeypatch_module = MonkeyPatch()
+    work = tmp_path_factory.mktemp("ref_persist") / "work"
+    refs = tmp_path_factory.mktemp("ref_persist_refs")
+    work.mkdir(parents=True, exist_ok=True)
+    refs.mkdir(parents=True, exist_ok=True)
+    (refs / "ref.wav").write_bytes(b"RIFF" + b"\x00" * 16)
+    (refs / "Pop - Artist - Track.wav").write_bytes(b"RIFF" + b"\x00" * 16)
+
+    monkeypatch_module.setenv("REMASTERED_WORK_DIR", str(work))
+    monkeypatch_module.setenv("REMASTERED_WEB_REFERENCES_DIR", str(refs))
+    monkeypatch_module.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "0")
+    monkeypatch_module.setenv("REMASTERED_MAIL_MODE", "log")
+    monkeypatch_module.setenv(
+        "REMASTERED_JWT_SECRET",
+        "test-jwt-secret-key-at-least-32-bytes!!",
+    )
+
+    port = _free_port()
+    config = uvicorn.Config(
+        fastapi_application,
+        host="127.0.0.1",
+        port=port,
+        log_level="error",
+    )
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{port}"
+
+    for _ in range(80):
+        try:
+            if httpx.get(f"{base}/health", timeout=0.5).status_code == 200:
+                break
+        except Exception:
+            time.sleep(0.05)
+    else:
+        pytest.fail("server did not start")
+
+    yield base
+
+    server.should_exit = True
+    monkeypatch_module.undo()
+    thread.join(timeout=5)
+
+
+def test_restore_youtube_reference_after_reload(ref_persist_site: str) -> None:
+    url = "https://www.youtube.com/watch?v=abc123XYZ99"
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(viewport={"width": 390, "height": 800})
+        page = context.new_page()
+        page.goto(ref_persist_site + "/", wait_until="networkidle")
+
+        page.locator("#ref-tab-youtube").click()
+        page.locator("#reference_youtube_url").fill(url)
+        page.wait_for_function(
+            """() => {
+              const s = document.getElementById('ref-source-summary');
+              return s && s.textContent.includes('abc123XYZ99');
+            }"""
+        )
+
+        page.reload(wait_until="networkidle")
+
+        assert page.locator("#ref-tab-youtube").get_attribute("aria-selected") == "true"
+        assert page.locator("#reference_youtube_url").input_value() == url
+        summary = page.locator("#ref-source-summary").inner_text()
+        assert "abc123XYZ99" in summary
+        assert page.locator("#youtube_url").input_value() == ""
+
+        browser.close()
+
+
+def test_restore_preset_after_reload(ref_persist_site: str) -> None:
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(viewport={"width": 390, "height": 800})
+        page = context.new_page()
+        page.goto(ref_persist_site + "/", wait_until="networkidle")
+
+        page.locator(
+            'label.ref-card:has(input[name="reference_name"][value="Pop - Artist - Track.wav"])'
+        ).click()
+        page.wait_for_function(
+            """() => {
+              const s = document.getElementById('ref-source-summary');
+              return s && s.textContent.includes('Artist') && s.textContent.includes('preset');
+            }"""
+        )
+
+        page.reload(wait_until="networkidle")
+
+        assert page.locator("#ref-tab-preset").get_attribute("aria-selected") == "true"
+        assert (
+            page.locator('input[name="reference_name"][value="Pop - Artist - Track.wav"]').is_checked()
+        )
+        summary = page.locator("#ref-source-summary").inner_text()
+        assert "Artist" in summary
+        assert "(preset)" in summary
+
+        browser.close()
+
+
+def test_restore_upload_tab_without_file(ref_persist_site: str) -> None:
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 390, "height": 800})
+        page.goto(ref_persist_site + "/", wait_until="networkidle")
+        page.locator("#ref-tab-upload").click()
+        page.wait_for_function(
+            """() => document.getElementById('ref-source-summary').textContent.includes('choose a file')"""
+        )
+        page.reload(wait_until="networkidle")
+        assert page.locator("#ref-tab-upload").get_attribute("aria-selected") == "true"
+        assert page.locator("#ref-source-summary").inner_text() == "Reference: choose a file"
+        browser.close()

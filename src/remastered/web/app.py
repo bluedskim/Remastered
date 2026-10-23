@@ -35,6 +35,10 @@ from remastered.web.job_titles import job_display_title
 from remastered.web.job_ui import enrich_job_ui
 from remastered.web.reference_display import build_reference_options
 from remastered.web.reference_youtube import (
+    CHOOSE_REFERENCE_FILE,
+    ENTER_REFERENCE_YOUTUBE_URL,
+    REFERENCE_SOURCE_MODES,
+    SELECT_PRESET_REFERENCE,
     ensure_reference_differs_from_source,
     parse_reference_youtube_url,
     youtube_reference_path_key,
@@ -273,7 +277,8 @@ async def create_job(
     worker: JobWorker = Depends(get_worker),
     youtube_url: str = Form(...),
     reference_name: str = Form(""),
-    reference_source: str = Form("shared"),
+    reference_source: str = Form("preset"),
+    reference_library: str = Form("shared"),
     reference_upload: UploadFile | None = File(None),
     reference_youtube_url: str = Form(""),
     stereo_width_mode: str = Form(DEFAULT_STEREO_WIDTH_MODE),
@@ -289,7 +294,13 @@ async def create_job(
 
     youtube_url = normalize_youtube_url(youtube_url)
 
-    if reference_upload and reference_upload.filename:
+    mode = (reference_source or "preset").strip().lower()
+    if mode not in REFERENCE_SOURCE_MODES:
+        mode = "preset"
+
+    if mode == "upload":
+        if not reference_upload or not reference_upload.filename:
+            raise HTTPException(status_code=400, detail=CHOOSE_REFERENCE_FILE)
         safe_name = Path(reference_upload.filename).name
         dest = owner_ref_dir / safe_name
         body = await reference_upload.read()
@@ -301,29 +312,28 @@ async def create_job(
         await run_in_threadpool(_write_upload)
         reference_path = dest
         reference_source_type = "upload"
-    else:
+    elif mode == "youtube":
         ref_url_raw = (reference_youtube_url or "").strip()
-        if ref_url_raw:
-            try:
-                ref_youtube_url, ref_video_id = parse_reference_youtube_url(ref_url_raw)
-                ensure_reference_differs_from_source(youtube_url, ref_youtube_url)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            reference_path = youtube_reference_path_key(ref_video_id)
-            reference_source_type = "youtube"
-        elif reference_name:
-            name = Path(reference_name).name
-            if reference_source == "user":
+        if not ref_url_raw:
+            raise HTTPException(status_code=400, detail=ENTER_REFERENCE_YOUTUBE_URL)
+        try:
+            ref_youtube_url, ref_video_id = parse_reference_youtube_url(ref_url_raw)
+            ensure_reference_differs_from_source(youtube_url, ref_youtube_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        reference_path = youtube_reference_path_key(ref_video_id)
+        reference_source_type = "youtube"
+    else:
+        name = Path(reference_name).name
+        if name:
+            if reference_library == "user":
                 candidate = owner_ref_dir / name
             else:
                 candidate = ws.references_path / name
             if candidate.is_file():
                 reference_path = candidate
-
-    if reference_path is None:
-        raise HTTPException(
-            status_code=400, detail="Select or upload a reference track."
-        )
+        if reference_path is None:
+            raise HTTPException(status_code=400, detail=SELECT_PRESET_REFERENCE)
     duplicate_id = await run_in_threadpool(
         partial(
             store.find_recent_duplicate_job,
