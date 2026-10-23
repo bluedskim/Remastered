@@ -5,9 +5,14 @@ from remastered.youtube_url import extract_youtube_video_id, normalize_youtube_u
 YOUTUBE_REF_PATH_PREFIX = "youtube-ref:"
 
 INVALID_REFERENCE_URL = "Enter a valid YouTube reference URL."
+ENTER_REFERENCE_YOUTUBE_URL = "Enter a reference YouTube URL."
+CHOOSE_REFERENCE_FILE = "Choose a reference file."
+SELECT_PRESET_REFERENCE = "Select a preset reference track."
 SAME_VIDEO_ERROR = (
     "The reference video cannot be the same as the source video."
 )
+
+REFERENCE_SOURCE_MODES = frozenset({"preset", "youtube", "upload"})
 
 
 def youtube_reference_path_key(video_id: str) -> str:

@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from remastered.web.db import SCHEMA_VERSION, JobStore
 from remastered.web.reference_display import reference_ui_for_job
 from remastered.web.reference_youtube import (
+    CHOOSE_REFERENCE_FILE,
+    ENTER_REFERENCE_YOUTUBE_URL,
     SAME_VIDEO_ERROR,
     ensure_reference_differs_from_source,
     parse_reference_youtube_url,
@@ -162,19 +164,24 @@ def youtube_ref_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestC
         yield test_client
 
 
-def test_form_shows_reference_youtube_field(youtube_ref_client: TestClient) -> None:
+def test_form_shows_reference_source_tabs(youtube_ref_client: TestClient) -> None:
     home = youtube_ref_client.get("/")
-    assert 'id="reference_youtube_url"' in home.text
-    assert "this video's audio is used as the reference" in home.text
+    assert 'role="tablist"' in home.text
+    assert 'id="ref-tab-preset"' in home.text
+    assert 'id="ref-tab-youtube"' in home.text
+    assert 'id="ref-tab-upload"' in home.text
+    assert 'name="reference_source"' in home.text
+    assert 'id="ref-source-summary"' in home.text
+    assert "this video's audio is used as the reference" not in home.text
 
 
-def test_create_job_reference_youtube_overrides_preset(youtube_ref_client: TestClient) -> None:
+def test_create_job_reference_youtube_mode(youtube_ref_client: TestClient) -> None:
     store = youtube_ref_client.app.state.store
     resp = youtube_ref_client.post(
         "/jobs",
         data={
             "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            "reference_name": "ref.wav",
+            "reference_source": "youtube",
             "reference_youtube_url": "https://www.youtube.com/watch?v=abc123XYZ99",
         },
         follow_redirects=False,
@@ -188,12 +195,59 @@ def test_create_job_reference_youtube_overrides_preset(youtube_ref_client: TestC
     assert job["reference_path"] == "youtube-ref:abc123XYZ99"
 
 
+def test_preset_mode_ignores_youtube_url(youtube_ref_client: TestClient) -> None:
+    store = youtube_ref_client.app.state.store
+    resp = youtube_ref_client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "reference_source": "preset",
+            "reference_name": "ref.wav",
+            "reference_youtube_url": "https://www.youtube.com/watch?v=abc123XYZ99",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    job = store.get_job(resp.headers["location"].split("/")[-1])
+    assert job is not None
+    assert job["reference_source_type"] == "preset"
+    assert "ref.wav" in job["reference_path"]
+
+
+def test_youtube_mode_requires_url(youtube_ref_client: TestClient) -> None:
+    resp = youtube_ref_client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "reference_source": "youtube",
+            "reference_youtube_url": "",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    assert ENTER_REFERENCE_YOUTUBE_URL in resp.text
+
+
+def test_upload_mode_requires_file(youtube_ref_client: TestClient) -> None:
+    resp = youtube_ref_client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "reference_source": "upload",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    assert CHOOSE_REFERENCE_FILE in resp.text
+
+
 def test_same_source_and_reference_rejected(youtube_ref_client: TestClient) -> None:
     vid = "dQw4w9WgXcQ"
     resp = youtube_ref_client.post(
         "/jobs",
         data={
             "youtube_url": f"https://www.youtube.com/watch?v={vid}",
+            "reference_source": "youtube",
             "reference_youtube_url": f"https://youtu.be/{vid}",
         },
         follow_redirects=False,
@@ -209,6 +263,7 @@ def test_job_page_renders_youtube_reference(youtube_ref_client: TestClient) -> N
         "/jobs",
         data={
             "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "reference_source": "youtube",
             "reference_youtube_url": "https://www.youtube.com/watch?v=abc123XYZ99",
         },
         follow_redirects=False,
