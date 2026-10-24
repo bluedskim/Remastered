@@ -160,7 +160,7 @@ def test_home_job_list_fits_viewport(mobile_site, width: int) -> None:
         page = context.new_page()
         page.goto(f"{base}/", wait_until="networkidle")
 
-        fits = page.evaluate(
+        layout_ok = page.evaluate(
             """() => {
               const doc = document.documentElement;
               if (doc.scrollWidth > doc.clientWidth + 1) return false;
@@ -169,11 +169,21 @@ def test_home_job_list_fits_viewport(mobile_site, width: int) -> None:
               const cards = document.querySelectorAll('.job-card');
               for (const card of cards) {
                 if (card.scrollWidth > card.clientWidth + 1) return false;
+                if (!card.querySelector('.job-card-footer .status-pill')) return false;
+                if (card.querySelector('.job-card-head')) return false;
               }
+              const longTitle = document.querySelector('.job-card-title');
+              const body = longTitle && longTitle.closest('.job-card-body');
+              if (!longTitle || !body) return false;
+              const pill = body.querySelector('.job-card-footer .status-pill');
+              if (!pill) return false;
+              const titleRow = longTitle.getBoundingClientRect();
+              const pillRow = pill.getBoundingClientRect();
+              if (pillRow.top < titleRow.bottom - 2) return false;
               return true;
             }"""
         )
-        assert fits
+        assert layout_ok
 
         page.screenshot(
             path=str(SCREENSHOT_DIR / f"mobile-home-jobs-{width}.png"),
