@@ -152,7 +152,7 @@ def test_ref_source_tabs_equal_height_at_390px(ref_persist_site: str) -> None:
                 """() => {
                   const sel = document.querySelector('.ref-source-tab[aria-selected="true"]');
                   if (!sel) return false;
-                  const border = getComputedStyle(sel).borderTopColor;
+                  const border = getComputedStyle(sel).borderLeftColor;
                   return border.includes('168') || border.includes('139') || border.includes('124');
                 }"""
             )
@@ -185,21 +185,23 @@ def test_ref_source_tabs_equal_height_at_390px(ref_persist_site: str) -> None:
                   const sel = document.querySelector('.ref-source-tab[aria-selected="true"]');
                   if (!sel) return false;
                   const before = getComputedStyle(sel, '::before');
-                  const border = getComputedStyle(sel).borderTopColor;
-                  const accentH = parseFloat(before.height) || 0;
-                  const hasAccent = accentH >= 1.5;
-                  const hasPurpleBorder =
-                    border.includes('168') ||
-                    border.includes('139') ||
-                    border.includes('124') ||
-                    border.includes('192');
+                  const beforeH = parseFloat(before.height) || 0;
+                  const topBorderW = parseFloat(getComputedStyle(sel).borderTopWidth) || 0;
+                  const noTopAccent = beforeH < 1 && topBorderW < 0.5;
+                  const sideBorder = getComputedStyle(sel).borderLeftColor;
+                  const hasPurpleSides =
+                    sideBorder.includes('168') ||
+                    sideBorder.includes('139') ||
+                    sideBorder.includes('124');
+                  const bottomW = parseFloat(getComputedStyle(sel).borderBottomWidth) || 0;
+                  const noBottomSeam = bottomW < 0.5;
                   const inactive = document.querySelector('.ref-source-tab[aria-selected="false"]');
                   const inactiveColor = inactive ? getComputedStyle(inactive).color : '';
                   const activeColor = getComputedStyle(sel).color;
                   const fw = parseInt(getComputedStyle(sel).fontWeight, 10) || 0;
                   const contrast =
                     inactive && inactiveColor !== activeColor && fw >= 700;
-                  return hasAccent && hasPurpleBorder && contrast;
+                  return noTopAccent && hasPurpleSides && noBottomSeam && contrast;
                 }"""
             )
             assert emphasis_ok
