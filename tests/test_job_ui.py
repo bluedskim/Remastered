@@ -9,7 +9,7 @@ from remastered.web.job_ui import (
 
 def test_youtube_thumbnail_from_video_id() -> None:
     url = youtube_thumbnail_url({"source_video_id": "abc123XYZ01"})
-    assert url == "https://i.ytimg.com/vi/abc123XYZ01/hqdefault.jpg"
+    assert url == "/media/thumb/abc123XYZ01.jpg"
 
 
 def test_job_progress_steps_completed() -> None:

@@ -7,6 +7,7 @@ from remastered.stereo_width import stereo_width_label
 from remastered.web.db import JobStore
 from remastered.web.processing_stage import pipeline_steps_for_job
 from remastered.web.reference_display import reference_ui_for_job
+from remastered.web.youtube_thumb_cache import youtube_reference_thumbnail_url
 from remastered.youtube_url import extract_youtube_video_id
 
 _PROGRESS_LABELS = (
@@ -27,14 +28,12 @@ def youtube_thumbnail_url(job: dict[str, Any]) -> str | None:
     video_id = _source_video_id(job)
     if not video_id:
         return None
-    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+    url = youtube_reference_thumbnail_url(video_id)
+    return url or None
 
 
 def youtube_list_thumbnail_url(job: dict[str, Any]) -> str | None:
-    video_id = _source_video_id(job)
-    if not video_id:
-        return None
-    return f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
+    return youtube_thumbnail_url(job)
 
 
 def format_relative_time(created_at: str) -> str:

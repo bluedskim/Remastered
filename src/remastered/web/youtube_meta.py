@@ -10,6 +10,7 @@ import httpx
 
 from remastered.download import inspect_youtube_source
 from remastered.web.reference_youtube import parse_reference_youtube_url
+from remastered.web.youtube_thumb_cache import youtube_reference_thumbnail_url
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,6 @@ def format_duration_label(seconds: int) -> str:
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
-
-
-def youtube_reference_thumbnail_url(video_id: str) -> str:
-    vid = (video_id or "").strip()
-    return f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
 
 
 _cache: dict[str, tuple[float, YouTubeVideoMeta]] = {}

@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from remastered.web.reference_youtube import is_youtube_reference_job
-from remastered.web.youtube_meta import youtube_reference_thumbnail_url
+from remastered.youtube_url import extract_youtube_video_id
+from remastered.web.youtube_thumb_cache import youtube_reference_thumbnail_url
 
 
 def reference_display_meta(filename: str) -> dict[str, str]:
@@ -30,6 +31,9 @@ def reference_ui_for_job(job: dict) -> dict[str, str | None]:
     source_type = (job.get("reference_source_type") or "preset").strip()
     if source_type == "youtube" or is_youtube_reference_job(job):
         video_id = (job.get("reference_video_id") or "").strip()
+        if not video_id:
+            url_raw = (job.get("reference_youtube_url") or "").strip()
+            video_id = extract_youtube_video_id(url_raw) or ""
         title = (job.get("reference_youtube_title") or "").strip()
         url = (job.get("reference_youtube_url") or "").strip()
         label = title or (f"YouTube video {video_id}" if video_id else "YouTube video")
