@@ -145,17 +145,28 @@ def test_ref_source_tabs_equal_height_at_390px(ref_persist_site: str) -> None:
 
         for tab_id in ("ref-tab-preset", "ref-tab-youtube", "ref-tab-upload"):
             page.locator(f"#{tab_id}").click()
-            equal = page.evaluate(
+            layout_ok = page.evaluate(
                 """() => {
                   const tabs = Array.from(document.querySelectorAll('.ref-source-tab'));
-                  if (tabs.length !== 3) return false;
+                  const panel = document.querySelector('.ref-source-panels');
+                  if (tabs.length !== 3 || !panel) return false;
                   const tops = tabs.map((t) => t.getBoundingClientRect().top);
                   const heights = tabs.map((t) => t.getBoundingClientRect().height);
+                  const bottoms = tabs.map((t) => t.getBoundingClientRect().bottom);
                   const topSpan = Math.max(...tops) - Math.min(...tops);
                   const heightSpan = Math.max(...heights) - Math.min(...heights);
-                  return topSpan < 1 && heightSpan < 1 && heights[0] >= 43;
+                  if (topSpan >= 1 || heightSpan >= 1 || heights[0] < 43) return false;
+                  for (let i = 0; i < tabs.length - 1; i++) {
+                    const a = tabs[i].getBoundingClientRect();
+                    const b = tabs[i + 1].getBoundingClientRect();
+                    if (Math.abs(a.right - b.left) > 1.5) return false;
+                  }
+                  const panelTop = panel.getBoundingClientRect().top;
+                  const bottomSpan = Math.max(...bottoms) - Math.min(...bottoms);
+                  if (bottomSpan >= 1.5) return false;
+                  return Math.abs(Math.max(...bottoms) - panelTop) <= 1.5;
                 }"""
             )
-            assert equal
+            assert layout_ok
 
         browser.close()
