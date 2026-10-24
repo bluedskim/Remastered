@@ -34,7 +34,6 @@
     var vol = root.querySelector("[data-ab-volume]");
     var timeCur = root.querySelector("[data-ab-time-current]");
     var timeDur = root.querySelector("[data-ab-time-duration]");
-    var activeLabel = root.querySelector("[data-ab-active-label]");
     var sideButtons = root.querySelectorAll("[data-ab-side]");
 
     var activeSide = "remastered";
@@ -92,9 +91,12 @@
         var side = btn.getAttribute("data-ab-side");
         btn.setAttribute("aria-pressed", side === activeSide ? "true" : "false");
       });
-      if (activeLabel) {
-        activeLabel.textContent = activeSide === "original" ? "Original" : "Remastered";
-      }
+      sideButtons.forEach(function (btn) {
+        btn.classList.toggle(
+          "ab-listen-btn--active",
+          btn.getAttribute("data-ab-side") === activeSide
+        );
+      });
     }
 
     function setPlayIcon(wantsPlay) {
@@ -402,6 +404,8 @@
       } else if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         toggleRepeat();
+      } else if (e.key === "t" || e.key === "T") {
+        setActiveSide(activeSide === "original" ? "remastered" : "original");
       }
     };
   }

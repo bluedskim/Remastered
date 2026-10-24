@@ -14,6 +14,29 @@
     <div class="field">
       <label for="youtube_url">YouTube URL</label>
       <input class="input-lg" type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=..." required />
+      <div id="source-youtube-preview" class="ref-yt-preview" hidden>
+        <img
+          id="source-yt-preview-img"
+          class="ref-yt-preview-img"
+          src=""
+          alt=""
+          width="320"
+          height="180"
+          loading="lazy"
+          decoding="async"
+        />
+        <div class="ref-yt-preview-text">
+          <p id="source-yt-preview-title" class="ref-yt-preview-title"></p>
+          <p id="source-yt-preview-author" class="ref-yt-preview-author muted small"></p>
+          <p id="source-yt-preview-duration" class="ref-yt-preview-duration muted small"></p>
+        </div>
+      </div>
+      <p id="source-yt-preview-error" class="ref-yt-preview-error small muted" hidden>
+        Couldn't load video info
+      </p>
+      <p id="source-duration-warning" class="source-duration-warning small" hidden role="alert">
+        This video is longer than {{ limits.max_source_duration_seconds // 60 }} minutes
+      </p>
     </div>
 
     <div class="field ref-source-field">
@@ -78,6 +101,7 @@
           <div class="ref-yt-preview-text">
             <p id="ref-yt-preview-title" class="ref-yt-preview-title"></p>
             <p id="ref-yt-preview-author" class="ref-yt-preview-author muted small"></p>
+            <p id="ref-yt-preview-duration" class="ref-yt-preview-duration muted small"></p>
           </div>
         </div>
         <p id="ref-yt-preview-error" class="ref-yt-preview-error small muted" hidden>
@@ -140,11 +164,31 @@
     {% for job in jobs %}
     <li>
       <a class="job-card" href="/jobs/{{ job.id }}">
-        <div class="job-card-head">
-          <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
-          <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+        <div class="job-card-row">
+          {% if job.job_list_thumbnail %}
+          <img
+            class="job-card-thumb"
+            src="{{ job.job_list_thumbnail }}"
+            alt=""
+            width="96"
+            height="54"
+            loading="lazy"
+            decoding="async"
+          />
+          {% else %}
+          <span class="job-card-thumb job-card-thumb--placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
+          {% endif %}
+          <div class="job-card-body">
+            <div class="job-card-head">
+              <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
+              <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+            </div>
+            {% if job.pipeline_stage_label %}
+            <p class="job-card-stage small muted">{{ job.pipeline_stage_label }}</p>
+            {% endif %}
+            <p class="job-card-meta small muted">{{ job.relative_time }}</p>
+          </div>
         </div>
-        <p class="job-card-meta small muted">{{ job.relative_time }}</p>
       </a>
     </li>
     {% endfor %}
@@ -152,6 +196,7 @@
   {% endif %}
 </section>
 
+<script src="{{ static_url('youtube-preview.js') }}"></script>
 <script>
 (function () {
   const form = document.getElementById("create-job-form");
@@ -165,35 +210,45 @@
     upload: document.getElementById("ref-panel-upload"),
   };
   const youtubeInput = document.getElementById("reference_youtube_url");
-  const youtubeTitleInput = document.getElementById("reference_youtube_title");
   const uploadInput = document.getElementById("reference_upload");
-  const ytPreview = document.getElementById("ref-youtube-preview");
-  const ytPreviewImg = document.getElementById("ref-yt-preview-img");
-  const ytPreviewTitle = document.getElementById("ref-yt-preview-title");
-  const ytPreviewAuthor = document.getElementById("ref-yt-preview-author");
-  const ytPreviewError = document.getElementById("ref-yt-preview-error");
+  const sourceDurationWarning = document.getElementById("source-duration-warning");
+  const maxSourceDuration = {{ limits.max_source_duration_seconds }};
   let youtubeMetaTitle = "";
-  let youtubeMetaTimer = null;
-  let youtubeMetaRequest = 0;
+  let sourceOverLimit = false;
 
-  function extractVideoId(text) {
-    const raw = (text || "").trim();
-    if (!raw) return "";
-    try {
-      const u = new URL(raw);
-      const host = u.hostname.replace(/^www\./, "");
-      if (host === "youtu.be") return (u.pathname.split("/").filter(Boolean)[0] || "").slice(0, 11);
-      if (host.includes("youtube.com")) {
-        if (u.pathname.startsWith("/shorts/")) {
-          return u.pathname.split("/")[2] || "";
-        }
-        return u.searchParams.get("v") || "";
+  const sourcePreviewCtl = window.initYoutubePreview({
+    inputId: "youtube_url",
+    previewId: "source-youtube-preview",
+    previewImgId: "source-yt-preview-img",
+    previewTitleId: "source-yt-preview-title",
+    previewAuthorId: "source-yt-preview-author",
+    previewDurationId: "source-yt-preview-duration",
+    previewErrorId: "source-yt-preview-error",
+    maxDurationSeconds: maxSourceDuration,
+    onMetaChange: function (_data, overLimit) {
+      sourceOverLimit = !!overLimit;
+      if (sourceDurationWarning) {
+        if (sourceOverLimit) sourceDurationWarning.removeAttribute("hidden");
+        else sourceDurationWarning.setAttribute("hidden", "");
       }
-    } catch (e) {
-      return "";
-    }
-    return "";
-  }
+      updateSubmitEnabled();
+    },
+  });
+
+  const refPreviewCtl = window.initYoutubePreview({
+    inputId: "reference_youtube_url",
+    previewId: "ref-youtube-preview",
+    previewImgId: "ref-yt-preview-img",
+    previewTitleId: "ref-yt-preview-title",
+    previewAuthorId: "ref-yt-preview-author",
+    previewDurationId: "ref-yt-preview-duration",
+    previewErrorId: "ref-yt-preview-error",
+    titleFieldId: "reference_youtube_title",
+    onMetaChange: function (data) {
+      youtubeMetaTitle = data && data.title ? data.title : "";
+      updateSummary();
+    },
+  });
 
   function presetSummary() {
     const checked = form.querySelector('input[name="reference_name"]:checked');
@@ -206,74 +261,9 @@
     if (youtubeMetaTitle) return "Reference: " + youtubeMetaTitle + " (YouTube URL)";
     const raw = (youtubeInput && youtubeInput.value || "").trim();
     if (!raw) return "Reference: YouTube URL";
-    const id = extractVideoId(raw);
+    const id = window.extractYoutubeVideoId ? window.extractYoutubeVideoId(raw) : "";
     if (id) return "Reference: " + id + " (YouTube URL)";
     return "Reference: " + raw + " (YouTube URL)";
-  }
-
-  function clearYoutubePreview() {
-    youtubeMetaTitle = "";
-    if (youtubeTitleInput) youtubeTitleInput.value = "";
-    if (ytPreview) ytPreview.setAttribute("hidden", "");
-    if (ytPreviewError) ytPreviewError.setAttribute("hidden", "");
-    if (ytPreviewImg) ytPreviewImg.removeAttribute("src");
-    if (ytPreviewTitle) ytPreviewTitle.textContent = "";
-    if (ytPreviewAuthor) ytPreviewAuthor.textContent = "";
-  }
-
-  function showYoutubePreview(meta) {
-    if (!meta || !ytPreview) return;
-    youtubeMetaTitle = meta.title || "";
-    if (youtubeTitleInput) youtubeTitleInput.value = youtubeMetaTitle;
-    if (ytPreviewImg) {
-      ytPreviewImg.src = meta.thumbnail_url || "";
-      ytPreviewImg.alt = meta.title ? "Thumbnail for " + meta.title : "";
-    }
-    if (ytPreviewTitle) ytPreviewTitle.textContent = meta.title || "";
-    if (ytPreviewAuthor) {
-      ytPreviewAuthor.textContent = meta.author_name || "";
-      ytPreviewAuthor.hidden = !meta.author_name;
-    }
-    if (ytPreviewError) ytPreviewError.setAttribute("hidden", "");
-    ytPreview.removeAttribute("hidden");
-    updateSummary();
-  }
-
-  function showYoutubePreviewError() {
-    if (ytPreview) ytPreview.setAttribute("hidden", "");
-    if (ytPreviewError) ytPreviewError.removeAttribute("hidden");
-  }
-
-  function scheduleYoutubeMetaFetch() {
-    if (youtubeMetaTimer) clearTimeout(youtubeMetaTimer);
-    youtubeMetaTimer = setTimeout(fetchYoutubeMeta, 400);
-  }
-
-  function fetchYoutubeMeta() {
-    const raw = (youtubeInput && youtubeInput.value || "").trim();
-    if (!raw || !extractVideoId(raw)) {
-      clearYoutubePreview();
-      updateSummary();
-      return;
-    }
-    const requestId = ++youtubeMetaRequest;
-    fetch("/api/youtube/meta?url=" + encodeURIComponent(raw))
-      .then(function (res) {
-        if (requestId !== youtubeMetaRequest) return null;
-        if (!res.ok) throw new Error("meta failed");
-        return res.json();
-      })
-      .then(function (data) {
-        if (!data || requestId !== youtubeMetaRequest) return;
-        showYoutubePreview(data);
-      })
-      .catch(function () {
-        if (requestId !== youtubeMetaRequest) return;
-        youtubeMetaTitle = "";
-        if (youtubeTitleInput) youtubeTitleInput.value = "";
-        showYoutubePreviewError();
-        updateSummary();
-      });
   }
 
   function uploadSummary() {
@@ -341,7 +331,7 @@
     if (tab === "youtube") {
       if (youtubeInput && stored.youtubeUrl) youtubeInput.value = stored.youtubeUrl;
       activateMode("youtube", true);
-      scheduleYoutubeMetaFetch();
+      if (refPreviewCtl) refPreviewCtl.scheduleFetch();
     } else if (tab === "upload") {
       if (uploadInput) uploadInput.value = "";
       activateMode("upload", true);
@@ -386,9 +376,10 @@
     updateSummary();
     if (!skipPersist) writeStored();
     if (mode === "youtube" && youtubeInput && youtubeInput.value.trim()) {
-      scheduleYoutubeMetaFetch();
-    } else if (mode !== "youtube") {
-      clearYoutubePreview();
+      if (refPreviewCtl) refPreviewCtl.scheduleFetch();
+    } else if (mode !== "youtube" && refPreviewCtl) {
+      refPreviewCtl.clearPreview();
+      youtubeMetaTitle = "";
     }
   }
 
@@ -424,10 +415,9 @@
   }
   if (youtubeInput) {
     youtubeInput.addEventListener("input", function () {
-      clearYoutubePreview();
       updateSummary();
       writeStored();
-      scheduleYoutubeMetaFetch();
+      if (refPreviewCtl) refPreviewCtl.scheduleFetch();
     });
   }
   if (uploadInput) {
@@ -438,10 +428,22 @@
   }
 
   restoreFromStorage();
+  if (sourcePreviewCtl) sourcePreviewCtl.scheduleFetch();
 
   const btn = document.getElementById("create-job-submit");
   let submitted = false;
+
+  function updateSubmitEnabled() {
+    if (!btn || submitted) return;
+    btn.disabled = sourceOverLimit;
+  }
+  updateSubmitEnabled();
+
   form.addEventListener("submit", function (e) {
+    if (sourceOverLimit) {
+      e.preventDefault();
+      return;
+    }
     if (submitted) {
       e.preventDefault();
       return;

@@ -1226,3 +1226,166 @@ table.jobs td {
 .player {
   margin-top: 0.75rem;
 }
+
+.pipeline-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  max-width: 100%;
+}
+
+.pipeline-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  max-width: 100%;
+}
+
+.pipeline-step-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.pipeline-step--running {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pipeline-step--running .pipeline-step-dot,
+.pipeline-step--done .pipeline-step-dot {
+  background: var(--gradient);
+}
+
+.pipeline-step--failed {
+  color: var(--err);
+}
+
+.pipeline-step--failed .pipeline-step-dot {
+  background: var(--err);
+}
+
+.pipeline-step-label {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.pipeline-queue-hint {
+  margin: 0.35rem 0 0;
+}
+
+.source-duration-warning {
+  margin: 0.5rem 0 0;
+  color: var(--err);
+}
+
+.job-card-row {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.job-card-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.job-card-thumb {
+  width: 80px;
+  height: 45px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  display: block;
+}
+
+@media (min-width: 480px) {
+  .job-card-thumb {
+    width: 96px;
+    height: 54px;
+  }
+}
+
+.job-card-thumb--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(59, 130, 246, 0.2));
+}
+
+.job-card-thumb-icon {
+  font-size: 1.1rem;
+  opacity: 0.85;
+}
+
+.job-card-stage {
+  margin: 0.15rem 0 0;
+}
+
+.ab-listen-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0.35rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.22);
+  max-width: 100%;
+}
+
+.ab-listen-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+  width: 100%;
+  text-align: center;
+}
+
+@media (min-width: 400px) {
+  .ab-listen-label {
+    width: auto;
+  }
+}
+
+.ab-listen-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.ab-listen-btn--active,
+.ab-listen-btn[aria-pressed="true"] {
+  color: #fff;
+  background: var(--gradient);
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.35);
+}
+
+.ab-listen-sep {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.privacy-body {
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

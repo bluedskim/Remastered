@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from remastered.stereo_width import stereo_width_label
+from remastered.web.db import JobStore
+from remastered.web.processing_stage import pipeline_steps_for_job
 from remastered.web.reference_display import reference_ui_for_job
 from remastered.youtube_url import extract_youtube_video_id
 
@@ -14,13 +16,25 @@ _PROGRESS_LABELS = (
 )
 
 
-def youtube_thumbnail_url(job: dict[str, Any]) -> str | None:
+def _source_video_id(job: dict[str, Any]) -> str:
     video_id = (job.get("source_video_id") or "").strip()
     if not video_id:
         video_id = extract_youtube_video_id(job.get("youtube_url") or "") or ""
+    return video_id
+
+
+def youtube_thumbnail_url(job: dict[str, Any]) -> str | None:
+    video_id = _source_video_id(job)
     if not video_id:
         return None
     return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+
+def youtube_list_thumbnail_url(job: dict[str, Any]) -> str | None:
+    video_id = _source_video_id(job)
+    if not video_id:
+        return None
+    return f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
 
 
 def format_relative_time(created_at: str) -> str:
@@ -83,13 +97,28 @@ def job_progress_steps(job: dict[str, Any]) -> list[dict[str, str]]:
     return steps
 
 
-def enrich_job_ui(job: dict[str, Any]) -> dict[str, Any]:
+def enrich_job_ui(job: dict[str, Any], store: JobStore | None = None) -> dict[str, Any]:
     data = dict(job)
     created = job.get("created_at") or ""
     data["relative_time"] = format_relative_time(created)
     data["status_pill_class"] = status_pill_class(job.get("status") or "")
     data["progress_steps"] = job_progress_steps(job)
     data["youtube_thumbnail"] = youtube_thumbnail_url(job)
+    data["job_list_thumbnail"] = youtube_list_thumbnail_url(job)
+    data["source_video_id"] = _source_video_id(job) or None
+    data["pipeline_steps"] = pipeline_steps_for_job(job)
+    stage_label = None
+    if (job.get("status") or "") in ("pending", "running"):
+        for step in data["pipeline_steps"]:
+            if step["state"] == "running":
+                stage_label = step["label"]
+                break
+    data["pipeline_stage_label"] = stage_label
+    if store and (job.get("status") or "") == "pending":
+        position = store.queue_position(job["id"])
+        data["queue_position"] = position if position > 0 else None
+    else:
+        data["queue_position"] = None
     ref = reference_ui_for_job(job)
     data["reference_kind"] = ref["kind"]
     data["reference_genre"] = ref["genre"]

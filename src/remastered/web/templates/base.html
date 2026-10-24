@@ -42,7 +42,10 @@
       {% block content %}{% endblock %}
     </main>
     <footer class="site-footer small muted">
-      <p>Privacy: {{ privacy_notice | default("We store session and job metadata only.") }}</p>
+      <p>
+        Files are deleted automatically after {{ privacy_retention_days | default(14) }} days.
+        <a href="/privacy">Privacy</a>
+      </p>
     </footer>
   </div>
 </body>

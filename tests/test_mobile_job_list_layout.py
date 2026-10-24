@@ -42,38 +42,15 @@ def mobile_site(tmp_path_factory):
     monkeypatch_module.setenv("REMASTERED_WEB_REFERENCES_DIR", str(refs))
     monkeypatch_module.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "0")
 
-    def fake_web_pipeline(
-        url: str,
-        reference: Path,
-        settings,
-        progress=None,
-        on_downloaded=None,
-        stereo_width=None,
-    ):
-        if on_downloaded:
-            on_downloaded("Completed track", "vid1")
-        audio = settings.work_dir / "vid1" / "audio.wav"
-        audio.parent.mkdir(parents=True, exist_ok=True)
-        audio.write_bytes(b"RIFF" + b"\x00" * 100)
-        mastered = settings.work_dir / "vid1" / "master" / "out.wav"
-        mastered.parent.mkdir(parents=True, exist_ok=True)
-        mastered.write_bytes(b"RIFF" + b"\x00" * 100)
-        return {
-            "audio": audio,
-            "mastered": mastered,
-            "video_id": "vid1",
-            "title": "Completed track",
-        }
+    from tests.worker_patches import install_fake_worker_pipeline
+
+    install_fake_worker_pipeline(monkeypatch_module, reference_path=refs / "ref.wav")
 
     def fake_transcode(wav: Path) -> Path:
         out = playback_path_for_wav(wav)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(b"\x00" * 256)
         return out
-
-    monkeypatch_module.setattr(
-        "remastered.web.worker.run_web_master_pipeline", fake_web_pipeline
-    )
     monkeypatch_module.setattr(
         "remastered.web.worker.transcode_wav_for_playback", fake_transcode
     )

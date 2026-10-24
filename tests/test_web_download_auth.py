@@ -28,30 +28,9 @@ def dl_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "test-jwt-secret-key-at-least-32-bytes!!",
     )
 
-    def fake_web_pipeline(
-        url: str,
-        reference: Path,
-        settings,
-        progress=None,
-        on_downloaded=None,
-        stereo_width=None,
-    ):
-        if on_downloaded:
-            on_downloaded("Claim Track", "vid")
-        audio = settings.work_dir / "vid" / "audio.wav"
-        audio.parent.mkdir(parents=True, exist_ok=True)
-        audio.write_bytes(b"RIFF" + b"\x00" * 100)
-        mastered = settings.work_dir / "vid" / "master" / "out.wav"
-        mastered.parent.mkdir(parents=True, exist_ok=True)
-        mastered.write_bytes(b"RIFF" + b"\x00" * 100)
-        return {
-            "audio": audio,
-            "mastered": mastered,
-            "video_id": "vid",
-            "title": "Claim Track",
-        }
+    from tests.worker_patches import install_fake_worker_pipeline
 
-    monkeypatch.setattr("remastered.web.worker.run_web_master_pipeline", fake_web_pipeline)
+    install_fake_worker_pipeline(monkeypatch, reference_path=refs / "ref.wav")
     monkeypatch.setattr(
         "remastered.web.limits.inspect_youtube_source",
         lambda url: {"duration": 60, "filesize": 1000, "title": "Claim Track"},

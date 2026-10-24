@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -112,6 +112,7 @@ class JobStore:
                     reference_youtube_url TEXT,
                     reference_video_id TEXT,
                     reference_youtube_title TEXT,
+                    processing_stage TEXT NOT NULL DEFAULT 'queued',
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
                 """
@@ -150,6 +151,13 @@ class JobStore:
             cols = self._job_columns(conn)
             if "reference_youtube_title" not in cols:
                 conn.execute("ALTER TABLE jobs ADD COLUMN reference_youtube_title TEXT")
+            cols = self._job_columns(conn)
+            if "processing_stage" not in cols:
+                conn.execute(
+                    """
+                    ALTER TABLE jobs ADD COLUMN processing_stage TEXT NOT NULL DEFAULT 'queued'
+                    """
+                )
             self._backfill_legacy_jobs(conn)
 
         self._backfill_job_titles_from_logs(conn)
@@ -394,8 +402,8 @@ class JobStore:
                     reference_path, title, description, privacy, upload_enabled,
                     stage_state, client_ip, stereo_width_mode,
                     reference_source_type, reference_youtube_url, reference_video_id,
-                    reference_youtube_title
-                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    reference_youtube_title, processing_stage
+                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
                 """,
                 (
                     job_id,
@@ -445,6 +453,7 @@ class JobStore:
             "files_cleaned",
             "reference_youtube_title",
             "reference_path",
+            "processing_stage",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

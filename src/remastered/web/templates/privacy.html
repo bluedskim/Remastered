@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Privacy — Remastered{% endblock %}
+{% block content %}
+<section class="card">
+  <h1 class="section-title">Privacy</h1>
+  <p class="muted small">Last updated: {{ privacy_updated }}</p>
+  <div class="privacy-body">
+    <p>{{ privacy_notice }}</p>
+    <p>
+      Job audio files and related outputs are removed automatically after
+      <strong>{{ privacy_retention_days }} days</strong> (configured server retention).
+    </p>
+  </div>
+  <p class="small"><a href="/">← Back to home</a></p>
+</section>
+{% endblock %}

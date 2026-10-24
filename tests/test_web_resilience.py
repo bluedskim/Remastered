@@ -31,33 +31,9 @@ def media_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     monkeypatch.setattr("remastered.web.worker.transcode_wav_for_playback", fake_transcode)
 
-    def fake_web_pipeline(
-        url: str,
-        reference: Path,
-        settings,
-        progress=None,
-        on_downloaded=None,
-        stereo_width=None,
-    ):
-        owner_work = settings.work_dir
-        if on_downloaded:
-            on_downloaded("Stress Track", "vid")
-        audio = owner_work / "vid" / "audio.wav"
-        audio.parent.mkdir(parents=True, exist_ok=True)
-        audio.write_bytes(b"RIFF" + b"\x00" * 4096)
-        mastered = owner_work / "vid" / "master" / "out.wav"
-        mastered.parent.mkdir(parents=True, exist_ok=True)
-        mastered.write_bytes(b"RIFF" + b"\x00" * 4096)
-        fake_transcode(audio)
-        fake_transcode(mastered)
-        return {
-            "audio": audio,
-            "mastered": mastered,
-            "video_id": "vid",
-            "title": "Stress Track",
-        }
+    from tests.worker_patches import install_fake_worker_pipeline
 
-    monkeypatch.setattr("remastered.web.worker.run_web_master_pipeline", fake_web_pipeline)
+    install_fake_worker_pipeline(monkeypatch, reference_path=refs / "ref.wav")
     monkeypatch.setattr(
         "remastered.web.limits.inspect_youtube_source",
         lambda url: {"duration": 60, "filesize": 1000},
