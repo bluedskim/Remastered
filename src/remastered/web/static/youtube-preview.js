@@ -126,7 +126,6 @@
       }
 
       previewImg.alt = metaTitle ? "Thumbnail for " + metaTitle : "";
-      previewImg.hidden = true;
 
       function revealThumbIfReady() {
         if (previewImg.naturalWidth > 0) {
@@ -134,16 +133,29 @@
         }
       }
 
-      previewImg.onload = function () {
-        revealThumbIfReady();
-      };
       previewImg.onerror = function () {
         hideImg();
       };
+      previewImg.onload = function () {
+        revealThumbIfReady();
+      };
+
+      var currentSrc = previewImg.getAttribute("src") || "";
+      if (currentSrc === thumb && previewImg.complete && previewImg.naturalWidth > 0) {
+        previewImg.hidden = false;
+        onMetaChange(data, overLimit);
+        return;
+      }
+
+      previewImg.hidden = true;
+      if (currentSrc === thumb) {
+        previewImg.removeAttribute("src");
+      }
       previewImg.src = thumb;
       revealThumbIfReady();
       if (previewImg.hidden) {
         setTimeout(revealThumbIfReady, 0);
+        requestAnimationFrame(revealThumbIfReady);
       }
       onMetaChange(data, overLimit);
     }
@@ -181,6 +193,12 @@
       timer = setTimeout(fetchMeta, 400);
     }
 
+    function refreshFromInput() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      fetchMeta();
+    }
+
     if (previewImg) {
       previewImg.hidden = true;
       previewImg.removeAttribute("src");
@@ -194,6 +212,7 @@
 
     return {
       scheduleFetch: scheduleFetch,
+      refreshFromInput: refreshFromInput,
       clearPreview: clearPreview,
       getMetaTitle: function () {
         return metaTitle;

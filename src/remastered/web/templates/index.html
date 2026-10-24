@@ -26,7 +26,7 @@
             alt=""
             width="320"
             height="180"
-            loading="lazy"
+            loading="eager"
             decoding="async"
             hidden
           />
@@ -107,7 +107,7 @@
               alt=""
               width="320"
               height="180"
-              loading="lazy"
+              loading="eager"
               decoding="async"
               hidden
             />
@@ -360,7 +360,6 @@
     if (tab === "youtube") {
       if (youtubeInput && stored.youtubeUrl) youtubeInput.value = stored.youtubeUrl;
       activateMode("youtube", true);
-      if (refPreviewCtl) refPreviewCtl.scheduleFetch();
     } else if (tab === "upload") {
       if (uploadInput) uploadInput.value = "";
       activateMode("upload", true);
@@ -473,20 +472,46 @@
     writeStored();
   });
 
-  restoreFromStorage();
   const sourceUrlInput = document.getElementById("youtube_url");
-  if (
-    sourcePreviewCtl &&
-    sourceUrlInput &&
-    window.extractYoutubeVideoId &&
-    window.extractYoutubeVideoId(sourceUrlInput.value)
-  ) {
-    sourcePreviewCtl.scheduleFetch();
+
+  function refreshYoutubePreviewsFromInputs() {
+    if (
+      sourcePreviewCtl &&
+      sourceUrlInput &&
+      window.extractYoutubeVideoId &&
+      window.extractYoutubeVideoId(sourceUrlInput.value)
+    ) {
+      sourcePreviewCtl.refreshFromInput();
+    }
+    if (
+      modeInput.value === "youtube" &&
+      refPreviewCtl &&
+      youtubeInput &&
+      window.extractYoutubeVideoId &&
+      window.extractYoutubeVideoId(youtubeInput.value)
+    ) {
+      refPreviewCtl.refreshFromInput();
+    }
   }
+
+  restoreFromStorage();
   if (window.syncYoutubeUrlClear) {
     window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
     window.syncYoutubeUrlClear("reference_youtube_url", "reference_youtube_url-clear");
   }
+  window.refreshYoutubePreviewsFromInputs = refreshYoutubePreviewsFromInputs;
+  refreshYoutubePreviewsFromInputs();
+
+  window.addEventListener("pageshow", function (event) {
+    if (event.persisted) {
+      restoreFromStorage();
+      if (window.syncYoutubeUrlClear) {
+        window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
+        window.syncYoutubeUrlClear("reference_youtube_url", "reference_youtube_url-clear");
+      }
+    }
+    refreshYoutubePreviewsFromInputs();
+  });
 
   const btn = document.getElementById("create-job-submit");
   let submitted = false;
