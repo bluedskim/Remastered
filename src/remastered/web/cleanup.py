@@ -8,6 +8,7 @@ from pathlib import Path
 from remastered.web.db import JobStore
 from remastered.web.settings import WebSettings
 from remastered.web.stream_audio import playback_path_for_wav
+from remastered.web.youtube_thumb_cache import cleanup_stale_thumbnails
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,9 @@ def cleanup_old_jobs(store: JobStore, work_dir: Path) -> int:
             shutil.rmtree(job_root, ignore_errors=True)
         store.mark_files_cleaned(job["id"])
         removed += 1
+    thumb_removed = cleanup_stale_thumbnails(work_dir, ws.job_retention_days)
     if removed:
         logger.info("오래된 작업 파일 %d건 정리", removed)
+    if thumb_removed:
+        logger.info("오래된 썸네일 캐시 %d건 정리", thumb_removed)
     return removed

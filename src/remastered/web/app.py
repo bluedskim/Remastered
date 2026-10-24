@@ -50,6 +50,14 @@ from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
 from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE, VALID_STEREO_WIDTH_MODES
 from remastered.web.youtube_meta import fetch_youtube_video_meta, try_fetch_youtube_video_meta
+from remastered.web.youtube_thumb_cache import (
+    THUMB_CACHE_CONTROL,
+    THUMB_PLACEHOLDER_SVG,
+    PLACEHOLDER_CACHE_CONTROL,
+    ensure_thumb_cached,
+    is_valid_youtube_video_id,
+    thumb_cache_path,
+)
 from remastered.youtube_url import normalize_youtube_url
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -480,6 +488,38 @@ def job_panel(
         ctx,
         status_code=status_code,
     )
+
+
+@fastapi_application.get("/media/thumb/{video_id}.jpg")
+async def youtube_thumb_image(video_id: str) -> Response:
+    """Cached YouTube thumbnail (same-origin for job list and previews)."""
+    vid = (video_id or "").strip()
+    if not is_valid_youtube_video_id(vid):
+        raise HTTPException(status_code=404, detail="Invalid video id.")
+    settings = resolve_settings()
+    work_dir = settings.work_dir
+
+    def _serve() -> Response:
+        path = thumb_cache_path(work_dir, vid)
+        if path.is_file() and path.stat().st_size > 0:
+            return FileResponse(
+                path,
+                media_type="image/jpeg",
+                headers={"Cache-Control": THUMB_CACHE_CONTROL},
+            )
+        if ensure_thumb_cached(work_dir, vid) and path.is_file():
+            return FileResponse(
+                path,
+                media_type="image/jpeg",
+                headers={"Cache-Control": THUMB_CACHE_CONTROL},
+            )
+        return Response(
+            content=THUMB_PLACEHOLDER_SVG,
+            media_type="image/svg+xml",
+            headers={"Cache-Control": PLACEHOLDER_CACHE_CONTROL},
+        )
+
+    return await run_in_threadpool(_serve)
 
 
 @fastapi_application.get("/media/{job_id}/{kind}")
