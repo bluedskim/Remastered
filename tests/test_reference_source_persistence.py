@@ -135,3 +135,27 @@ def test_restore_upload_tab_without_file(ref_persist_site: str) -> None:
         assert page.locator("#ref-tab-upload").get_attribute("aria-selected") == "true"
         assert page.locator("#ref-source-summary").inner_text() == "Reference: choose a file"
         browser.close()
+
+
+def test_ref_source_tabs_equal_height_at_390px(ref_persist_site: str) -> None:
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 390, "height": 800})
+        page.goto(ref_persist_site + "/", wait_until="networkidle")
+
+        for tab_id in ("ref-tab-preset", "ref-tab-youtube", "ref-tab-upload"):
+            page.locator(f"#{tab_id}").click()
+            equal = page.evaluate(
+                """() => {
+                  const tabs = Array.from(document.querySelectorAll('.ref-source-tab'));
+                  if (tabs.length !== 3) return false;
+                  const tops = tabs.map((t) => t.getBoundingClientRect().top);
+                  const heights = tabs.map((t) => t.getBoundingClientRect().height);
+                  const topSpan = Math.max(...tops) - Math.min(...tops);
+                  const heightSpan = Math.max(...heights) - Math.min(...heights);
+                  return topSpan < 1 && heightSpan < 1 && heights[0] >= 43;
+                }"""
+            )
+            assert equal
+
+        browser.close()
