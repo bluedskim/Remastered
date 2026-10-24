@@ -145,6 +145,17 @@ def test_ref_source_tabs_equal_height_at_390px(ref_persist_site: str) -> None:
 
         for tab_id in ("ref-tab-preset", "ref-tab-youtube", "ref-tab-upload"):
             page.locator(f"#{tab_id}").click()
+            page.wait_for_function(
+                f"""() => document.getElementById('{tab_id}')?.getAttribute('aria-selected') === 'true'"""
+            )
+            page.wait_for_function(
+                """() => {
+                  const sel = document.querySelector('.ref-source-tab[aria-selected="true"]');
+                  if (!sel) return false;
+                  const border = getComputedStyle(sel).borderTopColor;
+                  return border.includes('168') || border.includes('139') || border.includes('124');
+                }"""
+            )
             layout_ok = page.evaluate(
                 """() => {
                   const tabs = Array.from(document.querySelectorAll('.ref-source-tab'));
@@ -168,5 +179,29 @@ def test_ref_source_tabs_equal_height_at_390px(ref_persist_site: str) -> None:
                 }"""
             )
             assert layout_ok
+
+            emphasis_ok = page.evaluate(
+                """() => {
+                  const sel = document.querySelector('.ref-source-tab[aria-selected="true"]');
+                  if (!sel) return false;
+                  const before = getComputedStyle(sel, '::before');
+                  const border = getComputedStyle(sel).borderTopColor;
+                  const accentH = parseFloat(before.height) || 0;
+                  const hasAccent = accentH >= 1.5;
+                  const hasPurpleBorder =
+                    border.includes('168') ||
+                    border.includes('139') ||
+                    border.includes('124') ||
+                    border.includes('192');
+                  const inactive = document.querySelector('.ref-source-tab[aria-selected="false"]');
+                  const inactiveColor = inactive ? getComputedStyle(inactive).color : '';
+                  const activeColor = getComputedStyle(sel).color;
+                  const fw = parseInt(getComputedStyle(sel).fontWeight, 10) || 0;
+                  const contrast =
+                    inactive && inactiveColor !== activeColor && fw >= 700;
+                  return hasAccent && hasPurpleBorder && contrast;
+                }"""
+            )
+            assert emphasis_ok
 
         browser.close()
