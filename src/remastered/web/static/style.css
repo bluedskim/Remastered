@@ -885,36 +885,82 @@ button,
   max-width: 100%;
 }
 
+.ref-source-frame {
+  --ref-panel-bg: rgba(10, 8, 20, 0.78);
+  margin-top: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .ref-source-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  margin: 0.5rem 0 0.75rem;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.22);
+  display: flex;
+  align-items: flex-end;
+  gap: 0.3rem;
+  padding: 0 0.1rem;
+  margin: 0;
+  border: none;
+  background: transparent;
   max-width: 100%;
 }
 
 .ref-source-tab {
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 44px;
-  padding: 0.45rem 0.35rem;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 700;
+  padding: 0.55rem 0.35rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  background: rgba(0, 0, 0, 0.42);
+  color: rgba(242, 240, 250, 0.52);
+  font-size: clamp(0.72rem, 2.8vw, 0.82rem);
+  font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+  margin-bottom: 0.4rem;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease,
+    margin 0.15s ease;
 }
 
 .ref-source-tab[aria-selected="true"] {
-  color: #fff;
-  background: var(--gradient);
-  box-shadow: 0 0 16px rgba(168, 85, 247, 0.35);
+  color: var(--text);
+  background: var(--ref-panel-bg);
+  border-color: var(--border);
+  border-bottom: 1px solid var(--ref-panel-bg);
+  margin-bottom: -1px;
+  padding-bottom: calc(0.55rem + 1px);
+  position: relative;
+  z-index: 2;
+}
+
+.ref-source-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  z-index: 3;
+}
+
+.ref-source-panels {
+  position: relative;
+  z-index: 1;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0 14px 14px 14px;
+  background: var(--ref-panel-bg);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ref-source-frame:has(#ref-tab-preset[aria-selected="true"]) .ref-source-panels {
+  border-top-left-radius: 0;
+}
+
+.ref-source-frame:has(#ref-tab-youtube[aria-selected="true"]) .ref-source-panels {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.ref-source-frame:has(#ref-tab-upload[aria-selected="true"]) .ref-source-panels {
+  border-top-right-radius: 0;
 }
 
 .ref-source-panel {
