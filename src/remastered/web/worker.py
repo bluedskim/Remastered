@@ -14,8 +14,16 @@ from remastered.web.cleanup import cleanup_old_jobs
 from remastered.web.db import WEB_STAGES, JobStore
 from remastered.web.limits import validate_youtube_source_limits
 from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE, VALID_STEREO_WIDTH_MODES
-from remastered.web.pipeline_web import run_web_master_pipeline
+from remastered.web.pipeline_web import download_source_audio, master_downloaded_audio
+from remastered.web.processing_stage import (
+    STAGE_DONE,
+    STAGE_DOWNLOADING_REFERENCE,
+    STAGE_DOWNLOADING_SOURCE,
+    STAGE_FINALIZING,
+    STAGE_MATCHING,
+)
 from remastered.web.reference_resolve import REFERENCE_DOWNLOAD_FAILED, resolve_reference_wav
+from remastered.web.reference_youtube import is_youtube_reference_job
 from remastered.web.stream_audio import transcode_wav_for_playback
 
 logger = logging.getLogger(__name__)
@@ -77,6 +85,9 @@ class JobWorker:
                 logger.exception("Job worker loop error")
                 time.sleep(1.0)
 
+    def _set_processing_stage(self, job_id: str, stage: str) -> None:
+        self.store.update_job(job_id, processing_stage=stage)
+
     def _run_job(self, job_id: str) -> None:
         try:
             job = self.store.get_job(job_id)
@@ -87,7 +98,13 @@ class JobWorker:
                 self.store.update_job(job_id, status="failed", error="Missing user_id")
                 return
 
-            self.store.update_job(job_id, status="running", stage="download", error=None)
+            self.store.update_job(
+                job_id,
+                status="running",
+                stage="download",
+                error=None,
+                processing_stage=STAGE_DOWNLOADING_SOURCE,
+            )
             self._last_served_user_id = user_id
             stage_state = dict(job["stage_state"])
 
@@ -114,37 +131,9 @@ class JobWorker:
                     status="failed",
                     error=detail,
                     stage_state=stage_state,
+                    processing_stage=STAGE_DOWNLOADING_SOURCE,
                 )
                 return
-
-            try:
-                reference, ref_title = resolve_reference_wav(
-                    job, self.settings, log=log
-                )
-            except HTTPException as exc:
-                detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-                log(detail)
-                self.store.update_job(
-                    job_id,
-                    status="failed",
-                    error=detail,
-                    stage_state=stage_state,
-                )
-                return
-            except RuntimeError as exc:
-                message = str(exc).split(" (", 1)[0]
-                if not message.startswith("Could not download"):
-                    message = REFERENCE_DOWNLOAD_FAILED
-                log(message)
-                self.store.update_job(
-                    job_id,
-                    status="failed",
-                    error=message,
-                    stage_state=stage_state,
-                )
-                return
-            if ref_title:
-                self.store.update_job(job_id, reference_youtube_title=ref_title)
 
             user_work = self.settings.work_dir / "users" / user_id
             user_work.mkdir(parents=True, exist_ok=True)
@@ -157,18 +146,97 @@ class JobWorker:
                     source_video_id=video_id,
                 )
 
+            try:
+                dl = download_source_audio(
+                    job["youtube_url"],
+                    job_settings,
+                    progress=progress,
+                    on_downloaded=on_downloaded,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log(f"Error: {exc}")
+                self.store.update_job(
+                    job_id,
+                    status="failed",
+                    error=str(exc),
+                    stage_state=stage_state,
+                    processing_stage=STAGE_DOWNLOADING_SOURCE,
+                )
+                return
+
+            fail_stage = (
+                STAGE_DOWNLOADING_REFERENCE
+                if is_youtube_reference_job(job)
+                else STAGE_DOWNLOADING_SOURCE
+            )
+            if is_youtube_reference_job(job):
+                self._set_processing_stage(job_id, STAGE_DOWNLOADING_REFERENCE)
+            try:
+                reference, ref_title = resolve_reference_wav(
+                    job, self.settings, log=log
+                )
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+                log(detail)
+                self.store.update_job(
+                    job_id,
+                    status="failed",
+                    error=detail,
+                    stage_state=stage_state,
+                    processing_stage=fail_stage,
+                )
+                return
+            except RuntimeError as exc:
+                message = str(exc).split(" (", 1)[0]
+                if not message.startswith("Could not download"):
+                    message = REFERENCE_DOWNLOAD_FAILED
+                log(message)
+                self.store.update_job(
+                    job_id,
+                    status="failed",
+                    error=message,
+                    stage_state=stage_state,
+                    processing_stage=fail_stage,
+                )
+                return
+            except FileNotFoundError as exc:
+                log(str(exc))
+                self.store.update_job(
+                    job_id,
+                    status="failed",
+                    error=str(exc),
+                    stage_state=stage_state,
+                    processing_stage=fail_stage,
+                )
+                return
+            if ref_title:
+                self.store.update_job(job_id, reference_youtube_title=ref_title)
+
             stereo_width = job.get("stereo_width_mode") or DEFAULT_STEREO_WIDTH_MODE
             if stereo_width not in VALID_STEREO_WIDTH_MODES:
                 stereo_width = DEFAULT_STEREO_WIDTH_MODE
 
-            result = run_web_master_pipeline(
-                job["youtube_url"],
-                reference,
-                job_settings,
-                progress,
-                on_downloaded=on_downloaded,
-                stereo_width=stereo_width,
-            )
+            self._set_processing_stage(job_id, STAGE_MATCHING)
+            try:
+                result = master_downloaded_audio(
+                    dl,
+                    reference,
+                    job_settings,
+                    progress=progress,
+                    stereo_width=stereo_width,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log(f"Error: {exc}")
+                self.store.update_job(
+                    job_id,
+                    status="failed",
+                    error=str(exc),
+                    stage_state=stage_state,
+                    processing_stage=STAGE_MATCHING,
+                )
+                return
+
+            self._set_processing_stage(job_id, STAGE_FINALIZING)
             audio_wav = result.get("audio")
             mastered_wav = result.get("mastered")
             if isinstance(audio_wav, Path):
@@ -196,6 +264,7 @@ class JobWorker:
                     "render": "skipped",
                     "upload": "skipped",
                 },
+                processing_stage=STAGE_DONE,
             )
             log("Mastering complete.")
         except Exception as exc:  # noqa: BLE001

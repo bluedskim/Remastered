@@ -32,36 +32,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "test-jwt-secret-key-at-least-32-bytes!!",
     )
 
-    def fake_web_pipeline(
-        url: str,
-        reference: Path,
-        settings,
-        progress=None,
-        on_downloaded=None,
-        stereo_width=None,
-    ):
-        prog = progress
-        if prog:
-            prog.stage_start("download")
-            prog.stage_done("download")
-            prog.stage_start("master")
-            prog.stage_done("master")
-        if on_downloaded:
-            on_downloaded("Test Track", "vid")
-        audio = settings.work_dir / "vid" / "audio.wav"
-        audio.parent.mkdir(parents=True, exist_ok=True)
-        audio.write_bytes(b"RIFF" + b"\x00" * 100)
-        mastered = settings.work_dir / "vid" / "master" / "out.wav"
-        mastered.parent.mkdir(parents=True, exist_ok=True)
-        mastered.write_bytes(b"RIFF" + b"\x00" * 100)
-        return {
-            "audio": audio,
-            "mastered": mastered,
-            "video_id": "vid",
-            "title": "Test Track",
-        }
+    from tests.worker_patches import install_fake_worker_pipeline
 
-    monkeypatch.setattr("remastered.web.worker.run_web_master_pipeline", fake_web_pipeline)
+    install_fake_worker_pipeline(monkeypatch, reference_path=refs / "ref.wav")
 
     def fake_transcode(wav: Path) -> Path:
         out = playback_path_for_wav(wav)

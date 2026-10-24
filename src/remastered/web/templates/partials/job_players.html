@@ -4,17 +4,12 @@
 
   {% if ab_compare_ok %}
   <div class="ab-compare" data-ab-compare>
-    <p class="ab-now-playing small muted">
-      Now playing: <strong class="ab-active-label" data-ab-active-label>Remastered</strong>
-      <span class="ab-loudness-hint">· Mastering may increase loudness</span>
-    </p>
-    <div class="ab-segment" role="group" aria-label="Compare original and remastered">
-      <button type="button" class="ab-segment-btn" data-ab-side="original" aria-pressed="false">
-        Original
-      </button>
-      <button type="button" class="ab-segment-btn" data-ab-side="remastered" aria-pressed="true">
-        Remastered
-      </button>
+    <p class="ab-loudness-hint small muted">Mastering may increase loudness</p>
+    <div class="ab-listen-toggle" role="group" aria-label="Listening source" data-ab-listen-toggle>
+      <span class="ab-listen-label">Listening:</span>
+      <button type="button" class="ab-listen-btn" data-ab-side="original" aria-pressed="false">Original</button>
+      <span class="ab-listen-sep" aria-hidden="true">|</span>
+      <button type="button" class="ab-listen-btn ab-listen-btn--active" data-ab-side="remastered" aria-pressed="true">Remastered</button>
     </div>
     <div class="ab-audio-host" aria-hidden="true">
       <audio data-audio="original" preload="auto" src="/media/{{ job.id }}/audio"></audio>
@@ -31,7 +26,7 @@
         <input type="range" class="ab-volume" data-ab-volume min="0" max="100" value="100" aria-label="Volume" />
       </label>
     </div>
-    <p class="small muted ab-keys-hint">Space play/pause · A original · B remastered · R repeat</p>
+    <p class="small muted ab-keys-hint">Space play/pause · A/B switch track · T toggle · R repeat</p>
     <div class="ab-downloads">
       {% if auth_user %}
       <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>Download remastered</a>

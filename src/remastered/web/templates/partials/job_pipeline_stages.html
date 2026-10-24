@@ -1,0 +1,11 @@
+<ol class="pipeline-stepper" aria-label="Processing stages">
+  {% for step in job.pipeline_steps %}
+  <li class="pipeline-step pipeline-step--{{ step.state }}">
+    <span class="pipeline-step-dot" aria-hidden="true"></span>
+    <span class="pipeline-step-label">{{ step.label }}</span>
+  </li>
+  {% endfor %}
+</ol>
+{% if job.status == 'pending' and job.queue_position and job.queue_position > 0 %}
+<p class="pipeline-queue-hint small muted">Queue position: #{{ job.queue_position }}</p>
+{% endif %}

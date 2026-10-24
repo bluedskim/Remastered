@@ -134,7 +134,23 @@ async def youtube_video_meta(url: str = "") -> JSONResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return JSONResponse(meta.as_dict())
+    payload = meta.as_dict()
+    ws = _web_settings()
+    payload["max_source_duration_seconds"] = ws.max_source_duration_seconds
+    if meta.duration_seconds is not None:
+        payload["exceeds_source_limit"] = (
+            meta.duration_seconds > ws.max_source_duration_seconds
+        )
+    return JSONResponse(payload)
+
+
+@fastapi_application.get("/privacy", response_class=HTMLResponse)
+def privacy_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "privacy.html",
+        _privacy_template_context(),
+    )
 
 
 @fastapi_application.get("/favicon.ico", include_in_schema=False)
@@ -215,9 +231,18 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 def _enrich_job(job: dict, store: JobStore) -> dict:
-    data = enrich_job_ui(job)
+    data = enrich_job_ui(job, store=store)
     data["status_display"] = job_status_display(job, store)
     return data
+
+
+def _privacy_template_context() -> dict[str, int | str]:
+    ws = _web_settings()
+    return {
+        "privacy_retention_days": ws.job_retention_days,
+        "privacy_notice": PRIVACY_NOTICE,
+        "privacy_updated": "2026-10-24",
+    }
 
 
 def _auth_template_context(identity: RequestIdentity) -> dict:
@@ -260,6 +285,7 @@ def _dashboard_context(
         "rights_notice_lines": rights_notice_lines(ws.job_retention_days),
         "limits": ws,
         **_auth_template_context(identity),
+        **_privacy_template_context(),
     }
 
 
@@ -414,9 +440,9 @@ def job_detail(
             "logs": logs,
             "stage_labels": STAGE_LABELS,
             "stages": WEB_STAGES,
-            "privacy_notice": PRIVACY_NOTICE,
             **_auth_template_context(identity),
             **media_ctx,
+            **_privacy_template_context(),
         },
     )
 
@@ -442,9 +468,9 @@ def job_panel(
         "logs": logs,
         "stage_labels": STAGE_LABELS,
         "stages": WEB_STAGES,
-        "privacy_notice": PRIVACY_NOTICE,
         **media_ctx,
         **_auth_template_context(identity),
+        **_privacy_template_context(),
     }
     # HTMX: 286 stops hx-trigger polling (see htmx.org/docs/#polling)
     status_code = 286 if job["status"] in TERMINAL_JOB_STATUSES else status.HTTP_200_OK

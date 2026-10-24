@@ -135,20 +135,13 @@ def youtube_ref_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestC
         path.write_bytes(b"RIFF" + b"\x00" * 8)
         return path, "Reference From YouTube"
 
-    monkeypatch.setattr("remastered.web.worker.resolve_reference_wav", fake_resolve)
+    from tests.worker_patches import install_fake_worker_pipeline
 
-    def fake_web_pipeline(url, reference, settings, progress=None, on_downloaded=None, stereo_width=None):
-        if on_downloaded:
-            on_downloaded("Source Track", "srcvid")
-        audio = settings.work_dir / "srcvid" / "audio.wav"
-        audio.parent.mkdir(parents=True, exist_ok=True)
-        audio.write_bytes(b"RIFF" + b"\x00" * 100)
-        mastered = settings.work_dir / "srcvid" / "master" / "out.wav"
-        mastered.parent.mkdir(parents=True, exist_ok=True)
-        mastered.write_bytes(b"RIFF" + b"\x00" * 100)
-        return {"audio": audio, "mastered": mastered, "video_id": "srcvid", "title": "Source Track"}
-
-    monkeypatch.setattr("remastered.web.worker.run_web_master_pipeline", fake_web_pipeline)
+    install_fake_worker_pipeline(
+        monkeypatch,
+        reference_path=refs / "ref.wav",
+        resolve_reference_wav=fake_resolve,
+    )
     monkeypatch.setattr(
         "remastered.web.worker.transcode_wav_for_playback",
         lambda wav: wav.with_suffix(".m4a"),
@@ -310,7 +303,13 @@ def test_worker_reference_download_failure_message(
     def boom(job, settings, log=None):
         raise RuntimeError("Could not download the reference video. (timeout)")
 
-    monkeypatch.setattr("remastered.web.worker.resolve_reference_wav", boom)
+    from tests.worker_patches import install_fake_worker_pipeline
+
+    install_fake_worker_pipeline(
+        monkeypatch,
+        reference_path=None,
+        resolve_reference_wav=boom,
+    )
     monkeypatch.setattr("remastered.web.worker.validate_youtube_source_limits", lambda url: None)
 
     worker = JobWorker(store, resolve_settings())
