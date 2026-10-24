@@ -103,9 +103,7 @@ def test_restore_preset_after_reload(ref_persist_site: str) -> None:
         page = context.new_page()
         page.goto(ref_persist_site + "/", wait_until="networkidle")
 
-        page.locator(
-            'label.ref-card:has(input[name="reference_name"][value="Pop - Artist - Track.wav"])'
-        ).click()
+        page.locator("#reference_preset_select").select_option("Pop - Artist - Track.wav")
         page.wait_for_function(
             """() => {
               const s = document.getElementById('ref-source-summary');
@@ -116,9 +114,7 @@ def test_restore_preset_after_reload(ref_persist_site: str) -> None:
         page.reload(wait_until="networkidle")
 
         assert page.locator("#ref-tab-preset").get_attribute("aria-selected") == "true"
-        assert (
-            page.locator('input[name="reference_name"][value="Pop - Artist - Track.wav"]').is_checked()
-        )
+        assert page.locator("#reference_preset_select").input_value() == "Pop - Artist - Track.wav"
         summary = page.locator("#ref-source-summary").inner_text()
         assert "Artist" in summary
         assert "(preset)" in summary

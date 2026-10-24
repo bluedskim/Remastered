@@ -434,6 +434,24 @@ select {
   border-radius: 14px;
 }
 
+.ref-preset-select {
+  min-height: 44px;
+  max-width: 100%;
+  padding-right: 2.25rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 12px 8px;
+}
+
+.ref-preset-select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
 .url-input-wrap {
   position: relative;
   display: flex;
