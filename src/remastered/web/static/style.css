@@ -655,7 +655,7 @@ button,
 
 .job-card {
   display: block;
-  padding: 1rem 1.05rem;
+  padding: 0.85rem 1.05rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.12);
@@ -664,6 +664,7 @@ button,
   transition: border-color 0.15s, transform 0.12s;
   min-width: 0;
   max-width: 100%;
+  min-height: 44px;
   overflow: hidden;
 }
 
@@ -673,22 +674,11 @@ button,
   transform: translateY(-1px);
 }
 
-.job-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.65rem;
-  min-width: 0;
-  max-width: 100%;
-}
-
 .job-card-title {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.35;
-  flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -700,8 +690,21 @@ button,
   line-clamp: 2;
 }
 
+.job-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .job-card-meta {
-  margin: 0.5rem 0 0;
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .status-pill {

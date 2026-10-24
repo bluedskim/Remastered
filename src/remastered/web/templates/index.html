@@ -197,14 +197,14 @@
             {% endif %}
           </span>
           <div class="job-card-body">
-            <div class="job-card-head">
-              <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
-              <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
-            </div>
+            <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
             {% if job.pipeline_stage_label %}
             <p class="job-card-stage small muted">{{ job.pipeline_stage_label }}</p>
             {% endif %}
-            <p class="job-card-meta small muted">{{ job.relative_time }}</p>
+            <div class="job-card-footer">
+              <span class="job-card-meta small muted">{{ job.relative_time }}</span>
+              <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+            </div>
           </div>
         </div>
       </a>
