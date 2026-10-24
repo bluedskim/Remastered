@@ -48,12 +48,14 @@
     <div class="field ref-source-field">
       <span class="field-label" id="ref-source-label">Reference track</span>
       <input type="hidden" name="reference_source" id="reference_source_mode" value="preset" />
-      <div class="ref-source-tabs" role="tablist" aria-labelledby="ref-source-label">
-        <button type="button" class="ref-source-tab" role="tab" id="ref-tab-preset" aria-selected="true" aria-controls="ref-panel-preset" data-ref-mode="preset">Preset</button>
-        <button type="button" class="ref-source-tab" role="tab" id="ref-tab-youtube" aria-selected="false" aria-controls="ref-panel-youtube" data-ref-mode="youtube" tabindex="-1">YouTube URL</button>
-        <button type="button" class="ref-source-tab" role="tab" id="ref-tab-upload" aria-selected="false" aria-controls="ref-panel-upload" data-ref-mode="upload" tabindex="-1">Upload file</button>
-      </div>
+      <div class="ref-source-frame">
+        <div class="ref-source-tabs" role="tablist" aria-labelledby="ref-source-label">
+          <button type="button" class="ref-source-tab" role="tab" id="ref-tab-preset" aria-selected="true" aria-controls="ref-panel-preset" data-ref-mode="preset">Preset</button>
+          <button type="button" class="ref-source-tab" role="tab" id="ref-tab-youtube" aria-selected="false" aria-controls="ref-panel-youtube" data-ref-mode="youtube" tabindex="-1">YouTube URL</button>
+          <button type="button" class="ref-source-tab" role="tab" id="ref-tab-upload" aria-selected="false" aria-controls="ref-panel-upload" data-ref-mode="upload" tabindex="-1">Upload file</button>
+        </div>
 
+        <div class="ref-source-panels">
       <div class="ref-source-panel" id="ref-panel-preset" role="tabpanel" aria-labelledby="ref-tab-preset">
         {% if reference_options %}
         <label class="visually-hidden" for="reference_preset_select">Choose preset reference</label>
@@ -124,6 +126,8 @@
       <div class="ref-source-panel" id="ref-panel-upload" role="tabpanel" aria-labelledby="ref-tab-upload" hidden>
         <label for="reference_upload">Reference audio file</label>
         <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" disabled />
+      </div>
+        </div>
       </div>
 
       <p class="ref-source-summary small" id="ref-source-summary" aria-live="polite">
