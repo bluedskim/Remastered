@@ -13,18 +13,24 @@
   <form id="create-job-form" method="post" action="/jobs" enctype="multipart/form-data" class="job-form" aria-labelledby="new-job-heading">
     <div class="field">
       <label for="youtube_url">YouTube URL</label>
-      <input class="input-lg" type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=..." required />
+      <div class="url-input-wrap">
+        <input class="input-lg url-input-field" type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=..." required />
+        <button type="button" class="url-input-clear" id="youtube_url-clear" aria-label="Clear URL" hidden>×</button>
+      </div>
       <div id="source-youtube-preview" class="ref-yt-preview" hidden>
-        <img
-          id="source-yt-preview-img"
-          class="ref-yt-preview-img"
-          src=""
-          alt=""
-          width="320"
-          height="180"
-          loading="lazy"
-          decoding="async"
-        />
+        <div class="ref-yt-preview-media">
+          <div id="source-yt-preview-skeleton" class="ref-yt-preview-skeleton" hidden aria-hidden="true"></div>
+          <img
+            id="source-yt-preview-img"
+            class="ref-yt-preview-img"
+            alt=""
+            width="320"
+            height="180"
+            loading="lazy"
+            decoding="async"
+            hidden
+          />
+        </div>
         <div class="ref-yt-preview-text">
           <p id="source-yt-preview-title" class="ref-yt-preview-title"></p>
           <p id="source-yt-preview-author" class="ref-yt-preview-author muted small"></p>
@@ -77,27 +83,33 @@
 
       <div class="ref-source-panel" id="ref-panel-youtube" role="tabpanel" aria-labelledby="ref-tab-youtube" hidden>
         <label class="visually-hidden" for="reference_youtube_url">Reference YouTube URL</label>
-        <input
-          class="input-lg"
-          type="url"
-          id="reference_youtube_url"
-          name="reference_youtube_url"
-          placeholder="https://www.youtube.com/watch?v=..."
-          autocomplete="off"
-          disabled
-        />
+        <div class="url-input-wrap">
+          <input
+            class="input-lg url-input-field"
+            type="url"
+            id="reference_youtube_url"
+            name="reference_youtube_url"
+            placeholder="https://www.youtube.com/watch?v=..."
+            autocomplete="off"
+            disabled
+          />
+          <button type="button" class="url-input-clear" id="reference_youtube_url-clear" aria-label="Clear URL" hidden disabled>×</button>
+        </div>
         <input type="hidden" name="reference_youtube_title" id="reference_youtube_title" value="" />
         <div id="ref-youtube-preview" class="ref-yt-preview" hidden>
-          <img
-            id="ref-yt-preview-img"
-            class="ref-yt-preview-img"
-            src=""
-            alt=""
-            width="320"
-            height="180"
-            loading="lazy"
-            decoding="async"
-          />
+          <div class="ref-yt-preview-media">
+            <div id="ref-yt-preview-skeleton" class="ref-yt-preview-skeleton" hidden aria-hidden="true"></div>
+            <img
+              id="ref-yt-preview-img"
+              class="ref-yt-preview-img"
+              alt=""
+              width="320"
+              height="180"
+              loading="lazy"
+              decoding="async"
+              hidden
+            />
+          </div>
           <div class="ref-yt-preview-text">
             <p id="ref-yt-preview-title" class="ref-yt-preview-title"></p>
             <p id="ref-yt-preview-author" class="ref-yt-preview-author muted small"></p>
@@ -165,19 +177,21 @@
     <li>
       <a class="job-card" href="/jobs/{{ job.id }}">
         <div class="job-card-row">
-          {% if job.job_list_thumbnail %}
-          <img
-            class="job-card-thumb"
-            src="{{ job.job_list_thumbnail }}"
-            alt=""
-            width="96"
-            height="54"
-            loading="lazy"
-            decoding="async"
-          />
-          {% else %}
-          <span class="job-card-thumb job-card-thumb--placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
-          {% endif %}
+          <span class="yt-thumb-slot job-card-thumb-slot" data-yt-thumb-slot>
+            <span class="job-card-thumb job-card-thumb--placeholder yt-thumb-placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
+            {% if job.job_list_thumbnail %}
+            <img
+              class="job-card-thumb yt-thumb-img"
+              src="{{ job.job_list_thumbnail }}"
+              alt=""
+              width="96"
+              height="54"
+              loading="lazy"
+              decoding="async"
+              hidden
+            />
+            {% endif %}
+          </span>
           <div class="job-card-body">
             <div class="job-card-head">
               <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
@@ -381,6 +395,9 @@
       refPreviewCtl.clearPreview();
       youtubeMetaTitle = "";
     }
+    if (window.syncYoutubeUrlClear) {
+      window.syncYoutubeUrlClear("reference_youtube_url", "reference_youtube_url-clear");
+    }
   }
 
   tabs.forEach(function (tab) {
@@ -427,8 +444,36 @@
     });
   }
 
+  function wireUrlClear(inputId, clearId, extraOnClear) {
+    if (!window.initYoutubeUrlClear) return;
+    window.initYoutubeUrlClear({
+      inputId: inputId,
+      clearButtonId: clearId,
+      onClear: extraOnClear || function () {},
+    });
+  }
+
+  wireUrlClear("youtube_url", "youtube_url-clear");
+  wireUrlClear("reference_youtube_url", "reference_youtube_url-clear", function () {
+    youtubeMetaTitle = "";
+    updateSummary();
+    writeStored();
+  });
+
   restoreFromStorage();
-  if (sourcePreviewCtl) sourcePreviewCtl.scheduleFetch();
+  const sourceUrlInput = document.getElementById("youtube_url");
+  if (
+    sourcePreviewCtl &&
+    sourceUrlInput &&
+    window.extractYoutubeVideoId &&
+    window.extractYoutubeVideoId(sourceUrlInput.value)
+  ) {
+    sourcePreviewCtl.scheduleFetch();
+  }
+  if (window.syncYoutubeUrlClear) {
+    window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
+    window.syncYoutubeUrlClear("reference_youtube_url", "reference_youtube_url-clear");
+  }
 
   const btn = document.getElementById("create-job-submit");
   let submitted = false;

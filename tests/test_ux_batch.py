@@ -68,6 +68,8 @@ def test_home_has_source_preview_and_listen_toggle_markup(ux_client: TestClient)
     assert 'id="source-youtube-preview"' in home.text
     assert "source-duration-warning" in home.text
     assert "youtube-preview.js" in home.text
+    assert 'aria-label="Clear URL"' in home.text
+    assert "url-input-clear" in home.text
 
 
 def _create_v8_jobs_database(path: Path) -> None:

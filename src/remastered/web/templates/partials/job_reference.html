@@ -2,17 +2,21 @@
   <span class="job-reference-key">Reference</span>
   {% if job.reference_kind == "youtube" and job.reference_url %}
   <div class="job-reference-youtube">
-    {% if job.reference_thumbnail %}
-    <img
-      class="ref-yt-thumb"
-      src="{{ job.reference_thumbnail }}"
-      alt=""
-      width="120"
-      height="68"
-      loading="lazy"
-      decoding="async"
-    />
-    {% endif %}
+    <span class="yt-thumb-slot ref-yt-thumb-slot" data-yt-thumb-slot>
+      <span class="ref-yt-thumb ref-yt-thumb--placeholder yt-thumb-placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
+      {% if job.reference_thumbnail %}
+      <img
+        class="ref-yt-thumb yt-thumb-img"
+        src="{{ job.reference_thumbnail }}"
+        alt=""
+        width="120"
+        height="68"
+        loading="lazy"
+        decoding="async"
+        hidden
+      />
+      {% endif %}
+    </span>
     <div class="job-reference-youtube-text">
       <span class="ref-genre ref-genre--compact">{{ job.reference_genre }}</span>
       <a class="ref-title job-reference-link ref-yt-title" href="{{ job.reference_url }}" target="_blank" rel="noopener noreferrer">{{ job.reference_label }}</a>
