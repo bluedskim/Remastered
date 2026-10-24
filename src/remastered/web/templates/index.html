@@ -56,24 +56,24 @@
 
       <div class="ref-source-panel" id="ref-panel-preset" role="tabpanel" aria-labelledby="ref-tab-preset">
         {% if reference_options %}
-        <div class="ref-picker" role="radiogroup" aria-label="Choose preset reference">
+        <label class="visually-hidden" for="reference_preset_select">Choose preset reference</label>
+        <select
+          id="reference_preset_select"
+          class="ref-preset-select input-lg"
+          name="reference_name"
+          aria-label="Choose preset reference"
+        >
           {% for opt in reference_options %}
-          <label class="ref-card">
-            <input
-              type="radio"
-              name="reference_name"
-              value="{{ opt.name }}"
-              data-reference-library="{{ opt.source }}"
-              data-ref-label="{{ opt.label | e }}"
-              {% if loop.first %}checked{% endif %}
-            />
-            <span class="ref-card-body">
-              <span class="ref-genre">{{ opt.genre }}</span>
-              <span class="ref-title">{{ opt.label }}</span>
-            </span>
-          </label>
+          <option
+            value="{{ opt.name }}"
+            data-reference-library="{{ opt.source }}"
+            data-ref-label="{{ opt.label | e }}"
+            {% if loop.first %}selected{% endif %}
+          >
+            {{ opt.genre | upper }} — {{ opt.label }}
+          </option>
           {% endfor %}
-        </div>
+        </select>
         {% else %}
         <p class="muted small">No preset references available. Use YouTube URL or upload a file.</p>
         <input type="hidden" name="reference_name" value="" data-ref-label="" />
@@ -264,10 +264,19 @@
     },
   });
 
+  const presetSelect = document.getElementById("reference_preset_select");
+
+  function selectedPresetOption() {
+    if (!presetSelect) return null;
+    const idx = presetSelect.selectedIndex;
+    if (idx < 0) return null;
+    return presetSelect.options[idx];
+  }
+
   function presetSummary() {
-    const checked = form.querySelector('input[name="reference_name"]:checked');
-    if (!checked) return "Reference: — (preset)";
-    const label = checked.getAttribute("data-ref-label") || checked.value || "—";
+    const opt = selectedPresetOption();
+    if (!opt) return "Reference: — (preset)";
+    const label = opt.getAttribute("data-ref-label") || opt.value || "—";
     return "Reference: " + label + " (preset)";
   }
 
@@ -305,8 +314,8 @@
       const mode = modeInput.value || "preset";
       const payload = { tab: mode };
       if (mode === "preset") {
-        const checked = form.querySelector('input[name="reference_name"]:checked');
-        payload.presetName = checked ? checked.value : "";
+        const opt = selectedPresetOption();
+        payload.presetName = opt ? opt.value : "";
         payload.presetLibrary = libraryInput ? libraryInput.value : "shared";
       } else if (mode === "youtube") {
         payload.youtubeUrl = youtubeInput ? youtubeInput.value.trim() : "";
@@ -318,17 +327,19 @@
   }
 
   function selectPresetByName(name) {
-    const inputs = form.querySelectorAll('input[name="reference_name"]');
-    if (!inputs.length) return;
-    let target = null;
+    if (!presetSelect || !presetSelect.options.length) return;
+    let idx = 0;
     if (name) {
-      inputs.forEach(function (input) {
-        if (input.value === name) target = input;
-      });
+      for (let i = 0; i < presetSelect.options.length; i++) {
+        if (presetSelect.options[i].value === name) {
+          idx = i;
+          break;
+        }
+      }
     }
-    if (!target) target = inputs[0];
-    target.checked = true;
-    const lib = target.getAttribute("data-reference-library");
+    presetSelect.selectedIndex = idx;
+    const opt = presetSelect.options[idx];
+    const lib = opt && opt.getAttribute("data-reference-library");
     if (lib && libraryInput) libraryInput.value = lib;
   }
 
@@ -419,12 +430,10 @@
     });
   });
 
-  const presetPicker = panels.preset && panels.preset.querySelector(".ref-picker");
-  if (presetPicker) {
-    presetPicker.addEventListener("change", function (e) {
-      const input = e.target;
-      if (input.name !== "reference_name" || input.type !== "radio") return;
-      const lib = input.getAttribute("data-reference-library");
+  if (presetSelect) {
+    presetSelect.addEventListener("change", function () {
+      const opt = selectedPresetOption();
+      const lib = opt && opt.getAttribute("data-reference-library");
       if (lib && libraryInput) libraryInput.value = lib;
       updateSummary();
       writeStored();

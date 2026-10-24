@@ -165,6 +165,7 @@ def test_form_shows_reference_source_tabs(youtube_ref_client: TestClient) -> Non
     assert 'id="ref-tab-upload"' in home.text
     assert 'name="reference_source"' in home.text
     assert 'id="ref-source-summary"' in home.text
+    assert 'id="reference_preset_select"' in home.text
     assert "this video's audio is used as the reference" not in home.text
 
 
