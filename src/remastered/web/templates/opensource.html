@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Open source — Remastered{% endblock %}
+{% block content %}
+<section class="card">
+  <h1 class="section-title">Open source</h1>
+  <p class="muted small">Last updated: {{ opensource_updated }}</p>
+  <div class="privacy-body">
+    <p>
+      Remastered is built on open-source software. We are grateful to the projects and
+      communities below.
+    </p>
+    <p>
+      <strong>Remastered</strong> itself is released under the
+      <a href="https://opensource.org/license/mit" rel="noopener noreferrer">MIT License</a>.
+      The mastering pipeline includes
+      <a href="https://github.com/sergree/matchering" rel="noopener noreferrer">matchering</a>
+      (GPLv3); if you deploy or redistribute Remastered, please respect that license.
+    </p>
+
+    <h2 class="section-title small">Core / pipeline</h2>
+    <ul>
+      <li>
+        <a href="https://github.com/sergree/matchering" rel="noopener noreferrer">matchering</a>
+        — reference-based audio mastering (GPLv3)
+      </li>
+      <li>
+        <a href="https://github.com/yt-dlp/yt-dlp" rel="noopener noreferrer">yt-dlp</a>
+        — YouTube audio download
+      </li>
+      <li>
+        <a href="https://ffmpeg.org/" rel="noopener noreferrer">ffmpeg</a>
+        — encode, decode, and render audio
+      </li>
+      <li>
+        <strong>libsndfile</strong> — audio file I/O (system dependency in Docker images)
+      </li>
+    </ul>
+
+    <h2 class="section-title small">App / web stack</h2>
+    <ul>
+      <li>Click, FastAPI, Uvicorn, Jinja2, Pydantic / pydantic-settings</li>
+      <li>
+        google-api-python-client, google-auth-httplib2, google-auth-oauthlib
+        (YouTube upload CLI)
+      </li>
+      <li>
+        PyJWT, bcrypt, itsdangerous, cryptography, python-multipart, httpx
+        (web auth and helpers)
+      </li>
+      <li>Hatchling (build)</li>
+      <li>
+        <a href="https://htmx.org/" rel="noopener noreferrer">htmx</a>
+        (loaded from unpkg in the site template)
+      </li>
+      <li>
+        <a href="https://github.com/orioncactus/pretendard" rel="noopener noreferrer">Pretendard</a>
+        font (CDN in the site template)
+      </li>
+    </ul>
+  </div>
+  <p class="small"><a href="/">← Back to home</a></p>
+</section>
+{% endblock %}

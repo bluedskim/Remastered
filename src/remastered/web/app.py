@@ -161,6 +161,15 @@ def privacy_page(request: Request) -> HTMLResponse:
     )
 
 
+@fastapi_application.get("/opensource", response_class=HTMLResponse)
+def opensource_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "opensource.html",
+        {**_privacy_template_context(), **_opensource_template_context()},
+    )
+
+
 @fastapi_application.get("/favicon.ico", include_in_schema=False)
 def favicon_ico() -> FileResponse:
     path = STATIC_DIR / "favicon.ico"
@@ -251,6 +260,10 @@ def _privacy_template_context() -> dict[str, int | str]:
         "privacy_notice": PRIVACY_NOTICE,
         "privacy_updated": "2026-10-24",
     }
+
+
+def _opensource_template_context() -> dict[str, str]:
+    return {"opensource_updated": "2026-10-26"}
 
 
 def _auth_template_context(identity: RequestIdentity) -> dict:
