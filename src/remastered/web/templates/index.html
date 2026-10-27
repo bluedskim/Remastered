@@ -10,6 +10,7 @@
   </div>
 
   <h2 class="section-title" id="new-job-heading">New job</h2>
+  <div id="retry-form-notice" class="retry-form-notice" hidden role="status"></div>
   <form id="create-job-form" method="post" action="/jobs" enctype="multipart/form-data" class="job-form" aria-labelledby="new-job-heading">
     <div class="field">
       <label for="youtube_url">YouTube URL</label>
@@ -704,8 +705,109 @@
     }
   }
 
-  restoreSourceYoutube();
-  restoreFromStorage();
+  function showRetryWarnings(warnings) {
+    const el = document.getElementById("retry-form-notice");
+    if (!el || !warnings || !warnings.length) return;
+    el.innerHTML =
+      "<strong>Some settings could not be restored.</strong><ul>" +
+      warnings.map(function (w) {
+        return "<li>" + w + "</li>";
+      }).join("") +
+      "</ul>";
+    el.removeAttribute("hidden");
+  }
+
+  function applyStereoWidth(mode) {
+    if (!mode || !form) return;
+    const radio = form.querySelector(
+      'input[name="stereo_width_mode"][value="' + mode + '"]'
+    );
+    if (radio) radio.checked = true;
+  }
+
+  function applyJobRetryPayload(data) {
+    if (!data || typeof data !== "object") return;
+    if (sourceUrlInput && data.sourceYoutubeUrl) {
+      sourceUrlInput.value = data.sourceYoutubeUrl;
+    }
+    if (IS_SIGNED_IN && data.uploadFilename) {
+      savedUploadFilename = data.uploadFilename;
+    }
+    applyStoredFields({
+      presetName: data.presetName || "",
+      presetLibrary: data.presetLibrary || "shared",
+      youtubeUrl: data.youtubeUrl || "",
+      uploadFilename: data.uploadFilename || "",
+    });
+    let tab = data.tab || "preset";
+    if (tab === "upload") {
+      if (!IS_SIGNED_IN || !data.uploadFilename) {
+        tab = "preset";
+      }
+    }
+    if (tab === "upload") {
+      activateMode("upload", true);
+    } else if (tab === "youtube") {
+      activateMode("youtube", true);
+    } else {
+      activateMode("preset", true);
+    }
+    applyStereoWidth(data.stereoWidthMode);
+    syncSavedUploadFields();
+    updateSummary();
+    showRetryWarnings(data.warnings);
+    const heading = document.getElementById("new-job-heading");
+    if (heading && typeof heading.scrollIntoView === "function") {
+      heading.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function bootstrapFormRestore() {
+    const params = new URLSearchParams(window.location.search);
+    const jobId = params.get("from_job");
+    if (!jobId) {
+      restoreSourceYoutube();
+      restoreFromStorage();
+      return;
+    }
+    if (window.history && window.history.replaceState) {
+      params.delete("from_job");
+      const qs = params.toString();
+      const next =
+        window.location.pathname + (qs ? "?" + qs : "") + window.location.hash;
+      window.history.replaceState({}, "", next);
+    }
+    fetch("/api/jobs/" + encodeURIComponent(jobId) + "/retry-form", {
+      credentials: "same-origin",
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("retry form failed");
+        return resp.json();
+      })
+      .then(function (data) {
+        applyJobRetryPayload(data);
+        if (window.syncYoutubeUrlClear) {
+          window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
+          window.syncYoutubeUrlClear(
+            "reference_youtube_url",
+            "reference_youtube_url-clear"
+          );
+        }
+        refreshYoutubePreviewsFromInputs();
+      })
+      .catch(function () {
+        restoreSourceYoutube();
+        restoreFromStorage();
+        const el = document.getElementById("retry-form-notice");
+        if (el) {
+          el.textContent =
+            "Could not load settings from that job. Using your saved defaults.";
+          el.removeAttribute("hidden");
+        }
+      });
+  }
+
+  bootstrapFormRestore();
   if (window.syncYoutubeUrlClear) {
     window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
     window.syncYoutubeUrlClear("reference_youtube_url", "reference_youtube_url-clear");
@@ -715,8 +817,7 @@
 
   window.addEventListener("pageshow", function (event) {
     if (event.persisted) {
-      restoreSourceYoutube();
-      restoreFromStorage();
+      bootstrapFormRestore();
       if (window.syncYoutubeUrlClear) {
         window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
         window.syncYoutubeUrlClear("reference_youtube_url", "reference_youtube_url-clear");
