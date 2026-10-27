@@ -50,6 +50,7 @@ from remastered.web.reference_youtube import (
     parse_reference_youtube_url,
     youtube_reference_path_key,
 )
+from remastered.web.cleanup import delete_job_media_files
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.static_assets import init_static_hashes, static_url
 from remastered.web.static_cache import StaticAndHtmlCacheMiddleware
@@ -610,6 +611,31 @@ async def create_job(
         merged = with_active_tab(merged, merged.tab, source_youtube_url=youtube_url)
         _save_reference_prefs(store, identity.account_id, merged, ws)
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+
+
+@fastapi_application.delete("/api/jobs/{job_id}")
+async def delete_job_api(
+    job_id: str,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    job = await run_in_threadpool(
+        store.get_job_for_access,
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    settings = resolve_settings()
+    work_dir = settings.work_dir
+
+    def _delete() -> None:
+        delete_job_media_files(job, work_dir)
+        store.delete_job(job_id)
+
+    await run_in_threadpool(_delete)
+    return JSONResponse({"ok": True})
 
 
 @fastapi_application.get("/jobs/{job_id}", response_class=HTMLResponse)

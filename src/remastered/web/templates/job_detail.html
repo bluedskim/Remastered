@@ -1,8 +1,14 @@
 {% extends "base.html" %}
 {% block title %}{{ job_display_title(job) }} — Remastered{% endblock %}
 {% block content %}
-<nav class="breadcrumb">
+<nav class="breadcrumb job-detail-nav">
   <a href="/">← Back to list</a>
+  <button
+    type="button"
+    class="btn btn-ghost btn-sm job-delete-btn"
+    id="job-delete-btn"
+    data-job-delete="{{ job.id }}"
+  >Delete job</button>
 </nav>
 <div id="job-status"
      {% if job.status not in ('completed', 'failed', 'cancelled') %}
@@ -16,4 +22,5 @@
   {% include "partials/job_players.html" %}
 </div>
 <script src="{{ static_url('ab-player.js') }}" defer></script>
+<script src="{{ static_url('job-delete.js') }}" defer></script>
 {% endblock %}

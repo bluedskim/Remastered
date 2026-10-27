@@ -180,36 +180,45 @@
   {% else %}
   <ul class="job-list">
     {% for job in jobs %}
-    <li>
-      <a class="job-card" href="/jobs/{{ job.id }}">
-        <div class="job-card-row">
-          <span class="yt-thumb-slot job-card-thumb-slot" data-yt-thumb-slot>
-            <span class="job-card-thumb job-card-thumb--placeholder yt-thumb-placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
-            {% if job.job_list_thumbnail %}
-            <img
-              class="job-card-thumb yt-thumb-img"
-              src="{{ job.job_list_thumbnail }}"
-              alt=""
-              width="96"
-              height="54"
-              loading="eager"
-              decoding="async"
-              hidden
-            />
-            {% endif %}
-          </span>
-          <div class="job-card-body">
-            <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
-            {% if job.pipeline_stage_label %}
-            <p class="job-card-stage small muted">{{ job.pipeline_stage_label }}</p>
-            {% endif %}
-            <div class="job-card-footer">
-              <span class="job-card-meta small muted">{{ job.relative_time }}</span>
-              <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+    <li class="job-list-item">
+      <div class="job-card-shell">
+        <a class="job-card" href="/jobs/{{ job.id }}">
+          <div class="job-card-row">
+            <span class="yt-thumb-slot job-card-thumb-slot" data-yt-thumb-slot>
+              <span class="job-card-thumb job-card-thumb--placeholder yt-thumb-placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
+              {% if job.job_list_thumbnail %}
+              <img
+                class="job-card-thumb yt-thumb-img"
+                src="{{ job.job_list_thumbnail }}"
+                alt=""
+                width="96"
+                height="54"
+                loading="eager"
+                decoding="async"
+                hidden
+              />
+              {% endif %}
+            </span>
+            <div class="job-card-body">
+              <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
+              {% if job.pipeline_stage_label %}
+              <p class="job-card-stage small muted">{{ job.pipeline_stage_label }}</p>
+              {% endif %}
+              <div class="job-card-footer">
+                <span class="job-card-meta small muted">{{ job.relative_time }}</span>
+                <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+              </div>
             </div>
           </div>
-        </div>
-      </a>
+        </a>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm job-delete-btn"
+          data-job-delete="{{ job.id }}"
+          aria-label="Delete job"
+          title="Delete job"
+        >Delete</button>
+      </div>
     </li>
     {% endfor %}
   </ul>
@@ -217,6 +226,7 @@
 </section>
 
 <script src="{{ static_url('youtube-preview.js') }}"></script>
+<script src="{{ static_url('job-delete.js') }}" defer></script>
 <script>
 (function () {
   const IS_SIGNED_IN = {{ "true" if auth_user else "false" }};
