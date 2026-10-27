@@ -11,7 +11,12 @@ from remastered.web.app import fastapi_application
 from remastered.web.db import JobStore
 from remastered.web.job_retry import build_job_retry_form_payload
 from remastered.web.reference_youtube import youtube_reference_path_key
+from remastered.web.job_reference_snapshot import (
+    is_job_upload_reference_snapshot,
+    job_reference_snapshot_path,
+)
 from remastered.web.settings import WebSettings
+from remastered.config import resolve_settings
 
 
 @pytest.fixture
@@ -89,6 +94,7 @@ def test_build_job_retry_form_payload_preset(tmp_path: Path) -> None:
         shared_refs=["ref.wav"],
         user_refs=[],
         user_refs_dir=tmp_path / "user_refs",
+        work_dir=tmp_path / "work",
         ws=ws,
     )
     assert payload["sourceYoutubeUrl"] == job["youtube_url"]
@@ -104,6 +110,8 @@ def test_build_job_retry_form_payload_missing_upload_warns(tmp_path: Path) -> No
     user_refs = tmp_path / "user_refs"
     user_refs.mkdir()
     job = {
+        "id": "job-missing-snap",
+        "user_id": "anon-test",
         "youtube_url": "https://www.youtube.com/watch?v=abc123",
         "reference_source_type": "upload",
         "reference_path": str(user_refs / "gone.wav"),
@@ -114,6 +122,7 @@ def test_build_job_retry_form_payload_missing_upload_warns(tmp_path: Path) -> No
         shared_refs=[],
         user_refs=[],
         user_refs_dir=user_refs,
+        work_dir=tmp_path / "work",
         ws=ws,
     )
     assert payload["tab"] == "preset"
@@ -135,6 +144,7 @@ def test_build_job_retry_form_payload_youtube_reference() -> None:
         shared_refs=["ref.wav"],
         user_refs=[],
         user_refs_dir=Path("/tmp/unused"),
+        work_dir=Path("/tmp/work"),
         ws=ws,
     )
     assert payload["tab"] == "youtube"
@@ -200,3 +210,103 @@ def test_retry_form_reflects_job_not_generic_prefs(
     retry_a = client.get(f"/api/jobs/{job_a}/retry-form").json()
     assert retry_a["sourceYoutubeUrl"] == "https://www.youtube.com/watch?v=jobA111"
     assert retry_a["stereoWidthMode"] == "preserve"
+
+
+def _create_upload_reference_job(
+    client: TestClient,
+    *,
+    filename: str,
+    content: bytes,
+    youtube_url: str,
+) -> str:
+    client.get("/")
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": youtube_url,
+            "reference_source": "upload",
+        },
+        files={"reference_upload": (filename, content, "audio/wav")},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303, resp.text
+    job_id = resp.headers["location"].split("/")[-1]
+    _wait_job_complete(client, job_id)
+    return job_id
+
+
+def test_upload_reference_snapshot_survives_replaced_user_file(
+    client: TestClient, tmp_path: Path
+) -> None:
+    name = "my-ref.wav"
+    job_a = _create_upload_reference_job(
+        client,
+        filename=name,
+        content=b"REF-A-CONTENT",
+        youtube_url="https://www.youtube.com/watch?v=uploadA1",
+    )
+    job_b = _create_upload_reference_job(
+        client,
+        filename=name,
+        content=b"REF-B-CONTENT",
+        youtube_url="https://www.youtube.com/watch?v=uploadB2",
+    )
+
+    work_dir = resolve_settings().work_dir
+    store = JobStore(work_dir / "remastered_jobs.db")
+    row_a = store.get_job(job_a)
+    row_b = store.get_job(job_b)
+    assert row_a and row_b
+    snap_a = Path(row_a["reference_path"])
+    snap_b = Path(row_b["reference_path"])
+    assert snap_a.is_file() and snap_b.is_file()
+    assert snap_a.read_bytes() == b"REF-A-CONTENT"
+    assert snap_b.read_bytes() == b"REF-B-CONTENT"
+    assert is_job_upload_reference_snapshot(snap_a, row_a, work_dir)
+    assert is_job_upload_reference_snapshot(snap_b, row_b, work_dir)
+
+    retry_a = client.get(f"/api/jobs/{job_a}/retry-form").json()
+    assert retry_a["tab"] == "upload"
+    assert retry_a["uploadFilename"] == name
+    assert retry_a["retryFromJobId"] == job_a
+    assert retry_a["warnings"] == []
+
+    retry_b = client.get(f"/api/jobs/{job_b}/retry-form").json()
+    assert retry_b["retryFromJobId"] == job_b
+
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=uploadRetry",
+            "reference_source": "upload",
+            "reference_from_job_id": job_a,
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    job_retry = resp.headers["location"].split("/")[-1]
+    _wait_job_complete(client, job_retry)
+    row_retry = store.get_job(job_retry)
+    assert row_retry is not None
+    assert Path(row_retry["reference_path"]).read_bytes() == b"REF-A-CONTENT"
+
+
+def test_delete_job_removes_upload_reference_snapshot(
+    client: TestClient,
+) -> None:
+    job_id = _create_upload_reference_job(
+        client,
+        filename="snap.wav",
+        content=b"SNAP",
+        youtube_url="https://www.youtube.com/watch?v=delSnap1",
+    )
+    work_dir = resolve_settings().work_dir
+    store = JobStore(work_dir / "remastered_jobs.db")
+    row = store.get_job(job_id)
+    assert row is not None
+    snap = Path(row["reference_path"])
+    assert snap.is_file()
+
+    assert client.delete(f"/api/jobs/{job_id}").status_code == 200
+    assert not snap.is_file()
+    assert not job_reference_snapshot_path(work_dir, row["user_id"], job_id, "snap.wav").parent.parent.is_dir()

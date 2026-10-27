@@ -128,6 +128,7 @@
         <label for="reference_upload">Reference audio file</label>
         <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" disabled />
         <input type="hidden" name="reference_saved_upload" id="reference_saved_upload" value="" />
+        <input type="hidden" name="reference_from_job_id" id="reference_from_job_id" value="" />
         <p class="small muted" id="reference_saved_upload_hint" hidden></p>
       </div>
         </div>
@@ -246,6 +247,7 @@
   const youtubeInput = document.getElementById("reference_youtube_url");
   const uploadInput = document.getElementById("reference_upload");
   const savedUploadInput = document.getElementById("reference_saved_upload");
+  const referenceFromJobInput = document.getElementById("reference_from_job_id");
   const savedUploadHint = document.getElementById("reference_saved_upload_hint");
   let savedUploadFilename = "";
   const sourceDurationWarning = document.getElementById("source-duration-warning");
@@ -629,6 +631,7 @@
   }
   if (uploadInput) {
     uploadInput.addEventListener("change", function () {
+      clearReferenceFromJob();
       const file = uploadInput.files && uploadInput.files[0];
       if (!file) {
         updateSummary();
@@ -725,12 +728,20 @@
     if (radio) radio.checked = true;
   }
 
+  function clearReferenceFromJob() {
+    if (referenceFromJobInput) referenceFromJobInput.value = "";
+  }
+
   function applyJobRetryPayload(data) {
     if (!data || typeof data !== "object") return;
+    clearReferenceFromJob();
     if (sourceUrlInput && data.sourceYoutubeUrl) {
       sourceUrlInput.value = data.sourceYoutubeUrl;
     }
-    if (IS_SIGNED_IN && data.uploadFilename) {
+    if (data.retryFromJobId && referenceFromJobInput) {
+      referenceFromJobInput.value = data.retryFromJobId;
+    }
+    if (IS_SIGNED_IN && data.uploadFilename && !data.retryFromJobId) {
       savedUploadFilename = data.uploadFilename;
     }
     applyStoredFields({
