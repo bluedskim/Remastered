@@ -316,6 +316,9 @@
   function writeStored() {
     try {
       const mode = modeInput.value || "preset";
+      if (mode === "upload") {
+        return;
+      }
       const payload = { tab: mode };
       if (mode === "preset") {
         const opt = selectedPresetOption();
@@ -361,8 +364,11 @@
       if (youtubeInput && stored.youtubeUrl) youtubeInput.value = stored.youtubeUrl;
       activateMode("youtube", true);
     } else if (tab === "upload") {
-      if (uploadInput) uploadInput.value = "";
-      activateMode("upload", true);
+      selectPresetByName("");
+      activateMode("preset", true);
+      writeStored();
+      updateSummary();
+      return;
     } else {
       selectPresetByName(stored.presetName || "");
       if (stored.presetLibrary && libraryInput) libraryInput.value = stored.presetLibrary;

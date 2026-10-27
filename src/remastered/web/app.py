@@ -16,10 +16,10 @@ from remastered.web.db import WEB_STAGES, JobStore
 from remastered.web.auth_display import format_account_email_display
 from remastered.web.auth_redirect import request_prefers_auth_redirect, signup_url
 from remastered.web.auth_routes import register_auth_routes
+from remastered.web.anon_visit import ensure_identity_with_anon_visit
 from remastered.web.identity import (
     RequestIdentity,
     client_ip,
-    resolve_identity,
     session_middleware_kwargs,
 )
 from remastered.web.download_filenames import media_download_filename
@@ -77,9 +77,10 @@ TERMINAL_JOB_STATUSES = frozenset({"completed", "failed", "cancelled"})
 DOWNLOAD_REQUIRES_SIGN_IN = "Sign in required to download the remastered file."
 
 PRIVACY_NOTICE = (
-    "We store: anonymous session id, job URLs, logs, and output file paths. "
-    "If you sign up, we also store email and a password hash. "
-    "Job files are deleted after the retention period."
+    "Without signing in, remaster results last only for your current browser visit; "
+    "reference tab, preset, and YouTube URL choices are remembered in your browser. "
+    "Signed-in accounts keep jobs for the retention period. "
+    "If you sign up, we also store email and a password hash."
 )
 
 
@@ -188,8 +189,8 @@ def get_worker(request: Request) -> JobWorker:
     return request.app.state.worker
 
 
-def require_identity(request: Request) -> RequestIdentity:
-    return resolve_identity(request)
+def require_identity(request: Request, store: JobStore = Depends(get_store)) -> RequestIdentity:
+    return ensure_identity_with_anon_visit(request, store)
 
 
 def _list_reference_files(references_dir: Path) -> list[str]:

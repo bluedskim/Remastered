@@ -122,7 +122,7 @@ def test_restore_preset_after_reload(ref_persist_site: str) -> None:
         browser.close()
 
 
-def test_restore_upload_tab_without_file(ref_persist_site: str) -> None:
+def test_upload_tab_not_restored_after_reload(ref_persist_site: str) -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 390, "height": 800})
@@ -132,8 +132,8 @@ def test_restore_upload_tab_without_file(ref_persist_site: str) -> None:
             """() => document.getElementById('ref-source-summary').textContent.includes('choose a file')"""
         )
         page.reload(wait_until="networkidle")
-        assert page.locator("#ref-tab-upload").get_attribute("aria-selected") == "true"
-        assert page.locator("#ref-source-summary").inner_text() == "Reference: choose a file"
+        assert page.locator("#ref-tab-preset").get_attribute("aria-selected") == "true"
+        assert "(preset)" in page.locator("#ref-source-summary").inner_text()
         browser.close()
 
 

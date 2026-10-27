@@ -657,6 +657,26 @@ class JobStore:
             ).fetchall()
         return [self._row_to_job(r) for r in rows]
 
+    def delete_all_jobs_for_user(self, user_id: str) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM jobs WHERE user_id = ?", (user_id,)
+            ).fetchall()
+            jobs = [self._row_to_job(r) for r in rows]
+            if not jobs:
+                return []
+            job_ids = [j["id"] for j in jobs]
+            placeholders = ",".join("?" for _ in job_ids)
+            conn.execute(
+                f"DELETE FROM job_logs WHERE job_id IN ({placeholders})",
+                job_ids,
+            )
+            conn.execute(
+                f"DELETE FROM jobs WHERE id IN ({placeholders})",
+                job_ids,
+            )
+        return jobs
+
     def get_logs(self, job_id: str, limit: int = 500) -> list[dict[str, str]]:
         with self._conn() as conn:
             rows = conn.execute(
