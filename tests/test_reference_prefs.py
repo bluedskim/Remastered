@@ -4,9 +4,23 @@ from pathlib import Path
 
 from remastered.web.reference_prefs import (
     ReferencePrefs,
+    merge_client_prefs,
     sanitize_prefs_for_owner,
     with_active_tab,
 )
+
+
+def test_merge_client_prefs_keeps_reference_youtube_when_switching_tab() -> None:
+    existing = ReferencePrefs(
+        tab="youtube",
+        youtube_url="https://www.youtube.com/watch?v=abc123XYZ99",
+        preset_name="Pop.wav",
+    )
+    incoming = ReferencePrefs(tab="preset", preset_name="Rock.wav")
+    merged = merge_client_prefs(existing, incoming)
+    assert merged.tab == "preset"
+    assert merged.preset_name == "Rock.wav"
+    assert merged.youtube_url == "https://www.youtube.com/watch?v=abc123XYZ99"
 
 
 def test_with_active_tab_preserves_other_tab_fields() -> None:

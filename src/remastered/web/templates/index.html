@@ -14,7 +14,7 @@
     <div class="field">
       <label for="youtube_url">YouTube URL</label>
       <div class="url-input-wrap">
-        <input class="input-lg url-input-field" type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=..." required />
+        <input class="input-lg url-input-field" type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off" required />
         <button type="button" class="url-input-clear" id="youtube_url-clear" aria-label="Clear URL" hidden>×</button>
       </div>
       <div id="source-youtube-preview" class="ref-yt-preview" hidden>
@@ -231,6 +231,7 @@
     youtube: document.getElementById("ref-panel-youtube"),
     upload: document.getElementById("ref-panel-upload"),
   };
+  const sourceUrlInput = document.getElementById("youtube_url");
   const youtubeInput = document.getElementById("reference_youtube_url");
   const uploadInput = document.getElementById("reference_upload");
   const savedUploadInput = document.getElementById("reference_saved_upload");
@@ -239,6 +240,7 @@
   const sourceDurationWarning = document.getElementById("source-duration-warning");
   const maxSourceDuration = {{ limits.max_source_duration_seconds }};
   let youtubeMetaTitle = "";
+  let lastReferenceYoutubeUrl = "";
   let sourceOverLimit = false;
 
   const sourcePreviewCtl = window.initYoutubePreview({
@@ -327,15 +329,29 @@
   }
 
   const STORAGE_KEY = "remastered.reference";
+  const SOURCE_STORAGE_KEY = "remastered.sourceYoutubeUrl";
   let serverPrefsSaveTimer = null;
 
+  function rememberReferenceYoutube() {
+    if (!youtubeInput) return;
+    const value = youtubeInput.value.trim();
+    if (value) lastReferenceYoutubeUrl = value;
+  }
+
+  function currentReferenceYoutubeUrl() {
+    const fromInput = youtubeInput ? youtubeInput.value.trim() : "";
+    return fromInput || lastReferenceYoutubeUrl || "";
+  }
+
   function snapshotAllTabFields() {
+    rememberReferenceYoutube();
     const file = uploadInput && uploadInput.files && uploadInput.files[0];
     return {
       presetName: presetSelect ? presetSelect.value : "",
       presetLibrary: libraryInput ? libraryInput.value : "shared",
-      youtubeUrl: youtubeInput ? youtubeInput.value.trim() : "",
+      youtubeUrl: currentReferenceYoutubeUrl(),
       uploadFilename: file ? file.name : savedUploadFilename || "",
+      sourceYoutubeUrl: sourceUrlInput ? sourceUrlInput.value.trim() : "",
     };
   }
 
@@ -347,11 +363,23 @@
       presetLibrary: fields.presetLibrary,
       youtubeUrl: fields.youtubeUrl,
       uploadFilename: fields.uploadFilename,
+      sourceYoutubeUrl: fields.sourceYoutubeUrl,
     };
   }
 
+  function serverPrefsAvailable() {
+    if (!IS_SIGNED_IN || !SERVER_REFERENCE_PREFS) return false;
+    return !!(
+      SERVER_REFERENCE_PREFS.tab ||
+      SERVER_REFERENCE_PREFS.presetName ||
+      SERVER_REFERENCE_PREFS.youtubeUrl ||
+      SERVER_REFERENCE_PREFS.uploadFilename ||
+      SERVER_REFERENCE_PREFS.sourceYoutubeUrl
+    );
+  }
+
   function readStored() {
-    if (IS_SIGNED_IN && SERVER_REFERENCE_PREFS && SERVER_REFERENCE_PREFS.tab) {
+    if (serverPrefsAvailable()) {
       return SERVER_REFERENCE_PREFS;
     }
     try {
@@ -365,10 +393,22 @@
     }
   }
 
-  function persistPrefsToServer(payload) {
+  function readStoredSourceYoutube() {
+    if (IS_SIGNED_IN && SERVER_REFERENCE_PREFS && SERVER_REFERENCE_PREFS.sourceYoutubeUrl) {
+      return SERVER_REFERENCE_PREFS.sourceYoutubeUrl;
+    }
+    try {
+      return localStorage.getItem(SOURCE_STORAGE_KEY) || "";
+    } catch (err) {
+      return "";
+    }
+  }
+
+  function persistPrefsToServer(payload, immediate) {
     if (!IS_SIGNED_IN) return;
     if (serverPrefsSaveTimer) clearTimeout(serverPrefsSaveTimer);
-    serverPrefsSaveTimer = setTimeout(function () {
+    const send = function () {
+      serverPrefsSaveTimer = null;
       fetch("/api/reference-prefs", {
         method: "PUT",
         credentials: "same-origin",
@@ -385,16 +425,19 @@
           }
         })
         .catch(function () {});
-    }, 200);
-  }
-
-  function writeStored() {
-    const payload = buildPrefsPayload();
-    if (IS_SIGNED_IN) {
-      persistPrefsToServer(payload);
+    };
+    if (immediate) {
+      send();
       return;
     }
+    serverPrefsSaveTimer = setTimeout(send, 200);
+  }
+
+  function writeStored(options) {
+    const immediate = !!(options && options.immediate);
+    const payload = buildPrefsPayload();
     try {
+      localStorage.setItem(SOURCE_STORAGE_KEY, payload.sourceYoutubeUrl || "");
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
@@ -407,6 +450,16 @@
     } catch (err) {
       /* ignore quota / private mode */
     }
+    if (IS_SIGNED_IN) {
+      persistPrefsToServer(payload, immediate);
+    }
+  }
+
+  function restoreSourceYoutube() {
+    const url = readStoredSourceYoutube();
+    if (sourceUrlInput && url) {
+      sourceUrlInput.value = url;
+    }
   }
 
   function applyStoredFields(stored) {
@@ -417,6 +470,7 @@
     }
     if (youtubeInput && stored.youtubeUrl) {
       youtubeInput.value = stored.youtubeUrl;
+      lastReferenceYoutubeUrl = stored.youtubeUrl;
     }
     if (IS_SIGNED_IN && stored.uploadFilename) {
       savedUploadFilename = stored.uploadFilename;
@@ -457,7 +511,7 @@
         activateMode("upload", true);
       } else {
         activateMode("preset", true);
-        writeStored();
+        writeStored({ immediate: true });
         updateSummary();
         return;
       }
@@ -500,7 +554,7 @@
       setPanelEnabled(panel, active);
     });
     updateSummary();
-    if (!skipPersist) writeStored();
+    if (!skipPersist) writeStored({ immediate: true });
     if (mode === "youtube" && youtubeInput && youtubeInput.value.trim()) {
       if (refPreviewCtl) refPreviewCtl.scheduleFetch();
     } else if (mode !== "youtube" && refPreviewCtl) {
@@ -539,14 +593,27 @@
       const lib = opt && opt.getAttribute("data-reference-library");
       if (lib && libraryInput) libraryInput.value = lib;
       updateSummary();
-      writeStored();
+      writeStored({ immediate: true });
     });
   }
   if (youtubeInput) {
     youtubeInput.addEventListener("input", function () {
+      rememberReferenceYoutube();
       updateSummary();
       writeStored();
       if (refPreviewCtl) refPreviewCtl.scheduleFetch();
+    });
+    youtubeInput.addEventListener("blur", function () {
+      rememberReferenceYoutube();
+      writeStored({ immediate: true });
+    });
+  }
+  if (sourceUrlInput) {
+    sourceUrlInput.addEventListener("input", function () {
+      writeStored();
+    });
+    sourceUrlInput.addEventListener("blur", function () {
+      writeStored({ immediate: true });
     });
   }
   if (uploadInput) {
@@ -597,14 +664,15 @@
     });
   }
 
-  wireUrlClear("youtube_url", "youtube_url-clear");
+  wireUrlClear("youtube_url", "youtube_url-clear", function () {
+    writeStored({ immediate: true });
+  });
   wireUrlClear("reference_youtube_url", "reference_youtube_url-clear", function () {
+    lastReferenceYoutubeUrl = "";
     youtubeMetaTitle = "";
     updateSummary();
-    writeStored();
+    writeStored({ immediate: true });
   });
-
-  const sourceUrlInput = document.getElementById("youtube_url");
 
   function refreshYoutubePreviewsFromInputs() {
     if (
@@ -626,6 +694,7 @@
     }
   }
 
+  restoreSourceYoutube();
   restoreFromStorage();
   if (window.syncYoutubeUrlClear) {
     window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
@@ -636,6 +705,7 @@
 
   window.addEventListener("pageshow", function (event) {
     if (event.persisted) {
+      restoreSourceYoutube();
       restoreFromStorage();
       if (window.syncYoutubeUrlClear) {
         window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
@@ -663,7 +733,7 @@
       e.preventDefault();
       return;
     }
-    writeStored();
+    writeStored({ immediate: true });
     submitted = true;
     btn.disabled = true;
     btn.classList.add("is-loading");

@@ -36,6 +36,7 @@ from remastered.web.job_ui import enrich_job_ui
 from remastered.web.reference_display import build_reference_options
 from remastered.web.reference_prefs import (
     ReferencePrefs,
+    merge_client_prefs,
     prefs_from_store_row,
     sanitize_prefs_for_owner,
     with_active_tab,
@@ -87,7 +88,8 @@ PRIVACY_NOTICE = (
     "reference tab, preset, and YouTube URL choices are remembered in your browser "
     "(uploaded reference files are not). "
     "Signed-in accounts keep jobs for the retention period and remember your last "
-    "reference choice, including uploaded reference files stored with your account. "
+    "source and reference choices, including uploaded reference files stored with "
+    "your account. "
     "If you sign up, we also store email and a password hash."
 )
 
@@ -223,6 +225,7 @@ def _reference_prefs_for_identity(
         preset_library=raw["preset_library"],
         youtube_url=raw["youtube_url"],
         upload_filename=raw["upload_filename"],
+        source_youtube_url=raw.get("source_youtube_url", ""),
     )
     owner_id = identity.account_id
     shared_refs = _list_reference_files(ws.references_path)
@@ -257,6 +260,7 @@ def _save_reference_prefs(
         preset_library=sanitized.preset_library,
         youtube_url=sanitized.youtube_url,
         upload_filename=sanitized.upload_filename,
+        source_youtube_url=sanitized.source_youtube_url,
     )
     return sanitized
 
@@ -333,7 +337,9 @@ async def put_reference_prefs_api(
         raise HTTPException(status_code=400, detail="Invalid reference preferences.")
     ws = _web_settings()
     assert identity.account_id
-    saved = _save_reference_prefs(store, identity.account_id, prefs, ws)
+    existing = prefs_from_store_row(store.get_reference_prefs(identity.account_id))
+    merged = merge_client_prefs(existing, prefs)
+    saved = _save_reference_prefs(store, identity.account_id, merged, ws)
     return JSONResponse(saved.to_client_dict())
 
 
@@ -601,6 +607,7 @@ async def create_job(
                 "upload",
                 upload_filename=saved_upload_name,
             )
+        merged = with_active_tab(merged, merged.tab, source_youtube_url=youtube_url)
         _save_reference_prefs(store, identity.account_id, merged, ws)
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
 

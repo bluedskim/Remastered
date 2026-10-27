@@ -15,6 +15,7 @@ class ReferencePrefs:
     preset_library: str = "shared"
     youtube_url: str = ""
     upload_filename: str = ""
+    source_youtube_url: str = ""
 
     def to_client_dict(self) -> dict[str, str]:
         return {
@@ -23,6 +24,7 @@ class ReferencePrefs:
             "presetLibrary": self.preset_library,
             "youtubeUrl": self.youtube_url,
             "uploadFilename": self.upload_filename,
+            "sourceYoutubeUrl": self.source_youtube_url,
         }
 
     @classmethod
@@ -41,6 +43,7 @@ class ReferencePrefs:
             preset_library=preset_library,
             youtube_url=str(data.get("youtubeUrl") or "").strip(),
             upload_filename=Path(str(data.get("uploadFilename") or "")).name,
+            source_youtube_url=str(data.get("sourceYoutubeUrl") or "").strip(),
         )
 
 
@@ -59,6 +62,7 @@ def parse_reference_prefs_json(raw: str | None) -> ReferencePrefs | None:
         preset_library=_norm_library(data.get("preset_library")),
         youtube_url=str(data.get("youtube_url") or "").strip(),
         upload_filename=Path(str(data.get("upload_filename") or "")).name,
+        source_youtube_url=str(data.get("source_youtube_url") or "").strip(),
     )
 
 
@@ -70,6 +74,7 @@ def reference_prefs_to_json(prefs: ReferencePrefs) -> str:
             "preset_library": prefs.preset_library,
             "youtube_url": prefs.youtube_url,
             "upload_filename": prefs.upload_filename,
+            "source_youtube_url": prefs.source_youtube_url,
         }
     )
 
@@ -84,6 +89,35 @@ def _norm_library(value: Any) -> str:
     return lib if lib in ("shared", "user") else "shared"
 
 
+def merge_client_prefs(
+    existing: ReferencePrefs | None,
+    incoming: ReferencePrefs,
+) -> ReferencePrefs:
+    """Keep inactive-tab values when the client omits them while switching tabs."""
+    base = existing or ReferencePrefs()
+    tab = incoming.tab
+    preset_name = incoming.preset_name
+    if not preset_name and tab != "preset":
+        preset_name = base.preset_name
+    preset_library = incoming.preset_library
+    if tab != "preset" and not incoming.preset_name:
+        preset_library = base.preset_library
+    youtube_url = incoming.youtube_url
+    if not youtube_url and tab != "youtube":
+        youtube_url = base.youtube_url
+    upload_filename = incoming.upload_filename
+    if not upload_filename and tab != "upload":
+        upload_filename = base.upload_filename
+    return ReferencePrefs(
+        tab=tab,
+        preset_name=preset_name,
+        preset_library=preset_library,
+        youtube_url=youtube_url,
+        upload_filename=upload_filename,
+        source_youtube_url=incoming.source_youtube_url,
+    )
+
+
 def with_active_tab(
     base: ReferencePrefs | None,
     tab: str,
@@ -92,6 +126,7 @@ def with_active_tab(
     preset_library: str | None = None,
     youtube_url: str | None = None,
     upload_filename: str | None = None,
+    source_youtube_url: str | None = None,
 ) -> ReferencePrefs:
     """Update the active tab and only the fields explicitly passed."""
     cur = base or ReferencePrefs()
@@ -101,6 +136,9 @@ def with_active_tab(
         preset_library=preset_library if preset_library is not None else cur.preset_library,
         youtube_url=youtube_url if youtube_url is not None else cur.youtube_url,
         upload_filename=upload_filename if upload_filename is not None else cur.upload_filename,
+        source_youtube_url=(
+            source_youtube_url if source_youtube_url is not None else cur.source_youtube_url
+        ),
     )
 
 
@@ -113,6 +151,7 @@ def prefs_from_store_row(row: dict[str, str] | None) -> ReferencePrefs | None:
         preset_library=row["preset_library"],
         youtube_url=row["youtube_url"],
         upload_filename=row["upload_filename"],
+        source_youtube_url=row.get("source_youtube_url", "") or "",
     )
 
 
@@ -138,4 +177,5 @@ def sanitize_prefs_for_owner(
         preset_library=prefs.preset_library,
         youtube_url=prefs.youtube_url,
         upload_filename=upload_filename,
+        source_youtube_url=prefs.source_youtube_url,
     )
