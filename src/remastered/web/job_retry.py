@@ -5,6 +5,7 @@ from typing import Any
 
 from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE, VALID_STEREO_WIDTH_MODES
 from remastered.web.reference_prefs import ReferencePrefs
+from remastered.web.job_reference_snapshot import is_job_upload_reference_snapshot
 from remastered.web.reference_youtube import is_youtube_reference_job
 from remastered.web.settings import WebSettings
 
@@ -15,10 +16,12 @@ def build_job_retry_form_payload(
     shared_refs: list[str],
     user_refs: list[str],
     user_refs_dir: Path,
+    work_dir: Path,
     ws: WebSettings,
 ) -> dict[str, Any]:
     """Map a stored job row to home-form prefill (client camelCase + warnings)."""
     warnings: list[str] = []
+    retry_from_job_id: str | None = None
     source_youtube_url = (job.get("youtube_url") or "").strip()
     stereo_width_mode = job.get("stereo_width_mode") or DEFAULT_STEREO_WIDTH_MODE
     if stereo_width_mode not in VALID_STEREO_WIDTH_MODES:
@@ -37,9 +40,21 @@ def build_job_retry_form_payload(
             source_youtube_url=source_youtube_url,
         )
     elif source_type == "upload":
-        upload_filename = Path(job.get("reference_path") or "").name
+        snapshot = Path(job.get("reference_path") or "")
+        upload_filename = snapshot.name
         tab = "upload"
-        if upload_filename and not (user_refs_dir / upload_filename).is_file():
+        if upload_filename and is_job_upload_reference_snapshot(
+            snapshot, job, work_dir
+        ):
+            if snapshot.is_file():
+                retry_from_job_id = job["id"]
+            else:
+                warnings.append(
+                    "The reference file used for this job is no longer available."
+                )
+                upload_filename = ""
+                tab = "preset"
+        else:
             warnings.append(
                 "The reference file used for this job is no longer available."
             )
@@ -78,6 +93,8 @@ def build_job_retry_form_payload(
     payload["sourceYoutubeUrl"] = source_youtube_url
     payload["stereoWidthMode"] = stereo_width_mode
     payload["warnings"] = warnings
+    if source_type == "upload" and retry_from_job_id:
+        payload["retryFromJobId"] = retry_from_job_id
     return payload
 
 
