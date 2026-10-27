@@ -34,6 +34,12 @@ from remastered.web.notices import rights_notice_lines, rights_notice_short
 from remastered.web.job_titles import job_display_title
 from remastered.web.job_ui import enrich_job_ui
 from remastered.web.reference_display import build_reference_options
+from remastered.web.reference_prefs import (
+    ReferencePrefs,
+    prefs_from_store_row,
+    sanitize_prefs_for_owner,
+    with_active_tab,
+)
 from remastered.web.reference_youtube import (
     CHOOSE_REFERENCE_FILE,
     ENTER_REFERENCE_YOUTUBE_URL,
@@ -78,8 +84,10 @@ DOWNLOAD_REQUIRES_SIGN_IN = "Sign in required to download the remastered file."
 
 PRIVACY_NOTICE = (
     "Without signing in, remaster results last only for your current browser visit; "
-    "reference tab, preset, and YouTube URL choices are remembered in your browser. "
-    "Signed-in accounts keep jobs for the retention period. "
+    "reference tab, preset, and YouTube URL choices are remembered in your browser "
+    "(uploaded reference files are not). "
+    "Signed-in accounts keep jobs for the retention period and remember your last "
+    "reference choice, including uploaded reference files stored with your account. "
     "If you sign up, we also store email and a password hash."
 )
 
@@ -193,6 +201,66 @@ def require_identity(request: Request, store: JobStore = Depends(get_store)) -> 
     return ensure_identity_with_anon_visit(request, store)
 
 
+def require_account(identity: RequestIdentity = Depends(require_identity)) -> RequestIdentity:
+    if not identity.account_id:
+        raise HTTPException(status_code=401, detail="Sign in required.")
+    return identity
+
+
+def _reference_prefs_for_identity(
+    identity: RequestIdentity,
+    store: JobStore,
+    ws: WebSettings,
+) -> dict[str, str] | None:
+    if not identity.account_id:
+        return None
+    raw = store.get_reference_prefs(identity.account_id)
+    if not raw:
+        return None
+    prefs = ReferencePrefs(
+        tab=raw["tab"],
+        preset_name=raw["preset_name"],
+        preset_library=raw["preset_library"],
+        youtube_url=raw["youtube_url"],
+        upload_filename=raw["upload_filename"],
+    )
+    owner_id = identity.account_id
+    shared_refs = _list_reference_files(ws.references_path)
+    user_refs = _list_reference_files(_owner_references_dir(owner_id))
+    sanitized = sanitize_prefs_for_owner(
+        prefs,
+        shared_refs=shared_refs,
+        user_refs=user_refs,
+        user_refs_dir=_owner_references_dir(owner_id),
+    )
+    return sanitized.to_client_dict()
+
+
+def _save_reference_prefs(
+    store: JobStore,
+    account_id: str,
+    prefs: ReferencePrefs,
+    ws: WebSettings,
+) -> ReferencePrefs:
+    shared_refs = _list_reference_files(ws.references_path)
+    user_refs = _list_reference_files(_owner_references_dir(account_id))
+    sanitized = sanitize_prefs_for_owner(
+        prefs,
+        shared_refs=shared_refs,
+        user_refs=user_refs,
+        user_refs_dir=_owner_references_dir(account_id),
+    )
+    store.set_reference_prefs(
+        account_id,
+        tab=sanitized.tab,
+        preset_name=sanitized.preset_name,
+        preset_library=sanitized.preset_library,
+        youtube_url=sanitized.youtube_url,
+        upload_filename=sanitized.upload_filename,
+    )
+    return sanitized
+
+
 def _list_reference_files(references_dir: Path) -> list[str]:
     if not references_dir.is_dir():
         return []
@@ -236,6 +304,69 @@ def _owner_references_dir(owner_id: str) -> Path:
     path = settings.work_dir / "users" / owner_id / "references"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+@fastapi_application.get("/api/reference-prefs")
+def get_reference_prefs_api(
+    identity: RequestIdentity = Depends(require_account),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    ws = _web_settings()
+    prefs = _reference_prefs_for_identity(identity, store, ws)
+    return JSONResponse(prefs or {})
+
+
+@fastapi_application.put("/api/reference-prefs")
+async def put_reference_prefs_api(
+    request: Request,
+    identity: RequestIdentity = Depends(require_account),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON.") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON.")
+    prefs = ReferencePrefs.from_client_dict(body)
+    if not prefs:
+        raise HTTPException(status_code=400, detail="Invalid reference preferences.")
+    ws = _web_settings()
+    assert identity.account_id
+    saved = _save_reference_prefs(store, identity.account_id, prefs, ws)
+    return JSONResponse(saved.to_client_dict())
+
+
+@fastapi_application.post("/api/reference-upload")
+async def reference_upload_api(
+    identity: RequestIdentity = Depends(require_account),
+    reference_upload: UploadFile | None = File(None),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    if not reference_upload or not reference_upload.filename:
+        raise HTTPException(status_code=400, detail=CHOOSE_REFERENCE_FILE)
+    assert identity.account_id
+    owner_ref_dir = _owner_references_dir(identity.account_id)
+    safe_name = Path(reference_upload.filename).name
+    dest = owner_ref_dir / safe_name
+    body = await reference_upload.read()
+
+    def _write_upload() -> None:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(body)
+
+    await run_in_threadpool(_write_upload)
+    ws = _web_settings()
+    existing = prefs_from_store_row(store.get_reference_prefs(identity.account_id))
+    merged = with_active_tab(
+        existing,
+        "upload",
+        upload_filename=safe_name,
+    )
+    saved = _save_reference_prefs(store, identity.account_id, merged, ws)
+    return JSONResponse(
+        {"uploadFilename": safe_name, "prefs": saved.to_client_dict()}
+    )
 
 
 @fastapi_application.exception_handler(HTTPException)
@@ -302,6 +433,7 @@ def _dashboard_context(
         "shared_references": shared_refs,
         "user_references": user_refs,
         "reference_options": build_reference_options(shared_refs, user_refs),
+        "reference_prefs": _reference_prefs_for_identity(identity, store, ws),
         "stage_labels": STAGE_LABELS,
         "privacy_notice": PRIVACY_NOTICE,
         "rights_notice_lines": rights_notice_lines(ws.job_retention_days),
@@ -345,6 +477,7 @@ async def create_job(
     reference_upload: UploadFile | None = File(None),
     reference_youtube_url: str = Form(""),
     reference_youtube_title: str = Form(""),
+    reference_saved_upload: str = Form(""),
     stereo_width_mode: str = Form(DEFAULT_STEREO_WIDTH_MODE),
 ) -> RedirectResponse:
     ip = client_ip(request)
@@ -363,20 +496,32 @@ async def create_job(
     if mode not in REFERENCE_SOURCE_MODES:
         mode = "preset"
 
+    saved_upload_name = ""
     if mode == "upload":
-        if not reference_upload or not reference_upload.filename:
+        if reference_upload and reference_upload.filename:
+            safe_name = Path(reference_upload.filename).name
+            dest = owner_ref_dir / safe_name
+            body = await reference_upload.read()
+
+            def _write_upload() -> None:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(body)
+
+            await run_in_threadpool(_write_upload)
+            reference_path = dest
+            reference_source_type = "upload"
+            saved_upload_name = safe_name
+        elif reference_saved_upload.strip() and identity.account_id:
+            safe_name = Path(reference_saved_upload).name
+            dest = owner_ref_dir / safe_name
+            if dest.is_file():
+                reference_path = dest
+                reference_source_type = "upload"
+                saved_upload_name = safe_name
+            else:
+                raise HTTPException(status_code=400, detail=CHOOSE_REFERENCE_FILE)
+        else:
             raise HTTPException(status_code=400, detail=CHOOSE_REFERENCE_FILE)
-        safe_name = Path(reference_upload.filename).name
-        dest = owner_ref_dir / safe_name
-        body = await reference_upload.read()
-
-        def _write_upload() -> None:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(body)
-
-        await run_in_threadpool(_write_upload)
-        reference_path = dest
-        reference_source_type = "upload"
     elif mode == "youtube":
         ref_url_raw = (reference_youtube_url or "").strip()
         if not ref_url_raw:
@@ -435,6 +580,28 @@ async def create_job(
     )
     store.append_log(job_id, "Job added to the queue.")
     worker.enqueue(job_id)
+    if identity.account_id:
+        existing = prefs_from_store_row(store.get_reference_prefs(identity.account_id))
+        if mode == "preset":
+            merged = with_active_tab(
+                existing,
+                "preset",
+                preset_name=Path(reference_name).name if reference_name else "",
+                preset_library=reference_library or "shared",
+            )
+        elif mode == "youtube":
+            merged = with_active_tab(
+                existing,
+                "youtube",
+                youtube_url=(reference_youtube_url or "").strip(),
+            )
+        else:
+            merged = with_active_tab(
+                existing,
+                "upload",
+                upload_filename=saved_upload_name,
+            )
+        _save_reference_prefs(store, identity.account_id, merged, ws)
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
 
 

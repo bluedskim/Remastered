@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -249,6 +249,15 @@ class JobStore:
                 ON verification_send_log(email, sent_at);
             CREATE INDEX IF NOT EXISTS idx_verification_send_ip
                 ON verification_send_log(ip, sent_at);
+            CREATE TABLE IF NOT EXISTS user_reference_prefs (
+                user_id TEXT PRIMARY KEY,
+                tab TEXT NOT NULL DEFAULT 'preset',
+                preset_name TEXT NOT NULL DEFAULT '',
+                preset_library TEXT NOT NULL DEFAULT 'shared',
+                youtube_url TEXT NOT NULL DEFAULT '',
+                upload_filename TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            );
             """
         )
 
@@ -799,6 +808,59 @@ class JobStore:
                 (client_ip,),
             ).fetchone()
         return int(row["c"])
+
+    def get_reference_prefs(self, user_id: str) -> dict[str, str] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM user_reference_prefs WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "tab": row["tab"],
+            "preset_name": row["preset_name"],
+            "preset_library": row["preset_library"],
+            "youtube_url": row["youtube_url"],
+            "upload_filename": row["upload_filename"],
+        }
+
+    def set_reference_prefs(
+        self,
+        user_id: str,
+        *,
+        tab: str,
+        preset_name: str = "",
+        preset_library: str = "shared",
+        youtube_url: str = "",
+        upload_filename: str = "",
+    ) -> None:
+        now = _utc_now()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO user_reference_prefs (
+                    user_id, tab, preset_name, preset_library,
+                    youtube_url, upload_filename, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    tab = excluded.tab,
+                    preset_name = excluded.preset_name,
+                    preset_library = excluded.preset_library,
+                    youtube_url = excluded.youtube_url,
+                    upload_filename = excluded.upload_filename,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    user_id,
+                    tab,
+                    preset_name,
+                    preset_library,
+                    youtube_url,
+                    upload_filename,
+                    now,
+                ),
+            )
 
     def find_recent_duplicate_job(
         self,
