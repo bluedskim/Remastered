@@ -69,6 +69,23 @@ def _signup(client: TestClient, caplog: pytest.LogCaptureFixture, email: str) ->
     assert AUTH_COOKIE_NAME in resp.cookies
 
 
+def test_api_persists_source_youtube_url(
+    signed_in_client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _signup(signed_in_client, caplog, "source@example.com")
+    source = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    put = signed_in_client.put(
+        "/api/reference-prefs",
+        json={"tab": "preset", "sourceYoutubeUrl": source},
+    )
+    assert put.status_code == 200
+    got = signed_in_client.get("/api/reference-prefs")
+    assert got.json().get("sourceYoutubeUrl") == source
+    home = signed_in_client.get("/")
+    assert source in home.text
+
+
 def test_api_put_get_reference_prefs(
     signed_in_client: TestClient,
     caplog: pytest.LogCaptureFixture,
@@ -211,6 +228,43 @@ def signed_in_playwright_site(tmp_path_factory):
     server.should_exit = True
     mpatch.undo()
     thread.join(timeout=5)
+
+
+def test_signed_in_restore_source_youtube_after_reload(signed_in_playwright_site) -> None:
+    base, cookies, _work = signed_in_playwright_site
+    url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(viewport={"width": 390, "height": 800})
+        context.add_cookies(cookies)
+        page = context.new_page()
+        page.goto(base + "/", wait_until="networkidle")
+        page.locator("#youtube_url").fill(url)
+        page.locator("#youtube_url").blur()
+        page.wait_for_timeout(300)
+        page.reload(wait_until="networkidle")
+        assert page.locator("#youtube_url").input_value() == url
+        browser.close()
+
+
+def test_signed_in_youtube_reference_survives_tab_switch_and_reload(
+    signed_in_playwright_site,
+) -> None:
+    base, cookies, _work = signed_in_playwright_site
+    url = "https://www.youtube.com/watch?v=abc123XYZ99"
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(viewport={"width": 390, "height": 800})
+        context.add_cookies(cookies)
+        page = context.new_page()
+        page.goto(base + "/", wait_until="networkidle")
+        page.locator("#ref-tab-youtube").click()
+        page.locator("#reference_youtube_url").fill(url)
+        page.locator("#ref-tab-preset").click()
+        page.reload(wait_until="networkidle")
+        page.locator("#ref-tab-youtube").click()
+        assert page.locator("#reference_youtube_url").input_value() == url
+        browser.close()
 
 
 def test_signed_in_restore_youtube_after_reload(signed_in_playwright_site) -> None:

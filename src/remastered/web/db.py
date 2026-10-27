@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -256,10 +256,22 @@ class JobStore:
                 preset_library TEXT NOT NULL DEFAULT 'shared',
                 youtube_url TEXT NOT NULL DEFAULT '',
                 upload_filename TEXT NOT NULL DEFAULT '',
+                source_youtube_url TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL
             );
             """
         )
+        if self._table_exists(conn, "user_reference_prefs"):
+            pref_cols = {
+                row[1] for row in conn.execute("PRAGMA table_info(user_reference_prefs)").fetchall()
+            }
+            if "source_youtube_url" not in pref_cols:
+                conn.execute(
+                    """
+                    ALTER TABLE user_reference_prefs
+                    ADD COLUMN source_youtube_url TEXT NOT NULL DEFAULT ''
+                    """
+                )
 
     @staticmethod
     def _backfill_legacy_jobs(conn: sqlite3.Connection) -> None:
@@ -823,6 +835,9 @@ class JobStore:
             "preset_library": row["preset_library"],
             "youtube_url": row["youtube_url"],
             "upload_filename": row["upload_filename"],
+            "source_youtube_url": row["source_youtube_url"]
+            if "source_youtube_url" in row.keys()
+            else "",
         }
 
     def set_reference_prefs(
@@ -834,6 +849,7 @@ class JobStore:
         preset_library: str = "shared",
         youtube_url: str = "",
         upload_filename: str = "",
+        source_youtube_url: str = "",
     ) -> None:
         now = _utc_now()
         with self._conn() as conn:
@@ -841,14 +857,15 @@ class JobStore:
                 """
                 INSERT INTO user_reference_prefs (
                     user_id, tab, preset_name, preset_library,
-                    youtube_url, upload_filename, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    youtube_url, upload_filename, source_youtube_url, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     tab = excluded.tab,
                     preset_name = excluded.preset_name,
                     preset_library = excluded.preset_library,
                     youtube_url = excluded.youtube_url,
                     upload_filename = excluded.upload_filename,
+                    source_youtube_url = excluded.source_youtube_url,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -858,6 +875,7 @@ class JobStore:
                     preset_library,
                     youtube_url,
                     upload_filename,
+                    source_youtube_url,
                     now,
                 ),
             )

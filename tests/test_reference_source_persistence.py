@@ -68,6 +68,19 @@ def ref_persist_site(tmp_path_factory):
     thread.join(timeout=5)
 
 
+def test_restore_source_youtube_after_reload(ref_persist_site: str) -> None:
+    url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 390, "height": 800})
+        page.goto(ref_persist_site + "/", wait_until="networkidle")
+        page.locator("#youtube_url").fill(url)
+        page.locator("#youtube_url").blur()
+        page.reload(wait_until="networkidle")
+        assert page.locator("#youtube_url").input_value() == url
+        browser.close()
+
+
 def test_restore_youtube_reference_after_reload(ref_persist_site: str) -> None:
     url = "https://www.youtube.com/watch?v=abc123XYZ99"
     with sync_playwright() as p:
