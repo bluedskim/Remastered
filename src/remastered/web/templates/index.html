@@ -126,6 +126,8 @@
       <div class="ref-source-panel" id="ref-panel-upload" role="tabpanel" aria-labelledby="ref-tab-upload" hidden>
         <label for="reference_upload">Reference audio file</label>
         <input type="file" id="reference_upload" name="reference_upload" accept=".wav,.flac,.mp3,.aiff,.aif" disabled />
+        <input type="hidden" name="reference_saved_upload" id="reference_saved_upload" value="" />
+        <p class="small muted" id="reference_saved_upload_hint" hidden></p>
       </div>
         </div>
       </div>
@@ -217,6 +219,8 @@
 <script src="{{ static_url('youtube-preview.js') }}"></script>
 <script>
 (function () {
+  const IS_SIGNED_IN = {{ "true" if auth_user else "false" }};
+  const SERVER_REFERENCE_PREFS = {{ reference_prefs | tojson }} || {};
   const form = document.getElementById("create-job-form");
   const modeInput = document.getElementById("reference_source_mode");
   const libraryInput = document.getElementById("reference_library");
@@ -229,6 +233,9 @@
   };
   const youtubeInput = document.getElementById("reference_youtube_url");
   const uploadInput = document.getElementById("reference_upload");
+  const savedUploadInput = document.getElementById("reference_saved_upload");
+  const savedUploadHint = document.getElementById("reference_saved_upload_hint");
+  let savedUploadFilename = "";
   const sourceDurationWarning = document.getElementById("source-duration-warning");
   const maxSourceDuration = {{ limits.max_source_duration_seconds }};
   let youtubeMetaTitle = "";
@@ -295,13 +302,58 @@
 
   function uploadSummary() {
     const file = uploadInput && uploadInput.files && uploadInput.files[0];
-    if (!file) return "Reference: choose a file";
-    return "Reference: " + file.name + " (upload)";
+    if (file) return "Reference: " + file.name + " (upload)";
+    if (savedUploadFilename) return "Reference: " + savedUploadFilename + " (upload)";
+    return "Reference: choose a file";
+  }
+
+  function syncSavedUploadFields() {
+    const file = uploadInput && uploadInput.files && uploadInput.files[0];
+    if (file) {
+      savedUploadFilename = "";
+      if (savedUploadInput) savedUploadInput.value = "";
+      if (savedUploadHint) savedUploadHint.setAttribute("hidden", "");
+    } else if (savedUploadFilename && savedUploadInput) {
+      savedUploadInput.value = savedUploadFilename;
+      if (savedUploadHint) {
+        savedUploadHint.textContent =
+          "Using your saved reference file. Choose a new file to replace it.";
+        savedUploadHint.removeAttribute("hidden");
+      }
+    } else {
+      if (savedUploadInput) savedUploadInput.value = "";
+      if (savedUploadHint) savedUploadHint.setAttribute("hidden", "");
+    }
   }
 
   const STORAGE_KEY = "remastered.reference";
+  let serverPrefsSaveTimer = null;
+
+  function snapshotAllTabFields() {
+    const file = uploadInput && uploadInput.files && uploadInput.files[0];
+    return {
+      presetName: presetSelect ? presetSelect.value : "",
+      presetLibrary: libraryInput ? libraryInput.value : "shared",
+      youtubeUrl: youtubeInput ? youtubeInput.value.trim() : "",
+      uploadFilename: file ? file.name : savedUploadFilename || "",
+    };
+  }
+
+  function buildPrefsPayload() {
+    const fields = snapshotAllTabFields();
+    return {
+      tab: modeInput.value || "preset",
+      presetName: fields.presetName,
+      presetLibrary: fields.presetLibrary,
+      youtubeUrl: fields.youtubeUrl,
+      uploadFilename: fields.uploadFilename,
+    };
+  }
 
   function readStored() {
+    if (IS_SIGNED_IN && SERVER_REFERENCE_PREFS && SERVER_REFERENCE_PREFS.tab) {
+      return SERVER_REFERENCE_PREFS;
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
@@ -313,23 +365,61 @@
     }
   }
 
+  function persistPrefsToServer(payload) {
+    if (!IS_SIGNED_IN) return;
+    if (serverPrefsSaveTimer) clearTimeout(serverPrefsSaveTimer);
+    serverPrefsSaveTimer = setTimeout(function () {
+      fetch("/api/reference-prefs", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(function (resp) {
+          if (!resp.ok) return null;
+          return resp.json();
+        })
+        .then(function (data) {
+          if (data && typeof data === "object") {
+            Object.assign(SERVER_REFERENCE_PREFS, data);
+          }
+        })
+        .catch(function () {});
+    }, 200);
+  }
+
   function writeStored() {
+    const payload = buildPrefsPayload();
+    if (IS_SIGNED_IN) {
+      persistPrefsToServer(payload);
+      return;
+    }
     try {
-      const mode = modeInput.value || "preset";
-      if (mode === "upload") {
-        return;
-      }
-      const payload = { tab: mode };
-      if (mode === "preset") {
-        const opt = selectedPresetOption();
-        payload.presetName = opt ? opt.value : "";
-        payload.presetLibrary = libraryInput ? libraryInput.value : "shared";
-      } else if (mode === "youtube") {
-        payload.youtubeUrl = youtubeInput ? youtubeInput.value.trim() : "";
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          tab: payload.tab,
+          presetName: payload.presetName,
+          presetLibrary: payload.presetLibrary,
+          youtubeUrl: payload.youtubeUrl,
+        })
+      );
     } catch (err) {
       /* ignore quota / private mode */
+    }
+  }
+
+  function applyStoredFields(stored) {
+    if (!stored) return;
+    selectPresetByName(stored.presetName || "");
+    if (stored.presetLibrary && libraryInput) {
+      libraryInput.value = stored.presetLibrary;
+    }
+    if (youtubeInput && stored.youtubeUrl) {
+      youtubeInput.value = stored.youtubeUrl;
+    }
+    if (IS_SIGNED_IN && stored.uploadFilename) {
+      savedUploadFilename = stored.uploadFilename;
     }
   }
 
@@ -360,20 +450,21 @@
     let tab = stored.tab;
     if (tab !== "preset" && tab !== "youtube" && tab !== "upload") tab = "preset";
 
-    if (tab === "youtube") {
-      if (youtubeInput && stored.youtubeUrl) youtubeInput.value = stored.youtubeUrl;
-      activateMode("youtube", true);
-    } else if (tab === "upload") {
-      selectPresetByName("");
-      activateMode("preset", true);
-      writeStored();
-      updateSummary();
-      return;
+    applyStoredFields(stored);
+
+    if (tab === "upload") {
+      if (IS_SIGNED_IN && stored.uploadFilename) {
+        activateMode("upload", true);
+      } else {
+        activateMode("preset", true);
+        writeStored();
+        updateSummary();
+        return;
+      }
     } else {
-      selectPresetByName(stored.presetName || "");
-      if (stored.presetLibrary && libraryInput) libraryInput.value = stored.presetLibrary;
-      activateMode("preset", true);
+      activateMode(tab, true);
     }
+    syncSavedUploadFields();
     updateSummary();
   }
 
@@ -382,6 +473,7 @@
     if (mode === "youtube") summaryEl.textContent = youtubeSummary();
     else if (mode === "upload") summaryEl.textContent = uploadSummary();
     else summaryEl.textContent = presetSummary();
+    syncSavedUploadFields();
   }
 
   function setPanelEnabled(panel, enabled) {
@@ -413,7 +505,9 @@
       if (refPreviewCtl) refPreviewCtl.scheduleFetch();
     } else if (mode !== "youtube" && refPreviewCtl) {
       refPreviewCtl.clearPreview();
-      youtubeMetaTitle = "";
+      if (!(youtubeInput && youtubeInput.value.trim())) {
+        youtubeMetaTitle = "";
+      }
     }
     if (window.syncYoutubeUrlClear) {
       window.syncYoutubeUrlClear("reference_youtube_url", "reference_youtube_url-clear");
@@ -457,8 +551,40 @@
   }
   if (uploadInput) {
     uploadInput.addEventListener("change", function () {
-      updateSummary();
-      writeStored();
+      const file = uploadInput.files && uploadInput.files[0];
+      if (!file) {
+        updateSummary();
+        writeStored();
+        return;
+      }
+      if (!IS_SIGNED_IN) {
+        updateSummary();
+        writeStored();
+        return;
+      }
+      const formData = new FormData();
+      formData.append("reference_upload", file);
+      fetch("/api/reference-upload", {
+        method: "POST",
+        credentials: "same-origin",
+        body: formData,
+      })
+        .then(function (resp) {
+          if (!resp.ok) throw new Error("upload failed");
+          return resp.json();
+        })
+        .then(function (data) {
+          if (data && data.uploadFilename) {
+            savedUploadFilename = data.uploadFilename;
+            if (data.prefs) Object.assign(SERVER_REFERENCE_PREFS, data.prefs);
+          }
+          updateSummary();
+          writeStored();
+        })
+        .catch(function () {
+          savedUploadFilename = "";
+          updateSummary();
+        });
     });
   }
 

@@ -122,6 +122,28 @@ def test_restore_preset_after_reload(ref_persist_site: str) -> None:
         browser.close()
 
 
+def test_anon_tab_switch_keeps_youtube_and_preset_independently(
+    ref_persist_site: str,
+) -> None:
+    url = "https://www.youtube.com/watch?v=abc123XYZ99"
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 390, "height": 800})
+        page.goto(ref_persist_site + "/", wait_until="networkidle")
+        page.locator("#ref-tab-youtube").click()
+        page.locator("#reference_youtube_url").fill(url)
+        page.locator("#ref-tab-preset").click()
+        page.locator("#reference_preset_select").select_option("Pop - Artist - Track.wav")
+        page.locator("#ref-tab-youtube").click()
+        assert page.locator("#reference_youtube_url").input_value() == url
+        page.locator("#ref-tab-preset").click()
+        assert (
+            page.locator("#reference_preset_select").input_value()
+            == "Pop - Artist - Track.wav"
+        )
+        browser.close()
+
+
 def test_upload_tab_not_restored_after_reload(ref_persist_site: str) -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
