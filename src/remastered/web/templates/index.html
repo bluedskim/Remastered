@@ -10,6 +10,7 @@
   </div>
 
   <h2 class="section-title" id="new-job-heading">New job</h2>
+  <div id="retry-form-notice" class="retry-form-notice" hidden role="status"></div>
   <form id="create-job-form" method="post" action="/jobs" enctype="multipart/form-data" class="job-form" aria-labelledby="new-job-heading">
     <div class="field">
       <label for="youtube_url">YouTube URL</label>
@@ -180,36 +181,45 @@
   {% else %}
   <ul class="job-list">
     {% for job in jobs %}
-    <li>
-      <a class="job-card" href="/jobs/{{ job.id }}">
-        <div class="job-card-row">
-          <span class="yt-thumb-slot job-card-thumb-slot" data-yt-thumb-slot>
-            <span class="job-card-thumb job-card-thumb--placeholder yt-thumb-placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
-            {% if job.job_list_thumbnail %}
-            <img
-              class="job-card-thumb yt-thumb-img"
-              src="{{ job.job_list_thumbnail }}"
-              alt=""
-              width="96"
-              height="54"
-              loading="eager"
-              decoding="async"
-              hidden
-            />
-            {% endif %}
-          </span>
-          <div class="job-card-body">
-            <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
-            {% if job.pipeline_stage_label %}
-            <p class="job-card-stage small muted">{{ job.pipeline_stage_label }}</p>
-            {% endif %}
-            <div class="job-card-footer">
-              <span class="job-card-meta small muted">{{ job.relative_time }}</span>
-              <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+    <li class="job-list-item">
+      <div class="job-card-shell">
+        <a class="job-card" href="/jobs/{{ job.id }}">
+          <div class="job-card-row">
+            <span class="yt-thumb-slot job-card-thumb-slot" data-yt-thumb-slot>
+              <span class="job-card-thumb job-card-thumb--placeholder yt-thumb-placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
+              {% if job.job_list_thumbnail %}
+              <img
+                class="job-card-thumb yt-thumb-img"
+                src="{{ job.job_list_thumbnail }}"
+                alt=""
+                width="96"
+                height="54"
+                loading="eager"
+                decoding="async"
+                hidden
+              />
+              {% endif %}
+            </span>
+            <div class="job-card-body">
+              <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
+              {% if job.pipeline_stage_label %}
+              <p class="job-card-stage small muted">{{ job.pipeline_stage_label }}</p>
+              {% endif %}
+              <div class="job-card-footer">
+                <span class="job-card-meta small muted">{{ job.relative_time }}</span>
+                <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+              </div>
             </div>
           </div>
-        </div>
-      </a>
+        </a>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm job-delete-btn"
+          data-job-delete="{{ job.id }}"
+          aria-label="Delete job"
+          title="Delete job"
+        >Delete</button>
+      </div>
     </li>
     {% endfor %}
   </ul>
@@ -217,6 +227,7 @@
 </section>
 
 <script src="{{ static_url('youtube-preview.js') }}"></script>
+<script src="{{ static_url('job-delete.js') }}" defer></script>
 <script>
 (function () {
   const IS_SIGNED_IN = {{ "true" if auth_user else "false" }};
@@ -694,8 +705,109 @@
     }
   }
 
-  restoreSourceYoutube();
-  restoreFromStorage();
+  function showRetryWarnings(warnings) {
+    const el = document.getElementById("retry-form-notice");
+    if (!el || !warnings || !warnings.length) return;
+    el.innerHTML =
+      "<strong>Some settings could not be restored.</strong><ul>" +
+      warnings.map(function (w) {
+        return "<li>" + w + "</li>";
+      }).join("") +
+      "</ul>";
+    el.removeAttribute("hidden");
+  }
+
+  function applyStereoWidth(mode) {
+    if (!mode || !form) return;
+    const radio = form.querySelector(
+      'input[name="stereo_width_mode"][value="' + mode + '"]'
+    );
+    if (radio) radio.checked = true;
+  }
+
+  function applyJobRetryPayload(data) {
+    if (!data || typeof data !== "object") return;
+    if (sourceUrlInput && data.sourceYoutubeUrl) {
+      sourceUrlInput.value = data.sourceYoutubeUrl;
+    }
+    if (IS_SIGNED_IN && data.uploadFilename) {
+      savedUploadFilename = data.uploadFilename;
+    }
+    applyStoredFields({
+      presetName: data.presetName || "",
+      presetLibrary: data.presetLibrary || "shared",
+      youtubeUrl: data.youtubeUrl || "",
+      uploadFilename: data.uploadFilename || "",
+    });
+    let tab = data.tab || "preset";
+    if (tab === "upload") {
+      if (!IS_SIGNED_IN || !data.uploadFilename) {
+        tab = "preset";
+      }
+    }
+    if (tab === "upload") {
+      activateMode("upload", true);
+    } else if (tab === "youtube") {
+      activateMode("youtube", true);
+    } else {
+      activateMode("preset", true);
+    }
+    applyStereoWidth(data.stereoWidthMode);
+    syncSavedUploadFields();
+    updateSummary();
+    showRetryWarnings(data.warnings);
+    const heading = document.getElementById("new-job-heading");
+    if (heading && typeof heading.scrollIntoView === "function") {
+      heading.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function bootstrapFormRestore() {
+    const params = new URLSearchParams(window.location.search);
+    const jobId = params.get("from_job");
+    if (!jobId) {
+      restoreSourceYoutube();
+      restoreFromStorage();
+      return;
+    }
+    if (window.history && window.history.replaceState) {
+      params.delete("from_job");
+      const qs = params.toString();
+      const next =
+        window.location.pathname + (qs ? "?" + qs : "") + window.location.hash;
+      window.history.replaceState({}, "", next);
+    }
+    fetch("/api/jobs/" + encodeURIComponent(jobId) + "/retry-form", {
+      credentials: "same-origin",
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("retry form failed");
+        return resp.json();
+      })
+      .then(function (data) {
+        applyJobRetryPayload(data);
+        if (window.syncYoutubeUrlClear) {
+          window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
+          window.syncYoutubeUrlClear(
+            "reference_youtube_url",
+            "reference_youtube_url-clear"
+          );
+        }
+        refreshYoutubePreviewsFromInputs();
+      })
+      .catch(function () {
+        restoreSourceYoutube();
+        restoreFromStorage();
+        const el = document.getElementById("retry-form-notice");
+        if (el) {
+          el.textContent =
+            "Could not load settings from that job. Using your saved defaults.";
+          el.removeAttribute("hidden");
+        }
+      });
+  }
+
+  bootstrapFormRestore();
   if (window.syncYoutubeUrlClear) {
     window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
     window.syncYoutubeUrlClear("reference_youtube_url", "reference_youtube_url-clear");
@@ -705,8 +817,7 @@
 
   window.addEventListener("pageshow", function (event) {
     if (event.persisted) {
-      restoreSourceYoutube();
-      restoreFromStorage();
+      bootstrapFormRestore();
       if (window.syncYoutubeUrlClear) {
         window.syncYoutubeUrlClear("youtube_url", "youtube_url-clear");
         window.syncYoutubeUrlClear("reference_youtube_url", "reference_youtube_url-clear");

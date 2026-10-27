@@ -30,3 +30,10 @@ def test_job_store_create_and_update(tmp_path: Path) -> None:
     assert job["status"] == "running"
     assert store.get_job(job_id, user_id="other") is None
     assert store.count_user_active_jobs(user_id) == 1
+
+    assert store.delete_job("missing-id") is None
+    deleted = store.delete_job(job_id)
+    assert deleted is not None
+    assert deleted["id"] == job_id
+    assert store.get_job(job_id) is None
+    assert store.get_logs(job_id) == []

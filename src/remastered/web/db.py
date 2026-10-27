@@ -678,6 +678,16 @@ class JobStore:
             ).fetchall()
         return [self._row_to_job(r) for r in rows]
 
+    def delete_job(self, job_id: str) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None:
+                return None
+            job = self._row_to_job(row)
+            conn.execute("DELETE FROM job_logs WHERE job_id = ?", (job_id,))
+            conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        return job
+
     def delete_all_jobs_for_user(self, user_id: str) -> list[dict[str, Any]]:
         with self._conn() as conn:
             rows = conn.execute(

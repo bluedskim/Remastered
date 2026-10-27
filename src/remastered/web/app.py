@@ -31,6 +31,7 @@ from remastered.web.media import (
 )
 from remastered.web.job_queue import job_status_display
 from remastered.web.notices import rights_notice_lines, rights_notice_short
+from remastered.web.job_retry import build_job_retry_form_payload
 from remastered.web.job_titles import job_display_title
 from remastered.web.job_ui import enrich_job_ui
 from remastered.web.reference_display import build_reference_options
@@ -50,6 +51,7 @@ from remastered.web.reference_youtube import (
     parse_reference_youtube_url,
     youtube_reference_path_key,
 )
+from remastered.web.cleanup import delete_job_media_files
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.static_assets import init_static_hashes, static_url
 from remastered.web.static_cache import StaticAndHtmlCacheMiddleware
@@ -610,6 +612,62 @@ async def create_job(
         merged = with_active_tab(merged, merged.tab, source_youtube_url=youtube_url)
         _save_reference_prefs(store, identity.account_id, merged, ws)
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+
+
+@fastapi_application.get("/api/jobs/{job_id}/retry-form")
+async def job_retry_form_api(
+    job_id: str,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    job = await run_in_threadpool(
+        store.get_job_for_access,
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    ws = _web_settings()
+    owner_id = identity.job_owner_id
+
+    def _build() -> dict:
+        shared_refs = _list_reference_files(ws.references_path)
+        user_refs = _list_reference_files(_owner_references_dir(owner_id))
+        return build_job_retry_form_payload(
+            job,
+            shared_refs=shared_refs,
+            user_refs=user_refs,
+            user_refs_dir=_owner_references_dir(owner_id),
+            ws=ws,
+        )
+
+    return JSONResponse(await run_in_threadpool(_build))
+
+
+@fastapi_application.delete("/api/jobs/{job_id}")
+async def delete_job_api(
+    job_id: str,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    job = await run_in_threadpool(
+        store.get_job_for_access,
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    settings = resolve_settings()
+    work_dir = settings.work_dir
+
+    def _delete() -> None:
+        delete_job_media_files(job, work_dir)
+        store.delete_job(job_id)
+
+    await run_in_threadpool(_delete)
+    return JSONResponse({"ok": True})
 
 
 @fastapi_application.get("/jobs/{job_id}", response_class=HTMLResponse)

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from remastered.web.db import JobStore
+from remastered.web.job_storage import job_media_storage_owner_id
 from remastered.web.settings import WebSettings
 from remastered.web.stream_audio import playback_path_for_wav
 from remastered.web.youtube_thumb_cache import cleanup_stale_thumbnails
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def delete_job_media_files(job: dict, work_dir: Path) -> None:
+    work_dir = Path(work_dir)
     for key in ("audio_path", "mastered_path", "video_path"):
         path = job.get(key)
         if not path:
@@ -24,7 +26,8 @@ def delete_job_media_files(job: dict, work_dir: Path) -> None:
         playback = playback_path_for_wav(p)
         if playback.is_file():
             playback.unlink(missing_ok=True)
-    job_root = work_dir / "users" / job["user_id"] / job.get("source_video_id", "")
+    storage_owner = job_media_storage_owner_id(job, work_dir)
+    job_root = work_dir / "users" / storage_owner / job.get("source_video_id", "")
     if job_root.is_dir() and job.get("source_video_id"):
         shutil.rmtree(job_root, ignore_errors=True)
 
