@@ -31,6 +31,10 @@ from remastered.web.media import (
 )
 from remastered.web.job_queue import job_status_display
 from remastered.web.notices import rights_notice_lines, rights_notice_short
+from remastered.web.job_reference_snapshot import (
+    is_job_upload_reference_snapshot,
+    snapshot_upload_reference_for_job,
+)
 from remastered.web.job_retry import build_job_retry_form_payload
 from remastered.web.job_titles import job_display_title
 from remastered.web.job_ui import enrich_job_ui
@@ -486,6 +490,7 @@ async def create_job(
     reference_youtube_url: str = Form(""),
     reference_youtube_title: str = Form(""),
     reference_saved_upload: str = Form(""),
+    reference_from_job_id: str = Form(""),
     stereo_width_mode: str = Form(DEFAULT_STEREO_WIDTH_MODE),
 ) -> RedirectResponse:
     ip = client_ip(request)
@@ -505,8 +510,25 @@ async def create_job(
         mode = "preset"
 
     saved_upload_name = ""
+    settings = resolve_settings()
+    work_dir = settings.work_dir
     if mode == "upload":
-        if reference_upload and reference_upload.filename:
+        from_job_id = (reference_from_job_id or "").strip()
+        if from_job_id:
+            prior = store.get_job_for_access(
+                from_job_id,
+                account_id=identity.account_id,
+                anon_id=identity.anon_id,
+            )
+            if not prior or (prior.get("reference_source_type") or "").strip() != "upload":
+                raise HTTPException(status_code=400, detail=CHOOSE_REFERENCE_FILE)
+            snap = Path(prior.get("reference_path") or "")
+            if not is_job_upload_reference_snapshot(snap, prior, work_dir) or not snap.is_file():
+                raise HTTPException(status_code=400, detail=CHOOSE_REFERENCE_FILE)
+            reference_path = snap
+            reference_source_type = "upload"
+            saved_upload_name = snap.name
+        elif reference_upload and reference_upload.filename:
             safe_name = Path(reference_upload.filename).name
             dest = owner_ref_dir / safe_name
             body = await reference_upload.read()
@@ -586,6 +608,15 @@ async def create_job(
         reference_video_id=ref_video_id,
         reference_youtube_title=ref_youtube_title,
     )
+    if reference_source_type == "upload" and reference_path is not None:
+        snap_path = await run_in_threadpool(
+            snapshot_upload_reference_for_job,
+            work_dir,
+            owner_id,
+            job_id,
+            Path(reference_path),
+        )
+        store.update_job(job_id, reference_path=str(snap_path))
     store.append_log(job_id, "Job added to the queue.")
     worker.enqueue(job_id)
     if identity.account_id:
@@ -634,11 +665,13 @@ async def job_retry_form_api(
     def _build() -> dict:
         shared_refs = _list_reference_files(ws.references_path)
         user_refs = _list_reference_files(_owner_references_dir(owner_id))
+        work_dir = resolve_settings().work_dir
         return build_job_retry_form_payload(
             job,
             shared_refs=shared_refs,
             user_refs=user_refs,
             user_refs_dir=_owner_references_dir(owner_id),
+            work_dir=work_dir,
             ws=ws,
         )
 
