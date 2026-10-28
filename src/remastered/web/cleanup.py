@@ -14,6 +14,29 @@ from remastered.web.youtube_thumb_cache import cleanup_stale_thumbnails
 logger = logging.getLogger(__name__)
 
 
+def remove_job_record_and_media(
+    store: JobStore,
+    job: dict,
+    work_dir: Path,
+) -> bool:
+    """Hard-delete job row + logs first, then best-effort media cleanup."""
+    job_id = (job.get("id") or "").strip()
+    if not job_id:
+        return False
+    deleted = store.delete_job(job_id)
+    if not deleted:
+        return False
+    try:
+        delete_job_media_files(job, work_dir)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Job %s removed from database; media cleanup failed: %s",
+            job_id,
+            exc,
+        )
+    return True
+
+
 def delete_job_media_files(job: dict, work_dir: Path) -> None:
     work_dir = Path(work_dir)
     for key in ("audio_path", "mastered_path", "video_path"):
