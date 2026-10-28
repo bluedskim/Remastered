@@ -674,6 +674,20 @@ button,
   border-color: transparent;
 }
 
+.job-card-shell .job-delete-btn {
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.15;
+  padding: 0.3rem 0.45rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  opacity: 0.72;
+}
+
+.job-card-shell .job-delete-btn:hover {
+  opacity: 1;
+}
+
 .job-delete-btn:hover {
   color: #fca5a5;
   border-color: rgba(248, 113, 113, 0.35);
