@@ -56,7 +56,7 @@ from remastered.web.reference_youtube import (
     parse_reference_youtube_url,
     youtube_reference_path_key,
 )
-from remastered.web.cleanup import delete_job_media_files
+from remastered.web.cleanup import remove_job_record_and_media
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
 from remastered.web.static_assets import init_static_hashes, static_url
 from remastered.web.static_cache import StaticAndHtmlCacheMiddleware
@@ -684,11 +684,10 @@ async def job_retry_form_api(
     return JSONResponse(await run_in_threadpool(_build))
 
 
-@fastapi_application.delete("/api/jobs/{job_id}")
-async def delete_job_api(
+async def _delete_job_for_identity(
     job_id: str,
-    identity: RequestIdentity = Depends(require_identity),
-    store: JobStore = Depends(get_store),
+    identity: RequestIdentity,
+    store: JobStore,
 ) -> JSONResponse:
     job = await run_in_threadpool(
         store.get_job_for_access,
@@ -701,12 +700,32 @@ async def delete_job_api(
     settings = resolve_settings()
     work_dir = settings.work_dir
 
-    def _delete() -> None:
-        delete_job_media_files(job, work_dir)
-        store.delete_job(job_id)
+    def _delete() -> bool:
+        return remove_job_record_and_media(store, job, work_dir)
 
-    await run_in_threadpool(_delete)
+    removed = await run_in_threadpool(_delete)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Job not found.")
     return JSONResponse({"ok": True})
+
+
+@fastapi_application.delete("/api/jobs/{job_id}")
+async def delete_job_api(
+    job_id: str,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    return await _delete_job_for_identity(job_id, identity, store)
+
+
+@fastapi_application.post("/api/jobs/{job_id}/delete")
+async def delete_job_post_api(
+    job_id: str,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    """POST alias for environments that block HTTP DELETE."""
+    return await _delete_job_for_identity(job_id, identity, store)
 
 
 @fastapi_application.get("/jobs/{job_id}", response_class=HTMLResponse)

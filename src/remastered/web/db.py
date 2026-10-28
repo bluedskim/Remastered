@@ -509,18 +509,18 @@ class JobStore:
         account_id: str | None,
         anon_id: str,
     ) -> dict[str, Any] | None:
-        owners = [anon_id]
-        if account_id:
-            owners.append(account_id)
-        placeholders = ",".join("?" for _ in owners)
-        with self._conn() as conn:
-            row = conn.execute(
-                f"SELECT * FROM jobs WHERE id = ? AND user_id IN ({placeholders})",
-                (job_id, *owners),
-            ).fetchone()
-        if row is None:
+        from remastered.web.job_access import identity_can_access_job
+
+        job = self.get_job(job_id)
+        if not job:
             return None
-        return self._row_to_job(row)
+        if identity_can_access_job(
+            job,
+            account_id=account_id,
+            anon_id=anon_id,
+        ):
+            return job
+        return None
 
     def list_jobs_for_access(
         self,
@@ -530,7 +530,17 @@ class JobStore:
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         if account_id:
-            return self.list_jobs(account_id, limit=limit)
+            merged: dict[str, dict[str, Any]] = {}
+            for row in self.list_jobs(account_id, limit=limit):
+                merged[row["id"]] = row
+            for row in self.list_jobs(anon_id, limit=limit):
+                merged.setdefault(row["id"], row)
+            jobs = sorted(
+                merged.values(),
+                key=lambda job: job["created_at"],
+                reverse=True,
+            )
+            return jobs[:limit]
         return self.list_jobs(anon_id, limit=limit)
 
     def claim_jobs(self, anon_id: str, account_id: str) -> int:

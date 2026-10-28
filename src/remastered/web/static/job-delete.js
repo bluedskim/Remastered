@@ -36,9 +36,10 @@
 
     setDeleteInFlight(btn, true);
 
-    fetch("/api/jobs/" + encodeURIComponent(jobId), {
-      method: "DELETE",
+    fetch("/api/jobs/" + encodeURIComponent(jobId) + "/delete", {
+      method: "POST",
       credentials: "same-origin",
+      headers: { Accept: "application/json" },
     })
       .then(function (resp) {
         if (!resp.ok) throw new Error("delete failed");
