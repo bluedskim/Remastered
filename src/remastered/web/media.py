@@ -17,6 +17,21 @@ RETENTION_MESSAGE = (
     "(14 days by default)."
 )
 
+FILES_MISSING_MESSAGE = (
+    "Audio files are unavailable for this job. "
+    "They may have been removed when another remaster was deleted or cleared from storage."
+)
+
+
+def media_unavailable_message(job: dict, *, retention_days: int) -> str:
+    if job.get("files_cleaned"):
+        days = retention_days if retention_days > 0 else 14
+        return (
+            f"Audio files are unavailable. They were removed after the "
+            f"{days}-day retention period."
+        )
+    return FILES_MISSING_MESSAGE
+
 ORIGINAL_DOWNLOAD_FORBIDDEN = "Downloading the original audio is not available."
 
 

@@ -27,6 +27,7 @@ from remastered.web.media import (
     RETENTION_MESSAGE,
     media_exists,
     media_file_response,
+    media_unavailable_message,
     resolve_job_media_path,
 )
 from remastered.web.job_queue import job_status_display
@@ -297,13 +298,18 @@ def _job_media_context(job: dict) -> dict[str, bool | str | None]:
         mastered_download_filename = media_download_filename(
             job, Path(mastered_path)
         )
+    unavailable_message = (
+        media_unavailable_message(job, retention_days=ws.job_retention_days)
+        if expired
+        else RETENTION_MESSAGE
+    )
 
     return {
         "audio_ok": audio_ok,
         "mastered_ok": mastered_ok,
         "ab_compare_ok": audio_ok and mastered_ok,
         "files_expired": expired,
-        "retention_message": RETENTION_MESSAGE,
+        "retention_message": unavailable_message,
         "mastered_download_filename": mastered_download_filename,
         "rights_notice_short": rights_notice_short(ws.job_retention_days),
     }

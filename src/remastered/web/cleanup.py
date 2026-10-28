@@ -6,8 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from remastered.web.db import JobStore
-from remastered.web.job_reference_snapshot import delete_job_reference_snapshot
-from remastered.web.job_storage import job_media_storage_owner_id
+from remastered.web.job_media_paths import delete_job_workspace
 from remastered.web.settings import WebSettings
 from remastered.web.stream_audio import playback_path_for_wav
 from remastered.web.youtube_thumb_cache import cleanup_stale_thumbnails
@@ -27,11 +26,7 @@ def delete_job_media_files(job: dict, work_dir: Path) -> None:
         playback = playback_path_for_wav(p)
         if playback.is_file():
             playback.unlink(missing_ok=True)
-    delete_job_reference_snapshot(job, work_dir)
-    storage_owner = job_media_storage_owner_id(job, work_dir)
-    job_root = work_dir / "users" / storage_owner / job.get("source_video_id", "")
-    if job_root.is_dir() and job.get("source_video_id"):
-        shutil.rmtree(job_root, ignore_errors=True)
+    delete_job_workspace(job, work_dir)
 
 
 def purge_anonymous_owner_data(

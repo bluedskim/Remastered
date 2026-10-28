@@ -12,6 +12,7 @@ from remastered.config import RemasteredSettings, resolve_settings
 from remastered.pipeline import PipelineProgress
 from remastered.web.cleanup import cleanup_old_jobs
 from remastered.web.db import WEB_STAGES, JobStore
+from remastered.web.job_media_paths import job_workspace_dir
 from remastered.web.limits import validate_youtube_source_limits
 from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE, VALID_STEREO_WIDTH_MODES
 from remastered.web.pipeline_web import download_source_audio, master_downloaded_audio
@@ -136,8 +137,9 @@ class JobWorker:
                 return
 
             user_work = self.settings.work_dir / "users" / user_id
-            user_work.mkdir(parents=True, exist_ok=True)
-            job_settings = self.settings.model_copy(update={"work_dir": user_work})
+            job_workspace = job_workspace_dir(self.settings.work_dir, user_id, job_id)
+            job_workspace.mkdir(parents=True, exist_ok=True)
+            job_settings = self.settings.model_copy(update={"work_dir": job_workspace})
 
             def on_downloaded(title: str, video_id: str) -> None:
                 self.store.update_job(
