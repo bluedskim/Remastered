@@ -57,7 +57,8 @@
 
   function wireDetailDeleteButton() {
     const btn = document.getElementById("job-delete-btn");
-    if (!btn) return;
+    if (!btn || btn.dataset.deleteWired === "1") return;
+    btn.dataset.deleteWired = "1";
     const jobId = btn.getAttribute("data-job-delete");
     btn.addEventListener("click", function () {
       deleteJob(jobId, { redirectHome: true });
@@ -68,6 +69,12 @@
     wireListDeleteButtons();
     wireDetailDeleteButton();
   };
+
+  document.body.addEventListener("htmx:oobAfterSwap", function (event) {
+    if (event.detail && event.detail.target && event.detail.target.id === "job-detail-actions") {
+      wireDetailDeleteButton();
+    }
+  });
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", window.initJobDeleteControls);

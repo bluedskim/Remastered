@@ -1,6 +1,11 @@
 {% include "partials/job_panel_status.html" %}
-{% if job.status in ('completed', 'failed', 'cancelled') and (audio_ok or mastered_ok) %}
+{% if job.status in ('completed', 'failed', 'cancelled') %}
+<div id="job-detail-actions" hx-swap-oob="innerHTML">
+  {% include "partials/job_detail_actions.html" %}
+</div>
+{% if audio_ok or mastered_ok %}
 <div id="job-players" hx-swap-oob="innerHTML">
   {% include "partials/job_players.html" %}
 </div>
+{% endif %}
 {% endif %}

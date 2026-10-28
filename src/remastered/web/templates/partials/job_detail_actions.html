@@ -1,0 +1,9 @@
+{% if job.status in ('completed', 'failed', 'cancelled') %}
+<a class="btn btn-ghost btn-sm" href="/?from_job={{ job.id }}">Try again</a>
+{% endif %}
+<button
+  type="button"
+  class="btn btn-ghost btn-sm job-delete-btn"
+  id="job-delete-btn"
+  data-job-delete="{{ job.id }}"
+>Delete job</button>

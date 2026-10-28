@@ -3,16 +3,8 @@
 {% block content %}
 <nav class="breadcrumb job-detail-nav">
   <a href="/">← Back to list</a>
-  <div class="job-detail-actions">
-    {% if job.status in ('completed', 'failed', 'cancelled') %}
-    <a class="btn btn-ghost btn-sm" href="/?from_job={{ job.id }}">Try again</a>
-    {% endif %}
-    <button
-      type="button"
-      class="btn btn-ghost btn-sm job-delete-btn"
-      id="job-delete-btn"
-      data-job-delete="{{ job.id }}"
-    >Delete job</button>
+  <div class="job-detail-actions" id="job-detail-actions">
+    {% include "partials/job_detail_actions.html" %}
   </div>
 </nav>
 <div id="job-status"

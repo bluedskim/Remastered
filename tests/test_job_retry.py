@@ -152,6 +152,34 @@ def test_build_job_retry_form_payload_youtube_reference() -> None:
     assert payload["sourceYoutubeUrl"] == job["youtube_url"]
 
 
+def test_job_detail_try_again_after_panel_poll(client: TestClient) -> None:
+    client.get("/")
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=tryAgainPoll1",
+            "reference_name": "ref.wav",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    job_id = resp.headers["location"].split("/")[-1]
+
+    running_page = client.get(f"/jobs/{job_id}")
+    assert running_page.status_code == 200
+    assert f'href="/?from_job={job_id}"' not in running_page.text
+
+    _wait_job_complete(client, job_id)
+    panel = client.get(f"/jobs/{job_id}/panel")
+    assert panel.status_code == 286
+    assert "Try again" in panel.text
+    assert 'id="job-detail-actions"' in panel.text
+    assert f'href="/?from_job={job_id}"' in panel.text
+
+    completed_page = client.get(f"/jobs/{job_id}")
+    assert f'href="/?from_job={job_id}"' in completed_page.text
+
+
 def test_retry_form_api_and_detail_link(client: TestClient, tmp_path: Path) -> None:
     source = "https://www.youtube.com/watch?v=retryApi1"
     job_id = _create_completed_job(
