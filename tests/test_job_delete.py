@@ -85,6 +85,10 @@ def test_owner_can_delete_job_and_files(client: TestClient, tmp_path: Path) -> N
     home_before = client.get("/")
     assert job_id in home_before.text
     assert 'data-job-delete="' + job_id + '"' in home_before.text
+    assert "job-card-thumb-column" in home_before.text
+    assert home_before.text.index("job-card-thumb-column") < home_before.text.index(
+        f'data-job-delete="{job_id}"'
+    )
 
     delete = client.delete(f"/api/jobs/{job_id}")
     assert delete.status_code == 200
