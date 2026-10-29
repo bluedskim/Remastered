@@ -57,8 +57,9 @@ def test_home_without_google_env(client: TestClient) -> None:
     assert resp.status_code == 200
     assert "New job" in resp.text
     text = resp.text
-    assert text.index("Follow reference (default)") < text.index("Keep original width")
-    assert 'name="stereo_width_mode" value="follow_reference" checked' in text
+    assert 'name="stereo_width_mode" value="follow_reference"' in text
+    assert "Follow reference (default)" not in text
+    assert "Keep original width" not in text
     assert "Google" not in resp.text
     assert client.get("/dashboard", follow_redirects=False).headers["location"] == "/"
     assert "fCV9oqtwyVA" not in resp.text

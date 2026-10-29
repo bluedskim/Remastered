@@ -1181,12 +1181,6 @@ button,
   word-break: break-word;
 }
 
-.ref-yt-preview-author {
-  margin: 0.2rem 0 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
 .ref-yt-preview-error {
   margin: 0.5rem 0 0;
 }

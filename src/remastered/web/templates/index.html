@@ -34,8 +34,6 @@
         </div>
         <div class="ref-yt-preview-text">
           <p id="source-yt-preview-title" class="ref-yt-preview-title"></p>
-          <p id="source-yt-preview-author" class="ref-yt-preview-author muted small"></p>
-          <p id="source-yt-preview-duration" class="ref-yt-preview-duration muted small"></p>
         </div>
       </div>
       <p id="source-yt-preview-error" class="ref-yt-preview-error small muted" hidden>
@@ -115,8 +113,6 @@
           </div>
           <div class="ref-yt-preview-text">
             <p id="ref-yt-preview-title" class="ref-yt-preview-title"></p>
-            <p id="ref-yt-preview-author" class="ref-yt-preview-author muted small"></p>
-            <p id="ref-yt-preview-duration" class="ref-yt-preview-duration muted small"></p>
           </div>
         </div>
         <p id="ref-yt-preview-error" class="ref-yt-preview-error small muted" hidden>
@@ -139,25 +135,7 @@
       </p>
     </div>
 
-    <div class="field">
-      <span class="field-label">Stereo width</span>
-      <div class="ref-picker stereo-width-picker" role="radiogroup" aria-label="Stereo width">
-        <label class="ref-card">
-          <input type="radio" name="stereo_width_mode" value="follow_reference" checked />
-          <span class="ref-card-body">
-            <span class="ref-title">Follow reference (default)</span>
-            <span class="ref-genre">Match the reference stereo width</span>
-          </span>
-        </label>
-        <label class="ref-card">
-          <input type="radio" name="stereo_width_mode" value="preserve" />
-          <span class="ref-card-body">
-            <span class="ref-title">Keep original width</span>
-            <span class="ref-genre">Preserve the source width and balance</span>
-          </span>
-        </label>
-      </div>
-    </div>
+    <input type="hidden" name="stereo_width_mode" value="follow_reference" />
 
     <p class="limits-hint small muted">
       Source up to {{ limits.max_source_duration_seconds // 60 }} min · {{ limits.max_source_bytes // (1024*1024) }}MB
@@ -263,8 +241,6 @@
     previewId: "source-youtube-preview",
     previewImgId: "source-yt-preview-img",
     previewTitleId: "source-yt-preview-title",
-    previewAuthorId: "source-yt-preview-author",
-    previewDurationId: "source-yt-preview-duration",
     previewErrorId: "source-yt-preview-error",
     maxDurationSeconds: maxSourceDuration,
     onMetaChange: function (_data, overLimit) {
@@ -282,8 +258,6 @@
     previewId: "ref-youtube-preview",
     previewImgId: "ref-yt-preview-img",
     previewTitleId: "ref-yt-preview-title",
-    previewAuthorId: "ref-yt-preview-author",
-    previewDurationId: "ref-yt-preview-duration",
     previewErrorId: "ref-yt-preview-error",
     titleFieldId: "reference_youtube_title",
     onMetaChange: function (data) {
@@ -723,11 +697,10 @@
   }
 
   function applyStereoWidth(mode) {
-    if (!mode || !form) return;
-    const radio = form.querySelector(
-      'input[name="stereo_width_mode"][value="' + mode + '"]'
-    );
-    if (radio) radio.checked = true;
+    if (!form) return;
+    const field = form.querySelector('input[name="stereo_width_mode"]');
+    if (!field) return;
+    field.value = mode === "preserve" ? "preserve" : "follow_reference";
   }
 
   function clearReferenceFromJob() {
