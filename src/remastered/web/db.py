@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -229,6 +229,13 @@ class JobStore:
             )
         elif self._auth_users_needs_nickname_migration(conn):
             self._rebuild_auth_users_optional_nickname(conn)
+
+        if self._table_exists(conn, "auth_users"):
+            auth_cols = {
+                row[1] for row in conn.execute("PRAGMA table_info(auth_users)").fetchall()
+            }
+            if "signup_source" not in auth_cols:
+                conn.execute("ALTER TABLE auth_users ADD COLUMN signup_source TEXT")
 
         conn.executescript(
             """
@@ -616,6 +623,7 @@ class JobStore:
         *,
         login_id: str,
         password_hash: str,
+        signup_source: str | None = None,
     ) -> str:
         user_id = f"user-{uuid4().hex}"
         now = _utc_now()
@@ -623,10 +631,11 @@ class JobStore:
             conn.execute(
                 """
                 INSERT INTO auth_users (
-                    id, login_id, nickname, password_hash, created_at, updated_at
-                ) VALUES (?, ?, NULL, ?, ?, ?)
+                    id, login_id, nickname, password_hash, created_at, updated_at,
+                    signup_source
+                ) VALUES (?, ?, NULL, ?, ?, ?, ?)
                 """,
-                (user_id, login_id, password_hash, now, now),
+                (user_id, login_id, password_hash, now, now, signup_source),
             )
         return user_id
 

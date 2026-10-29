@@ -16,6 +16,10 @@ from remastered.web.auth_redirect import (
 )
 from remastered.web.identity import client_ip, resolve_identity
 from remastered.web.settings import WebSettings
+from remastered.web.signup_source import (
+    clear_signup_source_tracking,
+    resolve_signup_source_for_new_account,
+)
 
 router = APIRouter()
 
@@ -153,12 +157,16 @@ def register_auth_routes(
         password_confirm: str = Form(...),
         verification_code: str = Form(...),
         next: str = Form(""),
+        signup_source: str = Form(""),
         auth: AuthService = Depends(_auth_service),
     ):
         identity = resolve_identity(request)
         ws = WebSettings()
         auth_settings = AuthSettings()
         next_path = safe_next_path(next)
+        resolved_signup_source = resolve_signup_source_for_new_account(
+            request, signup_source
+        )
         if password != password_confirm:
             return templates.TemplateResponse(
                 request,
@@ -180,6 +188,7 @@ def register_auth_routes(
                 password=password,
                 verification_code=verification_code,
                 anon_id=identity.anon_id,
+                signup_source=resolved_signup_source,
             )
         except AuthError as exc:
             return templates.TemplateResponse(
@@ -216,6 +225,7 @@ def register_auth_routes(
             status_code=303,
         )
         _set_auth_cookie(response, user=user, ws=ws, auth=auth_settings)
+        clear_signup_source_tracking(response, request)
         return response
 
     @router.post("/logout")

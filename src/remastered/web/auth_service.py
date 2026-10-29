@@ -12,6 +12,7 @@ from remastered.web.auth_validation import (
     require_valid_password,
 )
 from remastered.web.db import JobStore
+from remastered.web.signup_source import normalize_signup_source
 
 
 def _parse_utc(iso: str) -> datetime:
@@ -89,6 +90,7 @@ class AuthService:
         password: str,
         verification_code: str,
         anon_id: str,
+        signup_source: str | None = None,
     ) -> dict[str, str]:
         email = require_valid_email(login_id)
         require_valid_password(password)
@@ -104,6 +106,7 @@ class AuthService:
         user_id = self.store.create_auth_user(
             login_id=email,
             password_hash=hash_secret(password),
+            signup_source=normalize_signup_source(signup_source),
         )
         self.store.claim_jobs(anon_id, user_id)
         user = self.store.get_auth_user_by_id(user_id)

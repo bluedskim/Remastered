@@ -135,6 +135,9 @@ fastapi_application.mount(
 
 from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
 
+from remastered.web.signup_source_middleware import SignupSourceCaptureMiddleware  # noqa: E402
+
+fastapi_application.add_middleware(SignupSourceCaptureMiddleware)
 fastapi_application.add_middleware(
     SessionMiddleware,
     **session_middleware_kwargs(ws_init.public_base_url, ws_init.session_secret),
