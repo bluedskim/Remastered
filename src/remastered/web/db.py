@@ -522,26 +522,81 @@ class JobStore:
             return job
         return None
 
+    @staticmethod
+    def _access_user_ids(account_id: str | None, anon_id: str) -> list[str]:
+        if account_id:
+            ids = [account_id]
+            if anon_id and anon_id != account_id:
+                ids.append(anon_id)
+            return ids
+        return [anon_id]
+
     def list_jobs_for_access(
         self,
         *,
         account_id: str | None,
         anon_id: str,
         limit: int = 50,
+        before_created_at: str | None = None,
+        before_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        if account_id:
-            merged: dict[str, dict[str, Any]] = {}
-            for row in self.list_jobs(account_id, limit=limit):
-                merged[row["id"]] = row
-            for row in self.list_jobs(anon_id, limit=limit):
-                merged.setdefault(row["id"], row)
-            jobs = sorted(
-                merged.values(),
-                key=lambda job: job["created_at"],
-                reverse=True,
+        user_ids = self._access_user_ids(account_id, anon_id)
+        return self._list_jobs_for_user_ids(
+            user_ids,
+            limit=limit,
+            before_created_at=before_created_at,
+            before_id=before_id,
+        )
+
+    def list_jobs_for_access_page(
+        self,
+        *,
+        account_id: str | None,
+        anon_id: str,
+        limit: int = 50,
+        before_created_at: str | None = None,
+        before_id: str | None = None,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        rows = self.list_jobs_for_access(
+            account_id=account_id,
+            anon_id=anon_id,
+            limit=limit + 1,
+            before_created_at=before_created_at,
+            before_id=before_id,
+        )
+        has_more = len(rows) > limit
+        return rows[:limit], has_more
+
+    def _list_jobs_for_user_ids(
+        self,
+        user_ids: list[str],
+        *,
+        limit: int,
+        before_created_at: str | None = None,
+        before_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not user_ids:
+            return []
+        placeholders = ", ".join("?" * len(user_ids))
+        params: list[Any] = list(user_ids)
+        cursor_sql = ""
+        if before_created_at is not None and before_id is not None:
+            cursor_sql = (
+                " AND (created_at < ? OR (created_at = ? AND id < ?))"
             )
-            return jobs[:limit]
-        return self.list_jobs(anon_id, limit=limit)
+            params.extend([before_created_at, before_created_at, before_id])
+        params.append(limit)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM jobs
+                WHERE user_id IN ({placeholders}){cursor_sql}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [self._row_to_job(r) for r in rows]
 
     def claim_jobs(self, anon_id: str, account_id: str) -> int:
         if not anon_id or not account_id or anon_id == account_id:
@@ -682,7 +737,7 @@ class JobStore:
             rows = conn.execute(
                 """
                 SELECT * FROM jobs WHERE user_id = ?
-                ORDER BY created_at DESC LIMIT ?
+                ORDER BY created_at DESC, id DESC LIMIT ?
                 """,
                 (user_id, limit),
             ).fetchall()
