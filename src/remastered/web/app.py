@@ -88,6 +88,8 @@ STAGE_LABELS = {
 
 TERMINAL_JOB_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
+JOBS_LIST_PAGE_SIZE = 20
+
 DOWNLOAD_REQUIRES_SIGN_IN = "Sign in required to download the remastered file."
 
 PRIVACY_NOTICE = (
@@ -435,19 +437,23 @@ def _dashboard_context(
     store: JobStore,
 ) -> dict:
     ws = _web_settings()
-    jobs = [
-        _enrich_job(j, store)
-        for j in store.list_jobs_for_access(
-            account_id=identity.account_id,
-            anon_id=identity.anon_id,
-            limit=20,
-        )
-    ]
+    jobs_raw, jobs_has_more = store.list_jobs_for_access_page(
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+        limit=JOBS_LIST_PAGE_SIZE,
+    )
+    jobs = [_enrich_job(j, store) for j in jobs_raw]
+    jobs_next_cursor = None
+    if jobs_has_more and jobs_raw:
+        last = jobs_raw[-1]
+        jobs_next_cursor = {"created_at": last["created_at"], "id": last["id"]}
     owner_id = identity.job_owner_id
     shared_refs = _list_reference_files(ws.references_path)
     user_refs = _list_reference_files(_owner_references_dir(owner_id))
     return {
         "jobs": jobs,
+        "jobs_has_more": jobs_has_more,
+        "jobs_next_cursor": jobs_next_cursor,
         "shared_references": shared_refs,
         "user_references": user_refs,
         "reference_options": build_reference_options(shared_refs, user_refs),
@@ -459,6 +465,13 @@ def _dashboard_context(
         **_auth_template_context(identity),
         **_privacy_template_context(),
     }
+
+
+def _render_job_list_items_html(jobs: list[dict]) -> str:
+    return templates.get_template("partials/job_list_items.html").render(
+        jobs=jobs,
+        job_display_title=job_display_title,
+    )
 
 
 register_auth_routes(fastapi_application, templates, PRIVACY_NOTICE)
@@ -480,6 +493,48 @@ def home(
 @fastapi_application.get("/dashboard", response_class=HTMLResponse)
 def dashboard_redirect() -> RedirectResponse:
     return RedirectResponse("/", status_code=303)
+
+
+@fastapi_application.get("/api/jobs/list")
+async def jobs_list_page_api(
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+    before_created_at: str | None = None,
+    before_id: str | None = None,
+) -> JSONResponse:
+    if (before_created_at is None) != (before_id is None):
+        raise HTTPException(
+            status_code=400,
+            detail="before_created_at and before_id must be provided together.",
+        )
+
+    def _fetch() -> tuple[list[dict], bool]:
+        return store.list_jobs_for_access_page(
+            account_id=identity.account_id,
+            anon_id=identity.anon_id,
+            limit=JOBS_LIST_PAGE_SIZE,
+            before_created_at=before_created_at,
+            before_id=before_id,
+        )
+
+    jobs_raw, has_more = await run_in_threadpool(_fetch)
+    enriched = [_enrich_job(j, store) for j in jobs_raw]
+    next_cursor = None
+    if has_more and jobs_raw:
+        last = jobs_raw[-1]
+        next_cursor = {"created_at": last["created_at"], "id": last["id"]}
+
+    def _render() -> str:
+        return _render_job_list_items_html(enriched)
+
+    html = await run_in_threadpool(_render)
+    return JSONResponse(
+        {
+            "html": html,
+            "has_more": has_more,
+            "next_cursor": next_cursor,
+        }
+    )
 
 
 @fastapi_application.post("/jobs")

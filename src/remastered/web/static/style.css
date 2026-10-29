@@ -654,6 +654,11 @@ button,
   max-width: 100%;
 }
 
+.job-list-more-wrap {
+  margin: 1rem 0 0;
+  text-align: center;
+}
+
 .job-card-shell {
   display: flex;
   align-items: flex-start;

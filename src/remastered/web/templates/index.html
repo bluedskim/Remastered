@@ -159,56 +159,25 @@
   <p class="muted empty-state">No jobs yet. Start your first one above.</p>
   {% else %}
   <ul class="job-list">
-    {% for job in jobs %}
-    <li class="job-list-item">
-      <div class="job-card-shell">
-        <div class="job-card-thumb-column">
-          <a class="job-card-thumb-link" href="/jobs/{{ job.id }}" aria-label="Open job">
-            <span class="yt-thumb-slot job-card-thumb-slot" data-yt-thumb-slot>
-              <span class="job-card-thumb job-card-thumb--placeholder yt-thumb-placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
-              {% if job.job_list_thumbnail %}
-              <img
-                class="job-card-thumb yt-thumb-img"
-                src="{{ job.job_list_thumbnail }}"
-                alt=""
-                width="96"
-                height="54"
-                loading="eager"
-                decoding="async"
-                hidden
-              />
-              {% endif %}
-            </span>
-          </a>
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm job-delete-btn"
-            data-job-delete="{{ job.id }}"
-            aria-label="Delete job"
-            title="Delete job"
-          >Delete</button>
-        </div>
-        <a class="job-card" href="/jobs/{{ job.id }}">
-          <div class="job-card-body">
-            <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
-            {% if job.pipeline_stage_label %}
-            <p class="job-card-stage small muted">{{ job.pipeline_stage_label }}</p>
-            {% endif %}
-            <div class="job-card-footer">
-              <span class="job-card-meta small muted">{{ job.relative_time }}</span>
-              <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
-            </div>
-          </div>
-        </a>
-      </div>
-    </li>
-    {% endfor %}
+    {% include "partials/job_list_items.html" %}
   </ul>
+  {% if jobs_has_more and jobs_next_cursor %}
+  <p class="job-list-more-wrap">
+    <button
+      type="button"
+      class="btn btn-ghost btn-sm job-list-more-btn"
+      id="job-list-more-btn"
+      data-before-created-at="{{ jobs_next_cursor.created_at }}"
+      data-before-id="{{ jobs_next_cursor.id }}"
+    >Show more</button>
+  </p>
+  {% endif %}
   {% endif %}
 </section>
 
 <script src="{{ static_url('youtube-preview.js') }}"></script>
 <script src="{{ static_url('job-delete.js') }}" defer></script>
+<script src="{{ static_url('job-list-more.js') }}" defer></script>
 <script>
 (function () {
   const IS_SIGNED_IN = {{ "true" if auth_user else "false" }};

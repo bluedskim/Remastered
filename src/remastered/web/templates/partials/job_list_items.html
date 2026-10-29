@@ -1,0 +1,44 @@
+{% for job in jobs %}
+<li class="job-list-item">
+  <div class="job-card-shell">
+    <div class="job-card-thumb-column">
+      <a class="job-card-thumb-link" href="/jobs/{{ job.id }}" aria-label="Open job">
+        <span class="yt-thumb-slot job-card-thumb-slot" data-yt-thumb-slot>
+          <span class="job-card-thumb job-card-thumb--placeholder yt-thumb-placeholder" aria-hidden="true"><span class="job-card-thumb-icon">◆</span></span>
+          {% if job.job_list_thumbnail %}
+          <img
+            class="job-card-thumb yt-thumb-img"
+            src="{{ job.job_list_thumbnail }}"
+            alt=""
+            width="96"
+            height="54"
+            loading="eager"
+            decoding="async"
+            hidden
+          />
+          {% endif %}
+        </span>
+      </a>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm job-delete-btn"
+        data-job-delete="{{ job.id }}"
+        aria-label="Delete job"
+        title="Delete job"
+      >Delete</button>
+    </div>
+    <a class="job-card" href="/jobs/{{ job.id }}">
+      <div class="job-card-body">
+        <h3 class="job-card-title">{{ job_display_title(job) }}</h3>
+        {% if job.pipeline_stage_label %}
+        <p class="job-card-stage small muted">{{ job.pipeline_stage_label }}</p>
+        {% endif %}
+        <div class="job-card-footer">
+          <span class="job-card-meta small muted">{{ job.relative_time }}</span>
+          <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+        </div>
+      </div>
+    </a>
+  </div>
+</li>
+{% endfor %}
