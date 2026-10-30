@@ -70,6 +70,13 @@ def test_opensource_page(ux_client: TestClient) -> None:
     assert "Back to home" in resp.text
 
 
+def test_footer_includes_contact_mailto(ux_client: TestClient) -> None:
+    resp = ux_client.get("/privacy")
+    assert resp.status_code == 200
+    assert 'href="mailto:bluedskim@gmail.com"' in resp.text
+    assert ">Contact</a>" in resp.text
+
+
 def test_home_has_source_preview_and_listen_toggle_markup(ux_client: TestClient) -> None:
     home = ux_client.get("/")
     assert home.status_code == 200
