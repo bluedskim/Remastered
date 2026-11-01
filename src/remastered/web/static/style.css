@@ -1467,6 +1467,16 @@ button,
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: center;
+}
+
+.video-download-status {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.video-download-status--error {
+  color: var(--danger, #f87171);
 }
 
 .player-simple audio {
