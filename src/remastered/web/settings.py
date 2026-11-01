@@ -29,6 +29,8 @@ class WebSettings(BaseSettings):
     job_retention_days: int = 14
     trusted_proxy_ips: str = "*"
     max_concurrent_media_streams: int = 12
+    max_concurrent_video_builds: int = 2
+    video_download_cache_ttl_seconds: int = 3600
     uvicorn_limit_concurrency: int = 80
     uvicorn_timeout_keep_alive: int = 5
     duplicate_job_window_seconds: int = 30

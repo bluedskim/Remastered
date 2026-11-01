@@ -43,6 +43,21 @@ def _remastered_suffix(media_path: Path) -> str:
     return f" (Remastered){ext}"
 
 
+def _remastered_video_suffix() -> str:
+    return " (Remastered).mp4"
+
+
+def video_remastered_download_filename(job: dict[str, Any]) -> str:
+    suffix = _remastered_video_suffix()
+    max_stem_len = max(1, MAX_DOWNLOAD_FILENAME_LEN - len(suffix))
+    stem = resolve_download_title_stem(job)
+    if len(stem) > max_stem_len:
+        stem = stem[:max_stem_len].rstrip()
+    if not stem:
+        stem = _id_fallback_stem(job)[:max_stem_len].rstrip() or "download"
+    return f"{stem}{suffix}"
+
+
 def media_download_filename(job: dict[str, Any], media_path: Path) -> str:
     """Human-facing UTF-8 remastered download basename (no directory components)."""
     suffix = _remastered_suffix(media_path)
@@ -93,3 +108,37 @@ def build_attachment_content_disposition(
     ascii_name = _ascii_fallback_filename(utf8_name, job, media_path)
     encoded = quote(utf8_name, safe="")
     return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded}'
+
+
+def build_video_download_content_disposition(job: dict[str, Any]) -> str:
+    utf8_name = video_remastered_download_filename(job)
+    ascii_name = _ascii_fallback_video_filename(utf8_name, job)
+    encoded = quote(utf8_name, safe="")
+    return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded}'
+
+
+def _ascii_fallback_video_filename(utf8_filename: str, job: dict[str, Any]) -> str:
+    suffix = _remastered_video_suffix()
+    utf8_stem = (
+        utf8_filename[: -len(suffix)] if utf8_filename.endswith(suffix) else utf8_filename
+    )
+    if any(ord(ch) >= 128 for ch in utf8_stem):
+        stem = _id_fallback_stem(job)
+    else:
+        ascii_chars: list[str] = []
+        for ch in utf8_stem:
+            if ord(ch) < 32 or ch in '/\\:*?"<>|':
+                continue
+            if ord(ch) < 128:
+                ascii_chars.append(ch)
+            else:
+                ascii_chars.append("_")
+        stem = re.sub(r"\s+", " ", "".join(ascii_chars)).strip()
+        stem = stem.strip("._-")
+
+    max_stem_len = max(1, MAX_DOWNLOAD_FILENAME_LEN - len(suffix))
+    if len(stem) > max_stem_len:
+        stem = stem[:max_stem_len].rstrip()
+    if not stem:
+        stem = _id_fallback_stem(job)[:max_stem_len].rstrip() or "download"
+    return f"{stem}{suffix}"

@@ -30,8 +30,15 @@
     <div class="ab-downloads">
       {% if auth_user %}
       <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>Download remastered</a>
+      {% if video_download_show %}
+      <button type="button" class="btn btn-pill btn-secondary" data-video-download data-job-id="{{ job.id }}"{% if video_download_filename %} data-download-filename="{{ video_download_filename }}"{% endif %}>Download video</button>
+      <p class="small muted video-download-status" data-video-download-status hidden></p>
+      {% endif %}
       {% else %}
       <a class="btn btn-pill btn-secondary" href="/signup?next=/jobs/{{ job.id }}">Download remastered</a>
+      {% if video_download_show %}
+      <a class="btn btn-pill btn-secondary" href="/signup?next=/jobs/{{ job.id }}">Download video</a>
+      {% endif %}
       <p class="small muted download-auth-hint">Sign up free to download. <a href="/login?next=/jobs/{{ job.id }}">Already have an account? Log in</a></p>
       {% endif %}
     </div>
@@ -49,8 +56,15 @@
     <audio controls preload="auto" src="/media/{{ job.id }}/mastered"></audio>
     {% if auth_user %}
     <a class="btn btn-pill btn-secondary" href="/media/{{ job.id }}/mastered?download=1"{% if mastered_download_filename %} download="{{ mastered_download_filename }}"{% endif %}>Download remastered</a>
+    {% if video_download_show %}
+    <button type="button" class="btn btn-pill btn-secondary" data-video-download data-job-id="{{ job.id }}"{% if video_download_filename %} data-download-filename="{{ video_download_filename }}"{% endif %}>Download video</button>
+    <p class="small muted video-download-status" data-video-download-status hidden></p>
+    {% endif %}
     {% else %}
     <a class="btn btn-pill btn-secondary" href="/signup?next=/jobs/{{ job.id }}">Download remastered</a>
+    {% if video_download_show %}
+    <a class="btn btn-pill btn-secondary" href="/signup?next=/jobs/{{ job.id }}">Download video</a>
+    {% endif %}
     <p class="small muted download-auth-hint">Sign up free to download. <a href="/login?next=/jobs/{{ job.id }}">Already have an account? Log in</a></p>
     {% endif %}
   </div>

@@ -6,7 +6,10 @@ from pathlib import Path
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
 
-from remastered.web.download_filenames import build_attachment_content_disposition
+from remastered.web.download_filenames import (
+    build_attachment_content_disposition,
+    build_video_download_content_disposition,
+)
 from remastered.web.job_storage import job_media_storage_owner_id
 from remastered.web.stream_audio import playback_path_for_wav, transcode_wav_for_playback
 
@@ -86,12 +89,17 @@ def media_file_response(
     download: bool = False,
     job: dict | None = None,
 ) -> FileResponse:
-    if path.suffix.lower() in {".m4a", ".mp4"}:
+    suffix = path.suffix.lower()
+    if kind == "video" or (suffix == ".mp4" and download):
+        media_type = "video/mp4"
+    elif suffix in {".m4a", ".mp4"}:
         media_type = "audio/mp4"
     else:
         media_type = "audio/wav"
     if kind == "audio":
         disposition = "inline"
+    elif download and job is not None and kind == "video":
+        disposition = build_video_download_content_disposition(job)
     elif download and job is not None:
         disposition = build_attachment_content_disposition(job, path)
     elif download:

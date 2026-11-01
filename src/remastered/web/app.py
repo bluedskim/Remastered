@@ -22,7 +22,16 @@ from remastered.web.identity import (
     client_ip,
     session_middleware_kwargs,
 )
-from remastered.web.download_filenames import media_download_filename
+from remastered.web.download_filenames import (
+    media_download_filename,
+    video_remastered_download_filename,
+)
+from remastered.web.job_video_download import (
+    built_video_path,
+    get_video_build_manager,
+    init_video_build_manager,
+    job_video_download_eligible,
+)
 from remastered.web.media import (
     RETENTION_MESSAGE,
     media_exists,
@@ -38,6 +47,7 @@ from remastered.web.job_reference_snapshot import (
 )
 from remastered.web.job_retry import build_job_retry_form_payload
 from remastered.web.job_titles import job_display_title
+from remastered.web.job_storage import job_media_storage_owner_id
 from remastered.web.job_ui import enrich_job_ui
 from remastered.web.reference_display import build_reference_options
 from remastered.web.reference_prefs import (
@@ -116,10 +126,12 @@ def _job_db_path() -> Path:
 async def _lifespan(app: FastAPI):
     app.state.static_hashes = init_static_hashes(STATIC_DIR)
     store = JobStore(_job_db_path())
+    settings = resolve_settings()
     worker = build_worker(store)
     worker.start()
     app.state.store = store
     app.state.worker = worker
+    app.state.video_build_manager = init_video_build_manager(settings.work_dir)
     yield
     worker.stop()
 
@@ -299,10 +311,15 @@ def _job_media_context(job: dict) -> dict[str, bool | str | None]:
     had_paths = bool(audio_path or mastered_path)
     expired = job["status"] == "completed" and had_paths and not (audio_ok or mastered_ok)
     mastered_download_filename: str | None = None
+    video_download_show = False
+    video_download_filename: str | None = None
     if mastered_ok and mastered_path:
         mastered_download_filename = media_download_filename(
             job, Path(mastered_path)
         )
+    if job_video_download_eligible(job, work):
+        video_download_show = True
+        video_download_filename = video_remastered_download_filename(job)
     unavailable_message = (
         media_unavailable_message(job, retention_days=ws.job_retention_days)
         if expired
@@ -316,6 +333,8 @@ def _job_media_context(job: dict) -> dict[str, bool | str | None]:
         "files_expired": expired,
         "retention_message": unavailable_message,
         "mastered_download_filename": mastered_download_filename,
+        "video_download_show": video_download_show,
+        "video_download_filename": video_download_filename,
         "rights_notice_short": rights_notice_short(ws.job_retention_days),
     }
 
@@ -764,7 +783,64 @@ async def _delete_job_for_identity(
     removed = await run_in_threadpool(_delete)
     if not removed:
         raise HTTPException(status_code=404, detail="Job not found.")
+    mgr = get_video_build_manager()
+    if mgr:
+        mgr.discard_job(job_id)
     return JSONResponse({"ok": True})
+
+
+@fastapi_application.post("/api/jobs/{job_id}/video-download")
+async def start_job_video_download(
+    job_id: str,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    if not identity.account_id:
+        raise HTTPException(status_code=401, detail=DOWNLOAD_REQUIRES_SIGN_IN)
+    job = await run_in_threadpool(
+        store.get_job_for_access,
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    mgr = get_video_build_manager()
+    if not mgr:
+        raise HTTPException(status_code=503, detail="Video download is unavailable.")
+    if not job_video_download_eligible(job, resolve_settings().work_dir):
+        raise HTTPException(status_code=400, detail="Video download is not available for this job.")
+
+    def _start() -> dict:
+        return mgr.start_build(job)
+
+    payload = await run_in_threadpool(_start)
+    return JSONResponse(payload)
+
+
+@fastapi_application.get("/api/jobs/{job_id}/video-download")
+async def job_video_download_status(
+    job_id: str,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    job = await run_in_threadpool(
+        store.get_job_for_access,
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    mgr = get_video_build_manager()
+    if not mgr:
+        raise HTTPException(status_code=503, detail="Video download is unavailable.")
+
+    def _status() -> dict:
+        return mgr.status_payload(job)
+
+    payload = await run_in_threadpool(_status)
+    return JSONResponse(payload)
 
 
 @fastapi_application.delete("/api/jobs/{job_id}")
@@ -905,13 +981,39 @@ async def media_file(
     work_dir = settings.work_dir
     want_download = bool(download)
 
-    if want_download and kind == "mastered" and not identity.account_id:
+    if want_download and kind in ("mastered", "video") and not identity.account_id:
         if request_prefers_auth_redirect(request):
             return RedirectResponse(
                 signup_url(f"/jobs/{job_id}"),
                 status_code=303,
             )
         raise HTTPException(status_code=401, detail=DOWNLOAD_REQUIRES_SIGN_IN)
+
+    if kind == "video":
+        if not job_video_download_eligible(job, work_dir):
+            raise HTTPException(status_code=404, detail=RETENTION_MESSAGE)
+
+        def _resolve_video() -> Path:
+            path = built_video_path(job, work_dir)
+            if not path.is_file():
+                raise HTTPException(
+                    status_code=404,
+                    detail="Video is not ready. Start a download from the job page.",
+                )
+            storage_owner = job_media_storage_owner_id(job, work_dir)
+            user_root = (work_dir / "users" / storage_owner).resolve()
+            resolved = path.resolve()
+            try:
+                resolved.relative_to(user_root)
+            except ValueError:
+                raise HTTPException(status_code=404, detail=RETENTION_MESSAGE)
+            return resolved
+
+        path = await run_in_threadpool(_resolve_video)
+        mgr = get_video_build_manager()
+        if mgr and want_download:
+            mgr.note_download_served(job)
+        return media_file_response(path, kind, download=want_download, job=job)
 
     def _resolve() -> Path:
         return resolve_job_media_path(
