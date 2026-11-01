@@ -13,6 +13,7 @@ from remastered.web.job_video_download import (
     cleanup_stale_built_videos,
     discard_video_build_for_job,
 )
+from remastered.web.youtube_thumb_cache import cleanup_stale_thumbnails
 
 logger = logging.getLogger(__name__)
 
