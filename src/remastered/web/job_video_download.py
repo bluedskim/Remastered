@@ -10,31 +10,33 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yt_dlp
-
 from remastered.config import resolve_settings
-from remastered.download import (
-    base_ydl_opts,
-    inspect_youtube_source,
-)
 from remastered.web.download_filenames import video_remastered_download_filename
 from remastered.web.job_media_paths import job_workspace_dir
 from remastered.web.job_storage import job_media_storage_owner_id
-from remastered.web.limits import validate_youtube_source_limits
 from remastered.web.media import media_exists
 from remastered.web.settings import WebSettings
-from remastered.youtube_url import extract_youtube_video_id, normalize_youtube_url
+from remastered.web.youtube_thumb_cache import (
+    ensure_thumb_cached,
+    thumb_cache_path,
+)
+from remastered.youtube_url import extract_youtube_video_id
 
 logger = logging.getLogger(__name__)
 
 BUILT_VIDEO_FILENAME = "remastered_download.mp4"
 VIDEO_BUILD_TMP_DIRNAME = "_video_build_tmp"
+FALLBACK_STILL_FILENAME = "_video_still.png"
+OUTPUT_WIDTH = 1920
+OUTPUT_HEIGHT = 1080
+OUTPUT_FPS = 30
+VIDEO_CRF = 23
+AAC_BITRATE = "352k"
 
-YTDLP_VIDEO_FORMAT = (
-    "bestvideo[height<=1080][ext=mp4]/"
-    "bestvideo[height<=1080]/"
-    "best[height<=1080][ext=mp4]/"
-    "best[height<=1080]"
+VIDEO_SCALE_PAD_FILTER = (
+    f"scale={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,"
+    f"pad={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2,"
+    "format=yuv420p"
 )
 
 
@@ -87,83 +89,135 @@ def _cleanup_tmp_dir(tmp_dir: Path) -> None:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def _pick_downloaded_video(tmp_dir: Path, video_id: str) -> Path:
-    for ext in (".mp4", ".webm", ".mkv", ".mov"):
-        candidate = tmp_dir / f"{video_id}{ext}"
-        if candidate.is_file():
-            return candidate
-    matches = sorted(tmp_dir.glob(f"{video_id}.*"))
-    for path in matches:
-        if path.is_file() and path.suffix.lower() in {
-            ".mp4",
-            ".webm",
-            ".mkv",
-            ".mov",
-            ".m4v",
-        }:
-            return path
-    any_video = sorted(
-        p
-        for p in tmp_dir.iterdir()
-        if p.is_file() and p.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
+def resolve_job_thumbnail_path(job: dict[str, Any], work_dir: Path) -> Path | None:
+    """Return cached YouTube thumbnail path when available."""
+    video_id = extract_youtube_video_id((job.get("youtube_url") or "").strip())
+    if not video_id:
+        source_id = (job.get("source_video_id") or "").strip()
+        if source_id and len(source_id) == 11:
+            video_id = source_id
+    if not video_id:
+        return None
+    path = thumb_cache_path(work_dir, video_id)
+    if path.is_file() and path.stat().st_size > 0:
+        return path
+    if ensure_thumb_cached(work_dir, video_id) and path.is_file():
+        return path
+    return None
+
+
+def _escape_drawtext(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+        .replace("%", "\\%")
     )
-    if any_video:
-        return any_video[0]
-    raise FileNotFoundError(f"No downloaded video file in {tmp_dir}")
 
 
-def download_youtube_video_stream(
-    url: str,
-    out_dir: Path,
+def generate_fallback_still_image(
+    output_path: Path,
     *,
-    yt_dlp_path: str | None = None,
+    title: str | None = None,
+    ffmpeg_path: str = "ffmpeg",
 ) -> Path:
-    """Download best-effort MP4-compatible video (no audio) for remux."""
-    canonical = normalize_youtube_url(url)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    outtmpl = str(out_dir / "%(id)s.%(ext)s")
-    ydl_opts = base_ydl_opts(
-        format=YTDLP_VIDEO_FORMAT,
-        outtmpl=outtmpl,
-        quiet=True,
-        no_warnings=True,
-    )
-    if yt_dlp_path:
-        ydl_opts["ffmpeg_location"] = yt_dlp_path
+    """Dark 16:9 frame; optional centered title via ffmpeg drawtext."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    safe_title = (title or "").strip()
+    if safe_title:
+        text = _escape_drawtext(safe_title[:120])
+        vf = (
+            f"drawtext=text='{text}':fontcolor=white@0.85:fontsize=42:"
+            "x=(w-text_w)/2:y=(h-text_h)/2"
+        )
+        cmd = [
+            ffmpeg_path,
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=0x14101f:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT}:d=1",
+            "-vf",
+            vf,
+            "-frames:v",
+            "1",
+            str(output_path),
+        ]
+    else:
+        cmd = [
+            ffmpeg_path,
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=0x14101f:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT}:d=1",
+            "-frames:v",
+            "1",
+            str(output_path),
+        ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg still frame failed (code {proc.returncode}): {proc.stderr[-2000:]}"
+        )
+    return output_path
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(canonical, download=True)
-    if info is None:
-        raise RuntimeError(f"Could not fetch video: {url}")
-    video_id = info.get("id") or "unknown"
-    return _pick_downloaded_video(out_dir, video_id)
+
+def prepare_still_image_for_job(
+    job: dict[str, Any],
+    work_dir: Path,
+    tmp_dir: Path,
+    *,
+    ffmpeg_path: str = "ffmpeg",
+) -> Path:
+    thumb = resolve_job_thumbnail_path(job, work_dir)
+    if thumb and thumb.is_file():
+        return thumb
+    title = (job.get("title") or "").strip() or None
+    out = tmp_dir / FALLBACK_STILL_FILENAME
+    return generate_fallback_still_image(out, title=title, ffmpeg_path=ffmpeg_path)
 
 
-def mux_remastered_audio_into_video(
-    video_path: Path,
+def build_still_image_video_with_audio(
+    still_image: Path,
     mastered_wav: Path,
     output_path: Path,
     *,
     ffmpeg_path: str = "ffmpeg",
 ) -> Path:
+    """Encode YouTube-friendly MP4: looped still + full mastered audio."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         ffmpeg_path,
         "-y",
+        "-loop",
+        "1",
         "-i",
-        str(video_path),
+        str(still_image),
         "-i",
         str(mastered_wav),
-        "-map",
-        "0:v:0",
-        "-map",
-        "1:a:0",
+        "-vf",
+        VIDEO_SCALE_PAD_FILTER,
         "-c:v",
-        "copy",
+        "libx264",
+        "-profile:v",
+        "high",
+        "-tune",
+        "stillimage",
+        "-crf",
+        str(VIDEO_CRF),
+        "-r",
+        str(OUTPUT_FPS),
+        "-pix_fmt",
+        "yuv420p",
         "-c:a",
         "aac",
         "-b:a",
-        "256k",
+        AAC_BITRATE,
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
         "-movflags",
         "+faststart",
         "-shortest",
@@ -172,7 +226,7 @@ def mux_remastered_audio_into_video(
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(
-            f"ffmpeg mux failed (code {proc.returncode}): {proc.stderr[-2000:]}"
+            f"ffmpeg video build failed (code {proc.returncode}): {proc.stderr[-2000:]}"
         )
     return output_path
 
@@ -183,33 +237,32 @@ def run_video_build(
     work_dir: Path | None = None,
     settings: WebSettings | None = None,
 ) -> Path:
-    """Blocking build: yt-dlp video + ffmpeg remux. Raises on failure."""
+    """Blocking build: still image (YouTube thumb or fallback) + mastered audio."""
     ws = settings or WebSettings()
     work = work_dir or resolve_settings().work_dir
-    validate_youtube_source_limits(job["youtube_url"])
     mastered = Path(job["mastered_path"])
     if not media_exists(str(mastered), job, work):
         raise RuntimeError("Remastered audio is unavailable for this job.")
+
+    remastered_settings = resolve_settings()
+    ffmpeg_path = remastered_settings.ffmpeg_path
 
     output_path = built_video_path(job, work)
     tmp_dir = _video_build_tmp_dir(output_path)
     _cleanup_tmp_dir(tmp_dir)
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    remastered_settings = resolve_settings()
     try:
-        video_only = download_youtube_video_stream(
-            job["youtube_url"],
-            tmp_dir,
-            yt_dlp_path=remastered_settings.yt_dlp_path,
+        still = prepare_still_image_for_job(
+            job, work, tmp_dir, ffmpeg_path=ffmpeg_path
         )
         if output_path.is_file():
             output_path.unlink(missing_ok=True)
-        mux_remastered_audio_into_video(
-            video_only,
+        build_still_image_video_with_audio(
+            still,
             mastered.resolve(),
             output_path,
-            ffmpeg_path=remastered_settings.ffmpeg_path,
+            ffmpeg_path=ffmpeg_path,
         )
     finally:
         _cleanup_tmp_dir(tmp_dir)
@@ -339,16 +392,6 @@ class VideoBuildManager:
             if state.building or state.phase == VideoBuildPhase.BUILDING:
                 return self.status_payload(job)
 
-            try:
-                validate_youtube_source_limits(job["youtube_url"])
-            except Exception as exc:
-                detail = getattr(exc, "detail", None)
-                message = detail if isinstance(detail, str) else str(exc)
-                state.phase = VideoBuildPhase.FAILED
-                state.error = message
-                state.building = False
-                return self.status_payload(job)
-
             self._unlink_built_video(job)
             state.phase = VideoBuildPhase.BUILDING
             state.error = None
@@ -368,8 +411,6 @@ class VideoBuildManager:
         return self.status_payload(job)
 
     def _run_build_thread(self, job: dict[str, Any]) -> None:
-        from fastapi import HTTPException
-
         job_id = (job.get("id") or "").strip()
         with self._global_limit:
             try:
@@ -386,9 +427,6 @@ class VideoBuildManager:
                     state.download_filename = filename
                     state.output_path = output
                     state.building = False
-            except HTTPException as exc:
-                message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-                self._fail_build(job, job_id, message)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Video build failed for job %s: %s", job_id, exc)
                 self._fail_build(job, job_id, str(exc))
@@ -403,22 +441,6 @@ class VideoBuildManager:
             self._unlink_built_video(job)
         except Exception:  # noqa: BLE001
             pass
-
-
-def validate_video_build_duration(youtube_url: str) -> None:
-    """Guardrail for on-demand video builds (defaults match source limits)."""
-    validate_youtube_source_limits(youtube_url)
-
-
-def inspect_video_duration_seconds(youtube_url: str) -> int | None:
-    info = inspect_youtube_source(youtube_url.strip())
-    duration = info.get("duration")
-    if duration is None:
-        return None
-    try:
-        return int(duration)
-    except (TypeError, ValueError):
-        return None
 
 
 _video_build_manager: VideoBuildManager | None = None

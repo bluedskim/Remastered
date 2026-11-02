@@ -23,8 +23,9 @@ THUMB_CACHE_CONTROL = "public, max-age=604800"
 PLACEHOLDER_CACHE_CONTROL = "public, max-age=300"
 
 YOUTUBE_THUMB_SOURCES = (
-    "https://i.ytimg.com/vi/{video_id}/mqdefault.jpg",
+    "https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg",
     "https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+    "https://i.ytimg.com/vi/{video_id}/mqdefault.jpg",
 )
 
 THUMB_PLACEHOLDER_SVG = (
