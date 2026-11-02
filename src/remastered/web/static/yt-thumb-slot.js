@@ -49,5 +49,6 @@
     scan();
   }
   document.body.addEventListener("htmx:afterSwap", scan);
+  document.body.addEventListener("htmx:oobAfterSwap", scan);
   document.body.addEventListener("remastered:job-list-appended", scan);
 })();

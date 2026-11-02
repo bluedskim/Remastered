@@ -119,29 +119,12 @@
       });
   }
 
-  function bind(root) {
-    root.querySelectorAll("[data-video-download]").forEach(function (button) {
-      if (button.dataset.videoDownloadBound === "1") return;
-      button.dataset.videoDownloadBound = "1";
-      button.addEventListener("click", function () {
-        onClick(button);
-      });
+  if (!window.__remasteredVideoDownloadClickBound) {
+    window.__remasteredVideoDownloadClickBound = true;
+    document.addEventListener("click", function (event) {
+      var button = event.target.closest("[data-video-download]");
+      if (!button) return;
+      onClick(button);
     });
   }
-
-  function initAll() {
-    bind(document);
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initAll);
-  } else {
-    initAll();
-  }
-
-  document.body.addEventListener("htmx:afterSwap", function (evt) {
-    if (evt.target) {
-      bind(evt.target);
-    }
-  });
 })();

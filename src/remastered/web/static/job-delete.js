@@ -18,6 +18,26 @@
     else delete btn.dataset.deleteInFlight;
   }
 
+  function removeJobListItem(btn) {
+    const item = btn.closest(".job-list-item");
+    if (item) {
+      item.remove();
+      const list = document.querySelector(".job-list");
+      if (list && !list.querySelector(".job-list-item")) {
+        const section = list.closest("section");
+        if (section) {
+          list.remove();
+          const empty = document.createElement("p");
+          empty.className = "muted empty-state";
+          empty.textContent = "No jobs yet. Start your first one above.";
+          section.appendChild(empty);
+        }
+      }
+      return;
+    }
+    window.location.reload();
+  }
+
   function deleteJob(jobId, options) {
     const onSuccess = options && options.onSuccess;
     const redirectHome = !!(options && options.redirectHome);
@@ -55,63 +75,32 @@
       });
   }
 
-  function wireDeleteButton(btn, options) {
-    if (!btn || btn.dataset.deleteWired === "1") return;
-    btn.dataset.deleteWired = "1";
+  function onDeleteClick(btn) {
     const jobId = btn.getAttribute("data-job-delete");
-    btn.addEventListener("click", function (event) {
-      if (event.currentTarget !== btn) return;
-      event.preventDefault();
-      event.stopPropagation();
-      deleteJob(jobId, { button: btn, onSuccess: options.onSuccess, redirectHome: options.redirectHome });
-    });
-  }
-
-  function wireListDeleteButtons() {
-    document.querySelectorAll(".job-list [data-job-delete]").forEach(function (btn) {
-      wireDeleteButton(btn, {
-        onSuccess: function () {
-          const item = btn.closest(".job-list-item");
-          if (item) {
-            item.remove();
-            const list = document.querySelector(".job-list");
-            if (list && !list.querySelector(".job-list-item")) {
-              const section = list.closest("section");
-              if (section) {
-                list.remove();
-                const empty = document.createElement("p");
-                empty.className = "muted empty-state";
-                empty.textContent = "No jobs yet. Start your first one above.";
-                section.appendChild(empty);
-              }
-            }
-            return;
+    const inList = !!btn.closest(".job-list");
+    deleteJob(jobId, {
+      button: btn,
+      redirectHome: !inList,
+      onSuccess: inList
+        ? function () {
+            removeJobListItem(btn);
           }
-          window.location.reload();
-        },
-      });
+        : undefined,
     });
-  }
-
-  function wireDetailDeleteButton() {
-    const btn = document.getElementById("job-delete-btn");
-    wireDeleteButton(btn, { redirectHome: true });
   }
 
   window.initJobDeleteControls = function () {
-    wireListDeleteButtons();
-    wireDetailDeleteButton();
+    /* List “load more” still calls this; clicks use document delegation. */
   };
 
-  document.body.addEventListener("htmx:oobAfterSwap", function (event) {
-    if (event.detail && event.detail.target && event.detail.target.id === "job-detail-actions") {
-      wireDetailDeleteButton();
-    }
-  });
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", window.initJobDeleteControls);
-  } else {
-    window.initJobDeleteControls();
+  if (!window.__remasteredJobDeleteClickBound) {
+    window.__remasteredJobDeleteClickBound = true;
+    document.addEventListener("click", function (event) {
+      const btn = event.target.closest("[data-job-delete]");
+      if (!btn) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onDeleteClick(btn);
+    });
   }
 })();
