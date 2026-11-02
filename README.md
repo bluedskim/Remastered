@@ -97,6 +97,16 @@ Cloudflare Tunnel 등 리버스 프록시는 `X-Forwarded-Proto: https`와 `CF-C
 
 **한도 (기본):** 소스 최대 15분 · 500MB · 제출은 대기열(워커 1대, 사용자 간 공정 라운드로빈) · `/media` 동시 스트림 12 · uvicorn 동시 연결 80.
 
+## 프로모션 로그 (Promotions)
+
+회원가입 시 URL의 `utm_source` 쿼리 값이 가입 출처(`signup_source`)로 기록됩니다. 아래 표에 홍보 채널·게시물·사용한 `utm_source`를 남겨 두면, 이후 가입 데이터와 대조할 수 있습니다.
+
+| 날짜 | 채널 | 게시 URL | utm_source | 비고 |
+|------|------|----------|------------|------|
+| 2026-11-03 | eToLAND 음악게시판 (etoland.co.kr) | https://etoland.co.kr/b/music/article/9551095 | `etoland` | 게시에 사용한 링크(예상): `https://remastered.baem.app/?utm_source=etoland` — **실제 게시 URL은 미확인** |
+
+새 항목은 위 표 맨 아래에 같은 열 형식으로 추가하면 됩니다.
+
 CLI(로컬·개인)는 기존처럼 `token.json` + `docker compose run --rm remastered auth`를 사용합니다.
 
 ### 준비 (M2 Mac)
