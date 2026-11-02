@@ -32,6 +32,7 @@ from remastered.web.job_video_download import (
     init_video_build_manager,
     job_video_download_eligible,
 )
+from remastered.web.video_download_access import video_download_allowed_for_identity
 from remastered.web.media import (
     RETENTION_MESSAGE,
     media_exists,
@@ -300,7 +301,12 @@ def _list_reference_files(references_dir: Path) -> list[str]:
     )
 
 
-def _job_media_context(job: dict) -> dict[str, bool | str | None]:
+def _job_media_context(
+    job: dict,
+    *,
+    identity: RequestIdentity | None = None,
+    store: JobStore | None = None,
+) -> dict[str, bool | str | None]:
     ws = _web_settings()
     settings = resolve_settings()
     work = settings.work_dir
@@ -317,7 +323,10 @@ def _job_media_context(job: dict) -> dict[str, bool | str | None]:
         mastered_download_filename = media_download_filename(
             job, Path(mastered_path)
         )
-    if job_video_download_eligible(job, work):
+    if job_video_download_eligible(job, work) and (
+        identity is None
+        or video_download_allowed_for_identity(identity, store)
+    ):
         video_download_show = True
         video_download_filename = video_remastered_download_filename(job)
     unavailable_message = (
@@ -789,14 +798,26 @@ async def _delete_job_for_identity(
     return JSONResponse({"ok": True})
 
 
+VIDEO_DOWNLOAD_FORBIDDEN = "Video download is not available for your account."
+
+
+def _require_video_download_access(
+    identity: RequestIdentity,
+    store: JobStore,
+) -> None:
+    if not identity.account_id:
+        raise HTTPException(status_code=401, detail=DOWNLOAD_REQUIRES_SIGN_IN)
+    if not video_download_allowed_for_identity(identity, store):
+        raise HTTPException(status_code=403, detail=VIDEO_DOWNLOAD_FORBIDDEN)
+
+
 @fastapi_application.post("/api/jobs/{job_id}/video-download")
 async def start_job_video_download(
     job_id: str,
     identity: RequestIdentity = Depends(require_identity),
     store: JobStore = Depends(get_store),
 ) -> JSONResponse:
-    if not identity.account_id:
-        raise HTTPException(status_code=401, detail=DOWNLOAD_REQUIRES_SIGN_IN)
+    _require_video_download_access(identity, store)
     job = await run_in_threadpool(
         store.get_job_for_access,
         job_id,
@@ -824,6 +845,10 @@ async def job_video_download_status(
     identity: RequestIdentity = Depends(require_identity),
     store: JobStore = Depends(get_store),
 ) -> JSONResponse:
+    if not identity.account_id:
+        raise HTTPException(status_code=401, detail=DOWNLOAD_REQUIRES_SIGN_IN)
+    if not video_download_allowed_for_identity(identity, store):
+        raise HTTPException(status_code=403, detail=VIDEO_DOWNLOAD_FORBIDDEN)
     job = await run_in_threadpool(
         store.get_job_for_access,
         job_id,
@@ -877,7 +902,7 @@ def job_detail(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
     logs = store.get_logs(job_id)
-    media_ctx = _job_media_context(job)
+    media_ctx = _job_media_context(job, identity=identity, store=store)
     return templates.TemplateResponse(
         request,
         "job_detail.html",
@@ -908,7 +933,7 @@ def job_panel(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
     logs = store.get_logs(job_id)
-    media_ctx = _job_media_context(job)
+    media_ctx = _job_media_context(job, identity=identity, store=store)
     ctx = {
         "job": _enrich_job(job, store),
         "logs": logs,
@@ -990,6 +1015,15 @@ async def media_file(
         raise HTTPException(status_code=401, detail=DOWNLOAD_REQUIRES_SIGN_IN)
 
     if kind == "video":
+        if not identity.account_id:
+            if request_prefers_auth_redirect(request):
+                return RedirectResponse(
+                    signup_url(f"/jobs/{job_id}"),
+                    status_code=303,
+                )
+            raise HTTPException(status_code=401, detail=DOWNLOAD_REQUIRES_SIGN_IN)
+        if not video_download_allowed_for_identity(identity, store):
+            raise HTTPException(status_code=403, detail=VIDEO_DOWNLOAD_FORBIDDEN)
         if not job_video_download_eligible(job, work_dir):
             raise HTTPException(status_code=404, detail=RETENTION_MESSAGE)
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -17,12 +20,22 @@ from remastered.web.job_video_download import (
     BUILT_VIDEO_FILENAME,
     VideoBuildManager,
     VideoBuildPhase,
+    build_still_image_video_with_audio,
     built_video_path,
     init_video_build_manager,
     job_is_youtube_sourced,
     job_video_download_eligible,
+    prepare_still_image_for_job,
     run_video_build,
 )
+from remastered.web.video_download_access import reset_video_download_allowed_emails_cache
+
+
+@pytest.fixture(autouse=True)
+def _clear_video_download_allowlist_cache() -> None:
+    reset_video_download_allowed_emails_cache()
+    yield
+    reset_video_download_allowed_emails_cache()
 
 
 @pytest.fixture
@@ -31,6 +44,14 @@ def jinja_env() -> Environment:
         loader=FileSystemLoader(str(PACKAGE_DIR / "templates")),
         autoescape=select_autoescape(["html", "xml"]),
     )
+
+
+def _allow_test_emails(monkeypatch: pytest.MonkeyPatch, *emails: str) -> None:
+    monkeypatch.setenv(
+        "REMASTERED_WEB_VIDEO_DOWNLOAD_ALLOWED_EMAILS",
+        ",".join(emails),
+    )
+    reset_video_download_allowed_emails_cache()
 
 
 @pytest.fixture
@@ -50,6 +71,7 @@ def video_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "REMASTERED_JWT_SECRET",
         "test-jwt-secret-key-at-least-32-bytes!!",
     )
+    _allow_test_emails(monkeypatch, "flow@example.com", "delete-vid@example.com")
 
     from tests.worker_patches import install_fake_worker_pipeline
 
@@ -170,7 +192,10 @@ def test_video_remastered_filename() -> None:
     assert video_remastered_download_filename(job) == "Spring Day (Remastered).mp4"
 
 
-def test_anon_cannot_start_video_build(video_client: TestClient) -> None:
+def test_anon_cannot_start_video_build(
+    video_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_test_emails(monkeypatch, "bluedskim@gmail.com")
     job_id = _create_completed_youtube_job(video_client)
     resp = video_client.post(f"/api/jobs/{job_id}/video-download")
     assert resp.status_code == 401
@@ -203,6 +228,54 @@ def test_signed_in_video_build_status_flow(
     assert "video/mp4" in media.headers.get("content-type", "")
 
 
+def test_non_allowlisted_user_gets_403_and_hidden_button(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    work = tmp_path / "work"
+    refs = tmp_path / "refs"
+    work.mkdir()
+    refs.mkdir()
+    (refs / "ref.wav").write_bytes(b"test-audio")
+    monkeypatch.setenv("REMASTERED_WORK_DIR", str(work))
+    monkeypatch.setenv("REMASTERED_WEB_REFERENCES_DIR", str(refs))
+    monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "0")
+    monkeypatch.setenv("REMASTERED_MAIL_MODE", "log")
+    monkeypatch.setenv(
+        "REMASTERED_JWT_SECRET",
+        "test-jwt-secret-key-at-least-32-bytes!!",
+    )
+    _allow_test_emails(monkeypatch, "bluedskim@gmail.com")
+
+    from tests.worker_patches import install_fake_worker_pipeline
+
+    install_fake_worker_pipeline(monkeypatch, reference_path=refs / "ref.wav")
+    monkeypatch.setattr(
+        "remastered.web.limits.inspect_youtube_source",
+        lambda url: {"duration": 60, "filesize": 1000, "title": "T"},
+    )
+
+    with TestClient(fastapi_application) as client:
+        _signup(client, caplog, email="other@example.com")
+        job_id = _create_completed_youtube_job(client, "aaaaaaaaaaa")
+        panel = client.get(f"/jobs/{job_id}/panel")
+        assert panel.status_code == 286
+        assert "Download video" not in panel.text
+
+        resp = client.post(f"/api/jobs/{job_id}/video-download")
+        assert resp.status_code == 403
+        assert client.get(f"/api/jobs/{job_id}/video-download").status_code == 403
+
+
+def test_allowlist_env_override(
+    video_client: TestClient, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_test_emails(monkeypatch, "custom@example.com")
+    _signup(video_client, caplog, email="custom@example.com")
+    job_id = _create_completed_youtube_job(video_client, "bbbbbbbbbbb")
+    resp = video_client.post(f"/api/jobs/{job_id}/video-download")
+    assert resp.status_code == 200
+
+
 def test_double_start_while_building(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     work = tmp_path / "work"
     work.mkdir()
@@ -220,10 +293,6 @@ def test_double_start_while_building(tmp_path: Path, monkeypatch: pytest.MonkeyP
         return out
 
     monkeypatch.setattr("remastered.web.job_video_download.run_video_build", slow_build)
-    monkeypatch.setattr(
-        "remastered.web.limits.inspect_youtube_source",
-        lambda url: {"duration": 10, "filesize": 1, "title": "t"},
-    )
 
     ws = job_workspace_dir(work, "u", "job1")
     ws.mkdir(parents=True)
@@ -248,50 +317,6 @@ def test_double_start_while_building(tmp_path: Path, monkeypatch: pytest.MonkeyP
         time.sleep(0.05)
     else:
         pytest.fail("build did not finish")
-
-
-def test_duration_limit_blocks_video_build(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    work = tmp_path / "work"
-    refs = tmp_path / "refs"
-    work.mkdir()
-    refs.mkdir()
-    (refs / "ref.wav").write_bytes(b"x")
-    monkeypatch.setenv("REMASTERED_WORK_DIR", str(work))
-    monkeypatch.setenv("REMASTERED_WEB_REFERENCES_DIR", str(refs))
-    monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "0")
-    monkeypatch.setenv("REMASTERED_WEB_MAX_SOURCE_DURATION_SECONDS", "60")
-    monkeypatch.setenv("REMASTERED_MAIL_MODE", "log")
-    monkeypatch.setenv(
-        "REMASTERED_JWT_SECRET",
-        "test-jwt-secret-key-at-least-32-bytes!!",
-    )
-    from tests.worker_patches import install_fake_worker_pipeline
-
-    install_fake_worker_pipeline(monkeypatch, reference_path=refs / "ref.wav")
-
-    def inspect(url):
-        return {"duration": 60, "filesize": 1000, "title": "Too long"}
-
-    monkeypatch.setattr("remastered.web.limits.inspect_youtube_source", inspect)
-    monkeypatch.setattr(
-        "remastered.web.job_video_download.run_video_build",
-        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not build")),
-    )
-
-    with TestClient(fastapi_application) as client:
-        _signup(client, caplog, email="long-vid@example.com")
-        job_id = _create_completed_youtube_job(client, "bbbbbbbbbbb")
-        monkeypatch.setattr(
-            "remastered.web.limits.inspect_youtube_source",
-            lambda url: {"duration": 120, "filesize": 1000, "title": "Too long"},
-        )
-        resp = client.post(f"/api/jobs/{job_id}/video-download")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["status"] == "failed"
-        assert "limit" in (body.get("error") or "").lower()
 
 
 def test_delete_job_removes_built_video(
@@ -351,7 +376,7 @@ def test_job_video_download_eligible_requires_mastered(tmp_path: Path) -> None:
     assert not job_video_download_eligible(job, work)
 
 
-def test_run_video_build_uses_ytdlp_and_ffmpeg(
+def test_run_video_build_uses_ffmpeg_still_pipeline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     work = tmp_path / "work"
@@ -359,6 +384,9 @@ def test_run_video_build_uses_ytdlp_and_ffmpeg(
     ws.mkdir(parents=True)
     mastered = ws / "master.wav"
     mastered.write_bytes(b"wav")
+    thumb = work / "thumbs" / "eeeeeeeeeee.jpg"
+    thumb.parent.mkdir(parents=True)
+    thumb.write_bytes(b"jpeg-bytes")
     job = {
         "id": "mux-job",
         "user_id": "u",
@@ -366,30 +394,167 @@ def test_run_video_build_uses_ytdlp_and_ffmpeg(
         "mastered_path": str(mastered),
         "status": "completed",
     }
-    video_path = ws / "source.mp4"
-    video_path.write_bytes(b"video")
 
     monkeypatch.setattr(
-        "remastered.web.job_video_download.validate_youtube_source_limits",
-        lambda url: None,
-    )
-    monkeypatch.setattr(
-        "remastered.web.job_video_download.download_youtube_video_stream",
-        lambda url, out_dir, yt_dlp_path=None: video_path,
+        "remastered.web.job_video_download.resolve_job_thumbnail_path",
+        lambda j, wd: thumb,
     )
     captured: dict[str, list] = {"cmd": []}
 
-    def fake_mux(video, audio, output, ffmpeg_path="ffmpeg"):
-        captured["cmd"] = [str(video), str(audio), str(output)]
+    def fake_build(still, audio, output, ffmpeg_path="ffmpeg"):
+        captured["cmd"] = [str(still), str(audio), str(output), ffmpeg_path]
         output.write_bytes(b"out")
         return output
 
     monkeypatch.setattr(
-        "remastered.web.job_video_download.mux_remastered_audio_into_video",
-        fake_mux,
+        "remastered.web.job_video_download.build_still_image_video_with_audio",
+        fake_build,
     )
 
     out = run_video_build(job, work_dir=work)
     assert out.is_file()
-    assert captured["cmd"][0] == str(video_path)
+    assert captured["cmd"][0] == str(thumb)
     assert captured["cmd"][1] == str(mastered.resolve())
+
+
+def test_build_still_image_video_ffmpeg_args(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    still = ws / "still.jpg"
+    still.write_bytes(b"x")
+    audio = ws / "a.wav"
+    audio.write_bytes(b"a")
+    out = ws / "out.mp4"
+    ran: dict[str, object] = {}
+
+    def fake_run(cmd, capture_output, text):
+        ran["cmd"] = cmd
+        out.write_bytes(b"mp4")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr("remastered.web.job_video_download.subprocess.run", fake_run)
+    build_still_image_video_with_audio(still, audio, out, ffmpeg_path="/usr/bin/ffmpeg")
+    cmd = ran["cmd"]
+    assert isinstance(cmd, list)
+    joined = " ".join(cmd)
+    assert "-loop" in cmd and "1" in cmd
+    assert "libx264" in joined
+    assert "stillimage" in joined
+    assert "yuv420p" in joined
+    assert "+faststart" in joined
+    assert "-ar" in cmd and "48000" in cmd
+    assert "-ac" in cmd and "2" in cmd
+    assert "-shortest" in cmd
+    assert "yt-dlp" not in joined.lower()
+
+
+def test_no_thumbnail_fallback_still(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = tmp_path / "work"
+    tmp_dir = work / "tmp"
+    tmp_dir.mkdir(parents=True)
+    ws = job_workspace_dir(work, "u", "fallback-job")
+    ws.mkdir(parents=True)
+    mastered = ws / "master.wav"
+    mastered.write_bytes(b"wav")
+    job = {
+        "id": "fallback-job",
+        "user_id": "u",
+        "youtube_url": "https://youtu.be/ggggggggggg",
+        "title": "Fallback Title",
+        "mastered_path": str(mastered),
+        "status": "completed",
+    }
+    monkeypatch.setattr(
+        "remastered.web.job_video_download.resolve_job_thumbnail_path",
+        lambda j, wd: None,
+    )
+    generated: dict[str, Path] = {}
+
+    def fake_generate(output_path, *, title=None, ffmpeg_path="ffmpeg"):
+        generated["path"] = output_path
+        generated["title"] = title  # type: ignore[assignment]
+        output_path.write_bytes(b"png")
+        return output_path
+
+    monkeypatch.setattr(
+        "remastered.web.job_video_download.generate_fallback_still_image",
+        fake_generate,
+    )
+    still = prepare_still_image_for_job(job, work, tmp_dir, ffmpeg_path="ffmpeg")
+    assert still.is_file()
+    assert generated["title"] == "Fallback Title"
+
+
+def test_ffprobe_real_build_matches_spec(tmp_path: Path) -> None:
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        pytest.skip("ffmpeg/ffprobe not available")
+
+    work = tmp_path / "work"
+    ws = job_workspace_dir(work, "u", "probe-job")
+    ws.mkdir(parents=True)
+    audio = ws / "tone.wav"
+    still = ws / "frame.jpg"
+    # 2.5s mono sine wav + small jpeg via ffmpeg
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=2.5",
+            str(audio),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=640x360:duration=1",
+            "-frames:v",
+            "1",
+            str(still),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    out = ws / "built.mp4"
+    build_still_image_video_with_audio(still, audio, out)
+
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            str(out),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    data = json.loads(probe.stdout)
+    video = next(s for s in data["streams"] if s["codec_type"] == "video")
+    audio_s = next(s for s in data["streams"] if s["codec_type"] == "audio")
+    duration = float(data["format"]["duration"])
+
+    assert video["codec_name"] == "h264"
+    assert video["pix_fmt"] == "yuv420p"
+    assert int(video["width"]) == 1920
+    assert int(video["height"]) == 1080
+    assert audio_s["codec_name"] == "aac"
+    assert int(audio_s["sample_rate"]) == 48000
+    assert int(audio_s["channels"]) == 2
+    assert abs(duration - 2.5) <= 0.5
