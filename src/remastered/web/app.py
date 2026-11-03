@@ -22,6 +22,7 @@ from remastered.web.identity import (
     client_ip,
     session_middleware_kwargs,
 )
+from remastered.web.home_demo_samples import resolve_home_demo_samples
 from remastered.web.download_filenames import (
     media_download_filename,
     video_remastered_download_filename,
@@ -69,7 +70,7 @@ from remastered.web.reference_youtube import (
 )
 from remastered.web.cleanup import remove_job_record_and_media
 from remastered.web.resilience import MediaStreamLimitMiddleware, mount_health_router
-from remastered.web.static_assets import init_static_hashes, static_url
+from remastered.web.static_assets import init_static_hashes, static_path_url, static_url
 from remastered.web.static_cache import StaticAndHtmlCacheMiddleware
 from remastered.web.settings import WebSettings
 from remastered.web.worker import JobWorker, build_worker
@@ -91,6 +92,7 @@ init_static_hashes(STATIC_DIR)
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
 templates.env.globals["job_display_title"] = job_display_title
 templates.env.globals["static_url"] = static_url
+templates.env.globals["static_path_url"] = static_path_url
 
 STAGE_LABELS = {
     "download": "Download",
@@ -492,6 +494,8 @@ def _dashboard_context(
         "stage_labels": STAGE_LABELS,
         "privacy_notice": PRIVACY_NOTICE,
         "rights_notice_lines": rights_notice_lines(ws.job_retention_days),
+        "rights_notice_short": rights_notice_short(ws.job_retention_days),
+        "home_demo_samples": resolve_home_demo_samples(),
         "limits": ws,
         **_auth_template_context(identity),
         **_privacy_template_context(),

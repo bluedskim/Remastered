@@ -34,7 +34,8 @@ class WebSettings(BaseSettings):
     video_download_allowed_emails: str = "bluedskim@gmail.com"
     uvicorn_limit_concurrency: int = 80
     uvicorn_timeout_keep_alive: int = 5
-    duplicate_job_window_seconds: int = 30
+    home_demo_before: str | None = None
+    home_demo_after: str | None = None
 
     @property
     def references_path(self) -> Path:
