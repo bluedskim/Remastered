@@ -44,6 +44,16 @@ def static_url(filename: str) -> str:
     return f"/static/{name}?v={version}"
 
 
+def static_path_url(relpath: str) -> str:
+    """URL for nested files under /static (e.g. samples/demo.m4a). Not content-versioned."""
+    rel = Path((relpath or "").strip().replace("\\", "/"))
+    if rel.is_absolute() or ".." in rel.parts:
+        raise ValueError(f"invalid static path: {relpath}")
+    if not rel.parts or not all(_FILENAME_RE.fullmatch(part) for part in rel.parts):
+        raise ValueError(f"invalid static path: {relpath}")
+    return f"/static/{rel.as_posix()}"
+
+
 def is_versioned_static_request(path: str, query_string: bytes, hashes: dict[str, str]) -> bool:
     if not path.startswith("/static/"):
         return False

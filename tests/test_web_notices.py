@@ -34,5 +34,6 @@ def test_home_shows_rights_notice_with_retention(notice_client: TestClient) -> N
     resp = notice_client.get("/")
     assert resp.status_code == 200
     assert "notice-box" in resp.text
+    assert "notice-box--compact" in resp.text
     assert "deleted automatically after 21 days" in resp.text
     assert "copyright" in resp.text.lower()

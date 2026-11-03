@@ -97,6 +97,8 @@ Cloudflare Tunnel 등 리버스 프록시는 `X-Forwarded-Proto: https`와 `CF-C
 
 **한도 (기본):** 소스 최대 15분 · 500MB · 제출은 대기열(워커 1대, 사용자 간 공정 라운드로빈) · `/media` 동시 스트림 12 · uvicorn 동시 연결 80.
 
+**Home page demo player (optional):** To show a compact before/after A/B player under the hero, place paired audio files under `src/remastered/web/static/samples/` as `before.{wav,m4a,mp3,…}` and `after.{…}` (same extension). No copyrighted samples are shipped in the repo. Alternatively set `REMASTERED_WEB_HOME_DEMO_BEFORE` and `REMASTERED_WEB_HOME_DEMO_AFTER` to paths **under** `static/` (e.g. `samples/before.m4a`). The block is hidden until both files exist.
+
 ## 프로모션 로그 (Promotions)
 
 회원가입 시 URL의 `utm_source` 쿼리 값이 가입 출처(`signup_source`)로 기록됩니다. 아래 표에 홍보 채널·게시물·사용한 `utm_source`를 남겨 두면, 이후 가입 데이터와 대조할 수 있습니다.

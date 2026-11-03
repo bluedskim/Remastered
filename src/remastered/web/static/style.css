@@ -362,9 +362,51 @@ a:hover {
 }
 
 .hero-lead {
-  margin: 0 0 1.5rem;
+  margin: 0 0 1rem;
   font-size: 0.95rem;
   max-width: 38em;
+}
+
+.hero-demo {
+  margin-bottom: 1.25rem;
+  padding: 0.85rem 1rem;
+}
+
+.hero-demo-lead {
+  margin: 0 0 0.65rem;
+}
+
+.card-compact {
+  padding: 0.85rem 1rem;
+  margin-bottom: 0;
+  box-shadow: none;
+}
+
+.section-title--sm {
+  font-size: 0.95rem;
+  margin-bottom: 0.35rem;
+}
+
+.ab-compare--compact {
+  margin-top: 0.25rem;
+}
+
+.ab-compare--compact .ab-listen-toggle {
+  margin-bottom: 0.5rem;
+}
+
+.ab-transport--compact {
+  gap: 0.35rem;
+}
+
+.ab-transport--compact .ab-volume-label {
+  display: none;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 0.15rem;
+  font-weight: 400;
 }
 
 .job-form {
@@ -578,6 +620,43 @@ a:focus-visible,
   border-radius: 12px;
   padding: 0.75rem 0.95rem;
   background: rgba(12, 10, 20, 0.55);
+}
+
+.notice-box--compact {
+  padding: 0.45rem 0.65rem;
+}
+
+.notice-box--compact .notice-box-summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.notice-box--compact .notice-box-summary::-webkit-details-marker {
+  display: none;
+}
+
+.notice-box--compact .notice-box-summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.35em;
+  transition: transform 0.15s ease;
+}
+
+.notice-box--compact[open] .notice-box-summary::before {
+  transform: rotate(90deg);
+}
+
+.notice-box--compact .rights-notice {
+  margin-top: 0.5rem;
+  padding-left: 1rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.notice-box--compact .rights-notice li {
+  margin: 0.2rem 0;
 }
 
 .rights-notice {

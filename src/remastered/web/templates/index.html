@@ -3,11 +3,13 @@
 {% block content %}
 <section class="card card-hero card-glow">
   <div class="hero-copy">
-    <h1 class="hero-title">YouTube audio remaster</h1>
+    <h1 class="hero-title">Make old, quiet songs sound loud and clear</h1>
     <p class="hero-lead muted">
-      Master to a reference track and compare the original and result in your browser.
+      Paste a YouTube link — we remaster it to modern loudness and let you compare before and after.
     </p>
   </div>
+
+  {% include "partials/home_demo_player.html" %}
 
   <h2 class="section-title" id="new-job-heading">New job</h2>
   <div id="retry-form-notice" class="retry-form-notice" hidden role="status"></div>
@@ -46,6 +48,7 @@
 
     <div class="field ref-source-field">
       <span class="field-label" id="ref-source-label">Reference track</span>
+      <span class="field-hint small muted" id="ref-source-hint">(the sound you want to match)</span>
       <input type="hidden" name="reference_source" id="reference_source_mode" value="preset" />
       <div class="ref-source-frame">
         <div class="ref-source-tabs" role="tablist" aria-labelledby="ref-source-label">
@@ -141,13 +144,14 @@
       Source up to {{ limits.max_source_duration_seconds // 60 }} min · {{ limits.max_source_bytes // (1024*1024) }}MB
     </p>
 
-    <div class="notice-box" role="note" aria-label="Rights and usage notice">
+    <details class="notice-box notice-box--compact">
+      <summary class="notice-box-summary small">{{ rights_notice_short }}</summary>
       <ul class="rights-notice small muted">
         {% for line in rights_notice_lines %}
         <li>{{ line }}</li>
         {% endfor %}
       </ul>
-    </div>
+    </details>
 
     <button type="submit" class="btn btn-gradient btn-xl" id="create-job-submit">Start job</button>
   </form>
@@ -176,6 +180,9 @@
 </section>
 
 <script src="{{ static_url('youtube-preview.js') }}"></script>
+{% if home_demo_samples %}
+<script src="{{ static_url('ab-player.js') }}" defer></script>
+{% endif %}
 <script src="{{ static_url('job-delete.js') }}" defer></script>
 <script src="{{ static_url('job-list-more.js') }}" defer></script>
 <script>
