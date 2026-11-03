@@ -638,8 +638,9 @@ a:focus-visible,
 }
 
 .notice-box--compact .notice-box-summary::before {
-  content: "▸ ";
+  content: "▸";
   display: inline-block;
+  margin-right: 0.35em;
   transition: transform 0.15s ease;
 }
 
