@@ -93,7 +93,7 @@ docker compose up -d web
 
 Cloudflare Tunnel 등 리버스 프록시는 `X-Forwarded-Proto: https`와 `CF-Connecting-IP`를 전달해야 합니다.
 
-**운영:** `docker-compose.yml`에 `/health` 헬스체크가 있습니다. Docker는 `unhealthy`만으로는 자동 재시작하지 않으므로, 필요 시 [willfarrell/autoheal](https://github.com/willfarrell/docker-autoheal) 등으로 unhealthy 컨테이너를 재시작할 수 있습니다 (`restart: unless-stopped`는 프로세스 종료 시 재시작).
+**운영:** `docker-compose.yml`의 `web` 서비스는 `/health` 헬스체크와 `restart: unless-stopped`를 사용합니다. 프로세스가 종료되면 Docker가 컨테이너를 다시 올립니다. (헬스체크가 `unhealthy`인 경우만으로는 자동 재시작되지 않습니다.)
 
 **한도 (기본):** 소스 최대 15분 · 500MB · 제출은 대기열(워커 1대, 사용자 간 공정 라운드로빈) · `/media` 동시 스트림 12 · uvicorn 동시 연결 80.
 
