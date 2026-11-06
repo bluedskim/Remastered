@@ -80,3 +80,4 @@ def test_upgrade_pr3_database(tmp_path: Path) -> None:
     assert job is not None
     assert job["user_id"] == LEGACY_MIGRATION_USER_ID
     assert job.get("title") == "Legacy Title"
+    assert job.get("final_tp_protection") is True

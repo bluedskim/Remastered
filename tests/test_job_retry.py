@@ -88,6 +88,7 @@ def test_build_job_retry_form_payload_preset(tmp_path: Path) -> None:
         "reference_source_type": "preset",
         "reference_path": str(refs / "ref.wav"),
         "stereo_width_mode": "preserve",
+        "final_tp_protection": True,
     }
     payload = build_job_retry_form_payload(
         job,
@@ -102,7 +103,31 @@ def test_build_job_retry_form_payload_preset(tmp_path: Path) -> None:
     assert payload["presetName"] == "ref.wav"
     assert payload["presetLibrary"] == "shared"
     assert payload["stereoWidthMode"] == "preserve"
+    assert payload["finalTpProtection"] is True
     assert payload["warnings"] == []
+
+
+def test_build_job_retry_form_payload_final_tp_opt_out(tmp_path: Path) -> None:
+    refs = tmp_path / "refs"
+    refs.mkdir()
+    (refs / "ref.wav").write_bytes(b"x")
+    ws = WebSettings()
+    job = {
+        "youtube_url": "https://www.youtube.com/watch?v=optout",
+        "reference_source_type": "preset",
+        "reference_path": str(refs / "ref.wav"),
+        "stereo_width_mode": "preserve",
+        "final_tp_protection": False,
+    }
+    payload = build_job_retry_form_payload(
+        job,
+        shared_refs=["ref.wav"],
+        user_refs=[],
+        user_refs_dir=tmp_path / "user_refs",
+        work_dir=tmp_path / "work",
+        ws=ws,
+    )
+    assert payload["finalTpProtection"] is False
 
 
 def test_build_job_retry_form_payload_missing_upload_warns(tmp_path: Path) -> None:

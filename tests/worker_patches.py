@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Callable
 
@@ -29,9 +31,32 @@ def install_fake_worker_pipeline(
         if progress:
             progress.stage_start("master")
             progress.stage_done("master")
-        mastered = settings.work_dir / dl.video_id / "master" / "out.wav"
+        mastered = settings.work_dir / dl.video_id / "master" / "mastered_16bit.wav"
         mastered.parent.mkdir(parents=True, exist_ok=True)
-        mastered.write_bytes(b"RIFF" + b"\x00" * 100)
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=f=880:d=0.3",
+                    "-af",
+                    "volume=12dB",
+                    "-ac",
+                    "2",
+                    "-ar",
+                    "48000",
+                    "-c:a",
+                    "pcm_s16le",
+                    str(mastered),
+                ],
+                check=True,
+                capture_output=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            mastered.write_bytes(b"RIFF" + b"\x00" * 100)
         return {
             "audio": dl.audio_path,
             "mastered": mastered,
@@ -47,9 +72,30 @@ def install_fake_worker_pipeline(
         path.write_bytes(b"RIFF")
         return path, None
 
+    def fake_copy_matchering_to_raw(mastered: Path) -> Path:
+        raw = mastered.with_name(
+            mastered.name.replace("mastered_", "mastered_matchering_", 1)
+            if "mastered_" in mastered.name
+            else "mastered_matchering" + mastered.suffix
+        )
+        shutil.copy2(mastered, raw)
+        return raw
+
+    def fake_apply_tp(raw: Path, out: Path, **kwargs):
+        shutil.copy2(raw, out)
+        return (0.0, -6.0)
+
     monkeypatch.setattr("remastered.web.worker.download_source_audio", fake_download)
     monkeypatch.setattr("remastered.web.worker.master_downloaded_audio", fake_master)
     monkeypatch.setattr(
         "remastered.web.worker.resolve_reference_wav",
         resolve_reference_wav or default_resolve,
+    )
+    monkeypatch.setattr(
+        "remastered.web.worker.copy_matchering_to_raw",
+        fake_copy_matchering_to_raw,
+    )
+    monkeypatch.setattr(
+        "remastered.web.worker.apply_final_true_peak_protection",
+        fake_apply_tp,
     )

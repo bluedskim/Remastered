@@ -26,6 +26,11 @@ from remastered.web.processing_stage import (
 from remastered.web.reference_resolve import REFERENCE_DOWNLOAD_FAILED, resolve_reference_wav
 from remastered.web.reference_youtube import is_youtube_reference_job
 from remastered.web.stream_audio import transcode_wav_for_playback
+from remastered.web.true_peak_protection import (
+    apply_final_true_peak_protection,
+    copy_matchering_to_raw,
+)
+from remastered.web.settings import WebSettings
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +252,27 @@ class JobWorker:
                 except Exception as exc:  # noqa: BLE001
                     log(f"Playback transcode failed (original): {exc}")
             if isinstance(mastered_wav, Path):
+                if job.get("final_tp_protection", True):
+                    try:
+                        ws_web = WebSettings()
+                        raw = copy_matchering_to_raw(mastered_wav)
+                        apply_final_true_peak_protection(
+                            raw,
+                            mastered_wav,
+                            log=log,
+                            ffmpeg_path=self.settings.ffmpeg_path,
+                            ws=ws_web,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        log(f"True-peak protection failed: {exc}")
+                        self.store.update_job(
+                            job_id,
+                            status="failed",
+                            error=str(exc),
+                            stage_state=stage_state,
+                            processing_stage=STAGE_FINALIZING,
+                        )
+                        return
                 try:
                     transcode_wav_for_playback(mastered_wav)
                 except Exception as exc:  # noqa: BLE001

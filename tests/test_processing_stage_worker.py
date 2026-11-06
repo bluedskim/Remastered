@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import time
 from pathlib import Path
 
@@ -56,6 +57,24 @@ def test_worker_updates_processing_stage(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(
         "remastered.web.worker.transcode_wav_for_playback",
         lambda p: p.with_suffix(".m4a"),
+    )
+
+    def fake_copy_matchering_to_raw(mastered: Path) -> Path:
+        raw = mastered.with_name("mastered_matchering" + mastered.suffix)
+        shutil.copy2(mastered, raw)
+        return raw
+
+    def fake_apply_tp(_raw: Path, out: Path, **kwargs):
+        shutil.copy2(_raw, out)
+        return (0.0, -6.0)
+
+    monkeypatch.setattr(
+        "remastered.web.worker.copy_matchering_to_raw",
+        fake_copy_matchering_to_raw,
+    )
+    monkeypatch.setattr(
+        "remastered.web.worker.apply_final_true_peak_protection",
+        fake_apply_tp,
     )
 
     store = JobStore(work / "jobs.db")

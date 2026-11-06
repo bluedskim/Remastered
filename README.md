@@ -72,6 +72,11 @@ ffmpeg_path = "ffmpeg"
 | `REMASTERED_WEB_MAX_CONCURRENT_MEDIA_STREAMS` | 동시 `/media` 스트림 상한 (기본 12) |
 | `REMASTERED_WEB_UVICORN_LIMIT_CONCURRENCY` | uvicorn 동시 연결 상한 (기본 80) |
 | `REMASTERED_WEB_UVICORN_TIMEOUT_KEEP_ALIVE` | keep-alive 초 (기본 5) |
+| `REMASTERED_WEB_DUPLICATE_JOB_WINDOW_SECONDS` | 동일 소스·레퍼런스로 짧은 시간 내 중복 제출 시 기존 작업으로 리다이렉트(초, 기본 30) |
+| `REMASTERED_WEB_TRUE_PEAK_CEILING_DBTP` | 최종 보호 대상 True peak 상한(dBTP, 기본 -1.0) — 볼륨만 낮추며 림/컴프/라우드노rm/EQ 없음 |
+| `REMASTERED_WEB_TRUE_PEAK_PASS_HEADROOM_DB` | AAC 디코드 측정과 상한 사이 여유(dB, 기본 0.5) |
+| `REMASTERED_WEB_TRUE_PEAK_MAX_ATTEMPTS` | 보호 검증 실패 시 재시도 상한(기본 12) |
+| `REMASTERED_WEB_TRUE_PEAK_MIN_STEP_DB` | 각 재시도당 최소 추가 감쇠(dB, 기본 0.05) |
 
 ## Docker (Apple Silicon M2 / linux/arm64)
 
