@@ -125,11 +125,11 @@ def test_apply_tp_real_ffmpeg_measures_wav_and_aac(tmp_path: Path) -> None:
 
     ws = WebSettings(
         true_peak_ceiling_dbtp=-1.0,
-        true_peak_pass_headroom_db=0.5,
+        true_peak_pass_headroom_db=0.05,
         true_peak_max_attempts=12,
         true_peak_min_step_db=0.05,
     )
-    gain, peak_aac = apply_final_true_peak_protection(
+    gain, peak_wav, peak_aac = apply_final_true_peak_protection(
         raw,
         out,
         ffmpeg_path="ffmpeg",
@@ -137,7 +137,9 @@ def test_apply_tp_real_ffmpeg_measures_wav_and_aac(tmp_path: Path) -> None:
     )
 
     assert gain <= 0.0
-    peak_wav = _measure_true_peak_dbtp(out, ffmpeg_path="ffmpeg")
-    assert peak_wav is not None
-    assert peak_wav <= ws.true_peak_ceiling_dbtp + 0.05
-    assert peak_aac <= ws.true_peak_ceiling_dbtp + ws.true_peak_pass_headroom_db + 0.05
+    verify_wav = _measure_true_peak_dbtp(out, ffmpeg_path="ffmpeg")
+    assert verify_wav is not None
+    pass_ceil = ws.true_peak_ceiling_dbtp - ws.true_peak_pass_headroom_db
+    assert peak_wav <= pass_ceil + 0.06
+    assert peak_aac <= pass_ceil + 0.06
+    assert verify_wav <= pass_ceil + 0.06
