@@ -253,6 +253,7 @@ def _reference_prefs_for_identity(
         youtube_url=raw["youtube_url"],
         upload_filename=raw["upload_filename"],
         source_youtube_url=raw.get("source_youtube_url", ""),
+        final_tp_protection=bool(raw.get("final_tp_protection", True)),
     )
     owner_id = identity.account_id
     shared_refs = _list_reference_files(ws.references_path)
@@ -288,6 +289,7 @@ def _save_reference_prefs(
         youtube_url=sanitized.youtube_url,
         upload_filename=sanitized.upload_filename,
         source_youtube_url=sanitized.source_youtube_url,
+        final_tp_protection=sanitized.final_tp_protection,
     )
     return sanitized
 
@@ -588,6 +590,7 @@ async def create_job(
     reference_saved_upload: str = Form(""),
     reference_from_job_id: str = Form(""),
     stereo_width_mode: str = Form(DEFAULT_STEREO_WIDTH_MODE),
+    final_tp_protection: str = Form("on"),
 ) -> RedirectResponse:
     ip = client_ip(request)
     ws = _web_settings()
@@ -689,6 +692,8 @@ async def create_job(
     if stereo_width_mode not in VALID_STEREO_WIDTH_MODES:
         stereo_width_mode = DEFAULT_STEREO_WIDTH_MODE
 
+    wants_tp = (final_tp_protection or "").strip().lower() not in ("", "0", "false", "off", "no")
+
     job_id = store.create_job(
         user_id=owner_id,
         youtube_url=youtube_url,
@@ -703,6 +708,7 @@ async def create_job(
         reference_youtube_url=ref_youtube_url,
         reference_video_id=ref_video_id,
         reference_youtube_title=ref_youtube_title,
+        final_tp_protection=wants_tp,
     )
     if reference_source_type == "upload" and reference_path is not None:
         snap_path = await run_in_threadpool(
@@ -736,7 +742,12 @@ async def create_job(
                 "upload",
                 upload_filename=saved_upload_name,
             )
-        merged = with_active_tab(merged, merged.tab, source_youtube_url=youtube_url)
+        merged = with_active_tab(
+            merged,
+            merged.tab,
+            source_youtube_url=youtube_url,
+            final_tp_protection=wants_tp,
+        )
         _save_reference_prefs(store, identity.account_id, merged, ws)
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
 

@@ -71,6 +71,8 @@ def test_index_and_create_job(client: TestClient) -> None:
     home = client.get("/")
     assert home.status_code == 200
     assert "New job" in home.text
+    assert "True-peak safety" in home.text
+    assert 'id="final_tp_protection_toggle"' in home.text
     assert "YouTube에 업로드" not in home.text
 
     resp = client.post(
@@ -110,6 +112,28 @@ def test_index_and_create_job(client: TestClient) -> None:
     assert 'data-ab-compare' in detail.text
     assert "/static/ab-player.js?v=" in detail.text
     assert 'preload="auto"' in detail.text
+
+    job = client.app.state.store.get_job(job_id)
+    assert job is not None
+    assert job.get("final_tp_protection") is True
+
+
+def test_create_job_final_tp_protection_opt_out(client: TestClient) -> None:
+    client.get("/")
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=tpOptOut1",
+            "reference_name": "ref.wav",
+            "final_tp_protection": "off",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    job_id = resp.headers["location"].split("/")[-1]
+    job = client.app.state.store.get_job(job_id)
+    assert job is not None
+    assert job.get("final_tp_protection") is False
 
 
 def test_job_isolation(client: TestClient) -> None:

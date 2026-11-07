@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -113,6 +113,7 @@ class JobStore:
                     reference_video_id TEXT,
                     reference_youtube_title TEXT,
                     processing_stage TEXT NOT NULL DEFAULT 'queued',
+                    final_tp_protection INTEGER NOT NULL DEFAULT 1,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
                 """
@@ -156,6 +157,13 @@ class JobStore:
                 conn.execute(
                     """
                     ALTER TABLE jobs ADD COLUMN processing_stage TEXT NOT NULL DEFAULT 'queued'
+                    """
+                )
+            cols = self._job_columns(conn)
+            if "final_tp_protection" not in cols:
+                conn.execute(
+                    """
+                    ALTER TABLE jobs ADD COLUMN final_tp_protection INTEGER NOT NULL DEFAULT 1
                     """
                 )
             self._backfill_legacy_jobs(conn)
@@ -264,6 +272,7 @@ class JobStore:
                 youtube_url TEXT NOT NULL DEFAULT '',
                 upload_filename TEXT NOT NULL DEFAULT '',
                 source_youtube_url TEXT NOT NULL DEFAULT '',
+                final_tp_protection INTEGER NOT NULL DEFAULT 1,
                 updated_at TEXT NOT NULL
             );
             """
@@ -277,6 +286,16 @@ class JobStore:
                     """
                     ALTER TABLE user_reference_prefs
                     ADD COLUMN source_youtube_url TEXT NOT NULL DEFAULT ''
+                    """
+                )
+            pref_cols = {
+                row[1] for row in conn.execute("PRAGMA table_info(user_reference_prefs)").fetchall()
+            }
+            if "final_tp_protection" not in pref_cols:
+                conn.execute(
+                    """
+                    ALTER TABLE user_reference_prefs
+                    ADD COLUMN final_tp_protection INTEGER NOT NULL DEFAULT 1
                     """
                 )
 
@@ -415,6 +434,7 @@ class JobStore:
         reference_youtube_url: str | None = None,
         reference_video_id: str | None = None,
         reference_youtube_title: str | None = None,
+        final_tp_protection: bool = True,
     ) -> str:
         job_id = uuid4().hex
         now = _utc_now()
@@ -430,8 +450,8 @@ class JobStore:
                     reference_path, title, description, privacy, upload_enabled,
                     stage_state, client_ip, stereo_width_mode,
                     reference_source_type, reference_youtube_url, reference_video_id,
-                    reference_youtube_title, processing_stage
-                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
+                    reference_youtube_title, processing_stage, final_tp_protection
+                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)
                 """,
                 (
                     job_id,
@@ -451,6 +471,7 @@ class JobStore:
                     reference_youtube_url,
                     reference_video_id,
                     reference_youtube_title,
+                    1 if final_tp_protection else 0,
                 ),
             )
         return job_id
@@ -482,10 +503,13 @@ class JobStore:
             "reference_youtube_title",
             "reference_path",
             "processing_stage",
+            "final_tp_protection",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
             return
+        if "final_tp_protection" in updates:
+            updates["final_tp_protection"] = 1 if bool(updates["final_tp_protection"]) else 0
         if "stage_state" in updates and not isinstance(updates["stage_state"], str):
             updates["stage_state"] = json.dumps(updates["stage_state"])
         cols = ", ".join(f"{k} = ?" for k in updates)
@@ -922,6 +946,9 @@ class JobStore:
             "source_youtube_url": row["source_youtube_url"]
             if "source_youtube_url" in row.keys()
             else "",
+            "final_tp_protection": bool(row["final_tp_protection"])
+            if "final_tp_protection" in row.keys()
+            else True,
         }
 
     def set_reference_prefs(
@@ -934,15 +961,17 @@ class JobStore:
         youtube_url: str = "",
         upload_filename: str = "",
         source_youtube_url: str = "",
+        final_tp_protection: bool = True,
     ) -> None:
         now = _utc_now()
+        tp = 1 if final_tp_protection else 0
         with self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO user_reference_prefs (
                     user_id, tab, preset_name, preset_library,
-                    youtube_url, upload_filename, source_youtube_url, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    youtube_url, upload_filename, source_youtube_url, final_tp_protection, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     tab = excluded.tab,
                     preset_name = excluded.preset_name,
@@ -950,6 +979,7 @@ class JobStore:
                     youtube_url = excluded.youtube_url,
                     upload_filename = excluded.upload_filename,
                     source_youtube_url = excluded.source_youtube_url,
+                    final_tp_protection = excluded.final_tp_protection,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -960,6 +990,7 @@ class JobStore:
                     youtube_url,
                     upload_filename,
                     source_youtube_url,
+                    tp,
                     now,
                 ),
             )
@@ -1043,4 +1074,8 @@ class JobStore:
         data["upload_enabled"] = bool(data["upload_enabled"])
         data["stage_state"] = json.loads(data["stage_state"] or "{}")
         data["files_cleaned"] = bool(data.get("files_cleaned", 0))
+        if "final_tp_protection" in data:
+            data["final_tp_protection"] = bool(data["final_tp_protection"])
+        else:
+            data["final_tp_protection"] = True
         return data

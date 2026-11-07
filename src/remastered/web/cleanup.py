@@ -54,6 +54,9 @@ def delete_job_media_files(job: dict, work_dir: Path) -> None:
         playback = playback_path_for_wav(p)
         if playback.is_file():
             playback.unlink(missing_ok=True)
+        if key == "mastered_path" and p.parent.is_dir():
+            for raw in p.parent.glob("mastered_matchering_*.wav"):
+                raw.unlink(missing_ok=True)
     delete_job_workspace(job, work_dir)
 
 

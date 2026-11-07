@@ -140,6 +140,17 @@
 
     <input type="hidden" name="stereo_width_mode" value="follow_reference" />
 
+    <div class="field field-tp-protection">
+      <input type="hidden" name="final_tp_protection" id="final_tp_protection" value="on" />
+      <label class="checkbox-label">
+        <input type="checkbox" id="final_tp_protection_toggle" checked />
+        <span>True-peak safety (lower level only; reduces overall loudness)</span>
+      </label>
+      <p class="small muted hint">
+        Off uses the raw matchered output (legacy). Does not repair existing distortion.
+      </p>
+    </div>
+
     <p class="limits-hint small muted">
       Source up to {{ limits.max_source_duration_seconds // 60 }} min · {{ limits.max_source_bytes // (1024*1024) }}MB
     </p>
@@ -190,6 +201,18 @@
   const IS_SIGNED_IN = {{ "true" if auth_user else "false" }};
   const SERVER_REFERENCE_PREFS = {{ reference_prefs | tojson }} || {};
   const form = document.getElementById("create-job-form");
+  const finalTpHidden = document.getElementById("final_tp_protection");
+  const finalTpToggle = document.getElementById("final_tp_protection_toggle");
+  function syncFinalTpHidden() {
+    if (!finalTpHidden || !finalTpToggle) return;
+    finalTpHidden.value = finalTpToggle.checked ? "on" : "off";
+  }
+  if (finalTpToggle) {
+    finalTpToggle.addEventListener("change", function () {
+      syncFinalTpHidden();
+      writeStored({ immediate: true });
+    });
+  }
   const modeInput = document.getElementById("reference_source_mode");
   const libraryInput = document.getElementById("reference_library");
   const summaryEl = document.getElementById("ref-source-summary");
@@ -317,6 +340,7 @@
       youtubeUrl: currentReferenceYoutubeUrl(),
       uploadFilename: file ? file.name : savedUploadFilename || "",
       sourceYoutubeUrl: sourceUrlInput ? sourceUrlInput.value.trim() : "",
+      finalTpProtection: finalTpToggle ? finalTpToggle.checked : true,
     };
   }
 
@@ -329,6 +353,7 @@
       youtubeUrl: fields.youtubeUrl,
       uploadFilename: fields.uploadFilename,
       sourceYoutubeUrl: fields.sourceYoutubeUrl,
+      finalTpProtection: fields.finalTpProtection,
     };
   }
 
@@ -339,7 +364,8 @@
       SERVER_REFERENCE_PREFS.presetName ||
       SERVER_REFERENCE_PREFS.youtubeUrl ||
       SERVER_REFERENCE_PREFS.uploadFilename ||
-      SERVER_REFERENCE_PREFS.sourceYoutubeUrl
+      SERVER_REFERENCE_PREFS.sourceYoutubeUrl ||
+      typeof SERVER_REFERENCE_PREFS.finalTpProtection === "boolean"
     );
   }
 
@@ -410,6 +436,7 @@
           presetName: payload.presetName,
           presetLibrary: payload.presetLibrary,
           youtubeUrl: payload.youtubeUrl,
+          finalTpProtection: payload.finalTpProtection,
         })
       );
     } catch (err) {
@@ -429,6 +456,10 @@
 
   function applyStoredFields(stored) {
     if (!stored) return;
+    if (finalTpToggle && typeof stored.finalTpProtection === "boolean") {
+      finalTpToggle.checked = stored.finalTpProtection;
+      syncFinalTpHidden();
+    }
     selectPresetByName(stored.presetName || "");
     if (stored.presetLibrary && libraryInput) {
       libraryInput.value = stored.presetLibrary;
@@ -700,6 +731,8 @@
       presetLibrary: data.presetLibrary || "shared",
       youtubeUrl: data.youtubeUrl || "",
       uploadFilename: data.uploadFilename || "",
+      finalTpProtection:
+        typeof data.finalTpProtection === "boolean" ? data.finalTpProtection : true,
     });
     let tab = data.tab || "preset";
     if (tab === "upload") {
@@ -715,6 +748,10 @@
       activateMode("preset", true);
     }
     applyStereoWidth(data.stereoWidthMode);
+    if (finalTpToggle && typeof data.finalTpProtection === "boolean") {
+      finalTpToggle.checked = data.finalTpProtection;
+      syncFinalTpHidden();
+    }
     syncSavedUploadFields();
     updateSummary();
     showRetryWarnings(data.warnings);
@@ -798,6 +835,7 @@
   updateSubmitEnabled();
 
   form.addEventListener("submit", function (e) {
+    syncFinalTpHidden();
     if (sourceOverLimit) {
       e.preventDefault();
       return;

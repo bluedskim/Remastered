@@ -16,8 +16,9 @@ class ReferencePrefs:
     youtube_url: str = ""
     upload_filename: str = ""
     source_youtube_url: str = ""
+    final_tp_protection: bool = True
 
-    def to_client_dict(self) -> dict[str, str]:
+    def to_client_dict(self) -> dict[str, Any]:
         return {
             "tab": self.tab,
             "presetName": self.preset_name,
@@ -25,6 +26,7 @@ class ReferencePrefs:
             "youtubeUrl": self.youtube_url,
             "uploadFilename": self.upload_filename,
             "sourceYoutubeUrl": self.source_youtube_url,
+            "finalTpProtection": self.final_tp_protection,
         }
 
     @classmethod
@@ -37,6 +39,13 @@ class ReferencePrefs:
         preset_library = str(data.get("presetLibrary") or "shared").strip()
         if preset_library not in ("shared", "user"):
             preset_library = "shared"
+        ftp_raw = data.get("finalTpProtection")
+        if ftp_raw is None:
+            final_tp = True
+        else:
+            s = str(ftp_raw).strip().lower()
+            final_tp = s not in ("0", "false", "no", "off")
+
         return cls(
             tab=tab,
             preset_name=str(data.get("presetName") or "").strip(),
@@ -44,6 +53,7 @@ class ReferencePrefs:
             youtube_url=str(data.get("youtubeUrl") or "").strip(),
             upload_filename=Path(str(data.get("uploadFilename") or "")).name,
             source_youtube_url=str(data.get("sourceYoutubeUrl") or "").strip(),
+            final_tp_protection=final_tp,
         )
 
 
@@ -56,6 +66,17 @@ def parse_reference_prefs_json(raw: str | None) -> ReferencePrefs | None:
         return None
     if not isinstance(data, dict):
         return None
+    ftp_raw = data.get("final_tp_protection")
+    if ftp_raw is None:
+        final_tp = True
+    elif isinstance(ftp_raw, bool):
+        final_tp = ftp_raw
+    else:
+        try:
+            final_tp = bool(int(ftp_raw))
+        except (TypeError, ValueError):
+            final_tp = True
+
     return ReferencePrefs(
         tab=_norm_tab(data.get("tab")),
         preset_name=str(data.get("preset_name") or "").strip(),
@@ -63,6 +84,7 @@ def parse_reference_prefs_json(raw: str | None) -> ReferencePrefs | None:
         youtube_url=str(data.get("youtube_url") or "").strip(),
         upload_filename=Path(str(data.get("upload_filename") or "")).name,
         source_youtube_url=str(data.get("source_youtube_url") or "").strip(),
+        final_tp_protection=final_tp,
     )
 
 
@@ -75,6 +97,7 @@ def reference_prefs_to_json(prefs: ReferencePrefs) -> str:
             "youtube_url": prefs.youtube_url,
             "upload_filename": prefs.upload_filename,
             "source_youtube_url": prefs.source_youtube_url,
+            "final_tp_protection": 1 if prefs.final_tp_protection else 0,
         }
     )
 
@@ -115,6 +138,7 @@ def merge_client_prefs(
         youtube_url=youtube_url,
         upload_filename=upload_filename,
         source_youtube_url=incoming.source_youtube_url,
+        final_tp_protection=incoming.final_tp_protection,
     )
 
 
@@ -127,6 +151,7 @@ def with_active_tab(
     youtube_url: str | None = None,
     upload_filename: str | None = None,
     source_youtube_url: str | None = None,
+    final_tp_protection: bool | None = None,
 ) -> ReferencePrefs:
     """Update the active tab and only the fields explicitly passed."""
     cur = base or ReferencePrefs()
@@ -138,6 +163,11 @@ def with_active_tab(
         upload_filename=upload_filename if upload_filename is not None else cur.upload_filename,
         source_youtube_url=(
             source_youtube_url if source_youtube_url is not None else cur.source_youtube_url
+        ),
+        final_tp_protection=(
+            final_tp_protection
+            if final_tp_protection is not None
+            else cur.final_tp_protection
         ),
     )
 
@@ -152,6 +182,7 @@ def prefs_from_store_row(row: dict[str, str] | None) -> ReferencePrefs | None:
         youtube_url=row["youtube_url"],
         upload_filename=row["upload_filename"],
         source_youtube_url=row.get("source_youtube_url", "") or "",
+        final_tp_protection=bool(row.get("final_tp_protection", True)),
     )
 
 
@@ -178,4 +209,5 @@ def sanitize_prefs_for_owner(
         youtube_url=prefs.youtube_url,
         upload_filename=upload_filename,
         source_youtube_url=prefs.source_youtube_url,
+        final_tp_protection=prefs.final_tp_protection,
     )

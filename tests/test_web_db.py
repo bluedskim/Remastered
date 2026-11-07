@@ -28,6 +28,7 @@ def test_job_store_create_and_update(tmp_path: Path) -> None:
     job = store.get_job(job_id, user_id=user_id)
     assert job is not None
     assert job["status"] == "running"
+    assert job.get("final_tp_protection") is True
     assert store.get_job(job_id, user_id="other") is None
     assert store.count_user_active_jobs(user_id) == 1
 

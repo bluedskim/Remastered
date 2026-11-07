@@ -36,6 +36,11 @@ class WebSettings(BaseSettings):
     uvicorn_timeout_keep_alive: int = 5
     home_demo_before: str | None = None
     home_demo_after: str | None = None
+    duplicate_job_window_seconds: int = 30
+    true_peak_ceiling_dbtp: float = -1.0
+    true_peak_pass_headroom_db: float = 0.5
+    true_peak_max_attempts: int = 12
+    true_peak_min_step_db: float = 0.05
 
     @property
     def references_path(self) -> Path:
