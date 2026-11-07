@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import errno
 import logging
-import math
+import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -112,6 +114,54 @@ def _encode_playback_aac(wav: Path, m4a: Path, *, ffmpeg_path: str = "ffmpeg") -
     subprocess.run(cmd, check=True, capture_output=True, text=True)
 
 
+def _commit_staging_file(staging: Path, dest: Path) -> None:
+    """Move ``staging`` onto ``dest``, same filesystem when possible (Docker /tmp vs /work)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(staging, dest)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        shutil.copy2(staging, dest)
+        staging.unlink(missing_ok=True)
+
+
+def _write_attenuated_master(
+    raw_mastered_wav: Path,
+    output_mastered_wav: Path,
+    total_db: float,
+    *,
+    ffmpeg_path: str = "ffmpeg",
+) -> None:
+    """Write gain-attenuated audio to ``output_mastered_wav`` without cross-volume rename."""
+    if total_db >= -1e-9:
+        shutil.copy2(raw_mastered_wav, output_mastered_wav)
+        return
+
+    out_dir = output_mastered_wav.parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+    staging: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".wav",
+            prefix=".tp_stage_",
+            dir=str(out_dir),
+            delete=False,
+        ) as tmp:
+            staging = Path(tmp.name)
+        _apply_gain_wav(
+            raw_mastered_wav,
+            staging,
+            total_db,
+            ffmpeg_path=ffmpeg_path,
+        )
+        _commit_staging_file(staging, output_mastered_wav)
+        staging = None
+    finally:
+        if staging is not None:
+            staging.unlink(missing_ok=True)
+
+
 def apply_final_true_peak_protection(
     raw_mastered_wav: Path,
     output_mastered_wav: Path,
@@ -142,23 +192,12 @@ def apply_final_true_peak_protection(
         raise RuntimeError("Could not measure true peak of mastered WAV.")
 
     def render_from_raw(total_db: float) -> None:
-        if total_db >= -1e-9:
-            import shutil
-
-            shutil.copy2(raw_mastered_wav, output_mastered_wav)
-            return
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-        try:
-            _apply_gain_wav(
-                raw_mastered_wav,
-                tmp_path,
-                total_db,
-                ffmpeg_path=ffmpeg_path,
-            )
-            tmp_path.replace(output_mastered_wav)
-        finally:
-            tmp_path.unlink(missing_ok=True)
+        _write_attenuated_master(
+            raw_mastered_wav,
+            output_mastered_wav,
+            total_db,
+            ffmpeg_path=ffmpeg_path,
+        )
 
     total_gain = 0.0
     if peak_raw > ceiling:
@@ -209,8 +248,6 @@ def raw_mastered_path_for_final(final_mastered_wav: Path) -> Path:
 
 def copy_matchering_to_raw(final_mastered_wav: Path) -> Path:
     """Preserve matchering output before replacing final path."""
-    import shutil
-
     raw = raw_mastered_path_for_final(final_mastered_wav)
     shutil.copy2(final_mastered_wav, raw)
     return raw
