@@ -6,6 +6,7 @@ from typing import Any
 from remastered.stereo_width import stereo_width_label
 from remastered.web.db import JobStore
 from remastered.web.processing_stage import pipeline_steps_for_job
+from remastered.web.job_user_messages import user_facing_job_record
 from remastered.web.reference_display import reference_ui_for_job
 from remastered.web.youtube_thumb_cache import youtube_reference_thumbnail_url
 from remastered.youtube_url import extract_youtube_video_id
@@ -97,7 +98,7 @@ def job_progress_steps(job: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def enrich_job_ui(job: dict[str, Any], store: JobStore | None = None) -> dict[str, Any]:
-    data = dict(job)
+    data = user_facing_job_record(dict(job))
     created = job.get("created_at") or ""
     data["relative_time"] = format_relative_time(created)
     data["status_pill_class"] = status_pill_class(job.get("status") or "")

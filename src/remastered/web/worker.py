@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-import traceback
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -29,6 +28,11 @@ from remastered.web.stream_audio import transcode_wav_for_playback
 from remastered.web.true_peak_protection import (
     apply_final_true_peak_protection,
     copy_matchering_to_raw,
+)
+from remastered.web.job_user_messages import (
+    MSG_INTERNAL,
+    classify_failure_message,
+    sanitize_log_message,
 )
 from remastered.web.settings import WebSettings
 
@@ -101,7 +105,7 @@ class JobWorker:
                 return
             user_id = (job.get("user_id") or "").strip()
             if not user_id:
-                self.store.update_job(job_id, status="failed", error="Missing user_id")
+                self.store.update_job(job_id, status="failed", error=MSG_INTERNAL)
                 return
 
             self.store.update_job(
@@ -115,7 +119,7 @@ class JobWorker:
             stage_state = dict(job["stage_state"])
 
             def log(msg: str) -> None:
-                self.store.append_log(job_id, msg)
+                self.store.append_log(job_id, sanitize_log_message(msg))
 
             def stage_start(stage: str) -> None:
                 stage_state[stage] = "running"
@@ -131,11 +135,14 @@ class JobWorker:
                 validate_youtube_source_limits(job["youtube_url"])
             except HTTPException as exc:
                 detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-                log(detail)
+                safe, _ = classify_failure_message(
+                    detail, processing_stage=STAGE_DOWNLOADING_SOURCE
+                )
+                log(safe)
                 self.store.update_job(
                     job_id,
                     status="failed",
-                    error=detail,
+                    error=safe,
                     stage_state=stage_state,
                     processing_stage=STAGE_DOWNLOADING_SOURCE,
                 )
@@ -161,11 +168,15 @@ class JobWorker:
                     on_downloaded=on_downloaded,
                 )
             except Exception as exc:  # noqa: BLE001
-                log(f"Error: {exc}")
+                logger.exception("Job %s source download failed", job_id)
+                safe, _ = classify_failure_message(
+                    str(exc), processing_stage=STAGE_DOWNLOADING_SOURCE
+                )
+                log(safe)
                 self.store.update_job(
                     job_id,
                     status="failed",
-                    error=str(exc),
+                    error=safe,
                     stage_state=stage_state,
                     processing_stage=STAGE_DOWNLOADING_SOURCE,
                 )
@@ -184,11 +195,12 @@ class JobWorker:
                 )
             except HTTPException as exc:
                 detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-                log(detail)
+                safe, _ = classify_failure_message(detail, processing_stage=fail_stage)
+                log(safe)
                 self.store.update_job(
                     job_id,
                     status="failed",
-                    error=detail,
+                    error=safe,
                     stage_state=stage_state,
                     processing_stage=fail_stage,
                 )
@@ -197,21 +209,24 @@ class JobWorker:
                 message = str(exc).split(" (", 1)[0]
                 if not message.startswith("Could not download"):
                     message = REFERENCE_DOWNLOAD_FAILED
-                log(message)
+                safe, _ = classify_failure_message(message, processing_stage=fail_stage)
+                log(safe)
                 self.store.update_job(
                     job_id,
                     status="failed",
-                    error=message,
+                    error=safe,
                     stage_state=stage_state,
                     processing_stage=fail_stage,
                 )
                 return
             except FileNotFoundError as exc:
-                log(str(exc))
+                logger.warning("Job %s reference file missing: %s", job_id, exc)
+                safe, _ = classify_failure_message(str(exc), processing_stage=fail_stage)
+                log(safe)
                 self.store.update_job(
                     job_id,
                     status="failed",
-                    error=str(exc),
+                    error=safe,
                     stage_state=stage_state,
                     processing_stage=fail_stage,
                 )
@@ -233,11 +248,13 @@ class JobWorker:
                     stereo_width=stereo_width,
                 )
             except Exception as exc:  # noqa: BLE001
-                log(f"Error: {exc}")
+                logger.exception("Job %s matchering failed", job_id)
+                safe, _ = classify_failure_message(str(exc), processing_stage=STAGE_MATCHING)
+                log(safe)
                 self.store.update_job(
                     job_id,
                     status="failed",
-                    error=str(exc),
+                    error=safe,
                     stage_state=stage_state,
                     processing_stage=STAGE_MATCHING,
                 )
@@ -250,6 +267,7 @@ class JobWorker:
                 try:
                     transcode_wav_for_playback(audio_wav)
                 except Exception as exc:  # noqa: BLE001
+                    logger.warning("Job %s original playback transcode failed: %s", job_id, exc)
                     log(f"Playback transcode failed (original): {exc}")
             if isinstance(mastered_wav, Path):
                 if job.get("final_tp_protection", True):
@@ -264,11 +282,17 @@ class JobWorker:
                             ws=ws_web,
                         )
                     except Exception as exc:  # noqa: BLE001
-                        log(f"True-peak protection failed: {exc}")
+                        logger.exception(
+                            "Job %s true-peak protection failed", job_id
+                        )
+                        safe, _ = classify_failure_message(
+                            str(exc), processing_stage=STAGE_FINALIZING
+                        )
+                        log(safe)
                         self.store.update_job(
                             job_id,
                             status="failed",
-                            error=str(exc),
+                            error=safe,
                             stage_state=stage_state,
                             processing_stage=STAGE_FINALIZING,
                         )
@@ -276,6 +300,9 @@ class JobWorker:
                 try:
                     transcode_wav_for_playback(mastered_wav)
                 except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Job %s mastered playback transcode failed: %s", job_id, exc
+                    )
                     log(f"Playback transcode failed (mastered): {exc}")
             self.store.update_job(
                 job_id,
@@ -298,12 +325,12 @@ class JobWorker:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Job %s failed", job_id)
             try:
-                self.store.append_log(job_id, f"Error: {exc}")
-                self.store.append_log(job_id, traceback.format_exc())
+                safe, _ = classify_failure_message(str(exc))
+                self.store.append_log(job_id, safe)
                 self.store.update_job(
                     job_id,
                     status="failed",
-                    error=str(exc),
+                    error=safe,
                 )
             except Exception:  # noqa: BLE001
                 logger.exception("Could not persist failure for job %s", job_id)

@@ -326,6 +326,8 @@ def test_worker_reference_download_failure_message(
             time.sleep(0.05)
         else:
             pytest.fail("worker did not fail job")
-        assert job["error"] == "Could not download the reference video."
+        from remastered.web.job_user_messages import MSG_REFERENCE_DOWNLOAD
+
+        assert job["error"] == MSG_REFERENCE_DOWNLOAD
     finally:
         worker.stop()
