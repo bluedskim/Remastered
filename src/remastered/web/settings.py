@@ -38,7 +38,8 @@ class WebSettings(BaseSettings):
     home_demo_after: str | None = None
     duplicate_job_window_seconds: int = 30
     true_peak_ceiling_dbtp: float = -1.0
-    true_peak_pass_headroom_db: float = 0.5
+    # Conservative margin *below* ceiling for pass checks on WAV and 192k AAC (not a relaxed upper limit).
+    true_peak_pass_headroom_db: float = 0.05
     true_peak_max_attempts: int = 12
     true_peak_min_step_db: float = 0.05
 

@@ -16,15 +16,26 @@ from remastered.web.settings import WebSettings
 
 logger = logging.getLogger(__name__)
 
+_SUMMARY_MARK = "Summary:"
 _TRUE_PEAK_SUMMARY_RE = re.compile(
     r"True peak:\s*\n\s*Peak:\s*([+-]?\d+(?:\.\d+)?)\s*dBFS",
     re.IGNORECASE | re.MULTILINE,
 )
-# Frame lines: TPK:  -1.2  -1.1 dBFS  (take max of numeric tokens before dBFS)
 _TPK_LINE_RE = re.compile(
     r"\bTPK:\s*((?:[+-]?\d+(?:\.\d+)?\s*)+)dBFS",
     re.IGNORECASE,
 )
+
+
+def pass_ceiling_dbtp(ws: WebSettings) -> float:
+    """Measured WAV and AAC true peaks must be <= this level to pass."""
+    margin = max(0.0, float(ws.true_peak_pass_headroom_db))
+    return float(ws.true_peak_ceiling_dbtp) - margin
+
+
+def _ebur128_summary(stderr: str) -> str:
+    idx = stderr.rfind(_SUMMARY_MARK)
+    return stderr[idx:] if idx >= 0 else ""
 
 
 def _measure_true_peak_dbtp(path: Path, *, ffmpeg_path: str = "ffmpeg") -> float | None:
@@ -43,7 +54,9 @@ def _measure_true_peak_dbtp(path: Path, *, ffmpeg_path: str = "ffmpeg") -> float
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     stderr = proc.stderr or ""
-    m = _TRUE_PEAK_SUMMARY_RE.search(stderr)
+    block = _ebur128_summary(stderr)
+    search_in = block if block else stderr
+    m = _TRUE_PEAK_SUMMARY_RE.search(search_in)
     if m:
         try:
             return float(m.group(1))
@@ -169,16 +182,19 @@ def apply_final_true_peak_protection(
     log: Callable[[str], None] | None = None,
     ffmpeg_path: str = "ffmpeg",
     ws: WebSettings | None = None,
-) -> tuple[float, float]:
+) -> tuple[float, float, float]:
     """Attenuate with constant gain from ``raw_mastered_wav`` until checks pass.
 
     Every write to ``output_mastered_wav`` is derived from ``raw_mastered_wav`` with
     ``volume=dB`` (no boost — total gain <= 0). Measures true peak on WAV and on AAC
     decoded the same way as browser playback (192k). Bounded attempts.
+
+    Returns ``(total_gain_db, peak_wav_dbtp, peak_aac_dbtp)`` on success.
+    On failure restores ``output_mastered_wav`` from ``raw_mastered_wav`` before raising.
     """
     ws = ws or WebSettings()
     ceiling = float(ws.true_peak_ceiling_dbtp)
-    headroom = float(ws.true_peak_pass_headroom_db)
+    pass_ceiling = pass_ceiling_dbtp(ws)
     max_attempts = int(ws.true_peak_max_attempts)
     min_step = float(ws.true_peak_min_step_db)
 
@@ -199,41 +215,53 @@ def apply_final_true_peak_protection(
             ffmpeg_path=ffmpeg_path,
         )
 
+    def _restore_output() -> None:
+        shutil.copy2(raw_mastered_wav, output_mastered_wav)
+
     total_gain = 0.0
     if peak_raw > ceiling:
         total_gain = min(0.0, ceiling - peak_raw)
     render_from_raw(total_gain)
 
-    for attempt in range(1, max_attempts + 1):
-        peak_wav = _measure_true_peak_dbtp(output_mastered_wav, ffmpeg_path=ffmpeg_path)
-        if peak_wav is None:
-            raise RuntimeError("True peak measurement failed (WAV).")
+    last_wav: float | None = None
+    last_aac: float | None = None
+    try:
+        for attempt in range(1, max_attempts + 1):
+            peak_wav = _measure_true_peak_dbtp(output_mastered_wav, ffmpeg_path=ffmpeg_path)
+            if peak_wav is None:
+                raise RuntimeError("True peak measurement failed (WAV).")
+            last_wav = peak_wav
 
-        with tempfile.TemporaryDirectory() as td:
-            m4a = Path(td) / "check.m4a"
-            _encode_playback_aac(output_mastered_wav, m4a, ffmpeg_path=ffmpeg_path)
-            peak_aac = _measure_true_peak_dbtp(m4a, ffmpeg_path=ffmpeg_path)
-        if peak_aac is None:
-            raise RuntimeError("True peak measurement failed (AAC).")
+            with tempfile.TemporaryDirectory() as td:
+                m4a = Path(td) / "check.m4a"
+                _encode_playback_aac(output_mastered_wav, m4a, ffmpeg_path=ffmpeg_path)
+                peak_aac = _measure_true_peak_dbtp(m4a, ffmpeg_path=ffmpeg_path)
+            if peak_aac is None:
+                raise RuntimeError("True peak measurement failed (AAC).")
+            last_aac = peak_aac
 
-        if peak_wav <= ceiling and peak_aac <= ceiling + headroom:
-            _lg(
-                f"True-peak protection: total gain {total_gain:.3f} dB; "
-                f"WAV {peak_wav:.2f} dBTP, AAC decode {peak_aac:.2f} dBTP (ceiling {ceiling:.2f} dBTP)."
-            )
-            return total_gain, peak_aac
+            if peak_wav <= pass_ceiling and peak_aac <= pass_ceiling:
+                _lg(
+                    f"True-peak protection: total gain {total_gain:.3f} dB; "
+                    f"WAV {peak_wav:.2f} dBTP, AAC decode {peak_aac:.2f} dBTP "
+                    f"(pass <= {pass_ceiling:.2f} dBTP, target {ceiling:.2f} dBTP)."
+                )
+                return total_gain, peak_wav, peak_aac
 
-        # Need more attenuation (WAV over ceiling and/or AAC overshoot)
-        wav_over = max(0.0, peak_wav - ceiling)
-        aac_over = max(0.0, peak_aac - ceiling - headroom)
-        step = max(wav_over, aac_over, min_step)
-        total_gain -= step
-        render_from_raw(total_gain)
+            wav_over = max(0.0, peak_wav - pass_ceiling)
+            aac_over = max(0.0, peak_aac - pass_ceiling)
+            step = max(wav_over, aac_over, min_step)
+            total_gain -= step
+            render_from_raw(total_gain)
 
-    raise RuntimeError(
-        f"True-peak protection failed after {max_attempts} attempts "
-        f"(ceiling {ceiling:.2f} dBTP, last gain {total_gain:.3f} dB)."
-    )
+        raise RuntimeError(
+            f"True-peak protection failed after {max_attempts} attempts "
+            f"(pass <= {pass_ceiling:.2f} dBTP, last WAV {last_wav:.2f}, "
+            f"last AAC {last_aac:.2f}, gain {total_gain:.3f} dB)."
+        )
+    except Exception:
+        _restore_output()
+        raise
 
 
 def raw_mastered_path_for_final(final_mastered_wav: Path) -> Path:
