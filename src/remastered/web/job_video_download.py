@@ -15,6 +15,7 @@ from remastered.web.download_filenames import video_remastered_download_filename
 from remastered.web.job_media_paths import job_workspace_dir
 from remastered.web.job_storage import job_media_storage_owner_id
 from remastered.web.media import media_exists
+from remastered.web.job_user_messages import user_facing_optional_error
 from remastered.web.settings import WebSettings
 from remastered.web.youtube_thumb_cache import (
     ensure_thumb_cached,
@@ -362,7 +363,7 @@ class VideoBuildManager:
 
             return {
                 "status": phase.value,
-                "error": state.error,
+                "error": user_facing_optional_error(state.error),
                 "download_url": (
                     f"/media/{job_id}/video?download=1"
                     if phase == VideoBuildPhase.READY and output.is_file()

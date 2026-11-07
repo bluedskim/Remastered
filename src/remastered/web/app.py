@@ -48,6 +48,7 @@ from remastered.web.job_reference_snapshot import (
     snapshot_upload_reference_for_job,
 )
 from remastered.web.job_retry import build_job_retry_form_payload
+from remastered.web.job_user_messages import prepare_job_logs
 from remastered.web.job_titles import job_display_title
 from remastered.web.job_storage import job_media_storage_owner_id
 from remastered.web.job_ui import enrich_job_ui
@@ -916,7 +917,7 @@ def job_detail(
     )
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
-    logs = store.get_logs(job_id)
+    logs = prepare_job_logs(store.get_logs(job_id))
     media_ctx = _job_media_context(job, identity=identity, store=store)
     return templates.TemplateResponse(
         request,
@@ -947,7 +948,7 @@ def job_panel(
     )
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
-    logs = store.get_logs(job_id)
+    logs = prepare_job_logs(store.get_logs(job_id))
     media_ctx = _job_media_context(job, identity=identity, store=store)
     ctx = {
         "job": _enrich_job(job, store),
