@@ -138,7 +138,19 @@
       </p>
     </div>
 
-    <input type="hidden" name="stereo_width_mode" value="follow_reference" />
+    <div class="field field-stereo-width">
+      <span class="field-label" id="stereo-width-label">Stereo width</span>
+      <div class="stereo-width-toggle" role="radiogroup" aria-labelledby="stereo-width-label">
+        <label class="stereo-width-option">
+          <input type="radio" name="stereo_width_mode" value="follow_reference" checked />
+          <span class="stereo-width-option-label">Follow reference (default)</span>
+        </label>
+        <label class="stereo-width-option">
+          <input type="radio" name="stereo_width_mode" value="preserve" />
+          <span class="stereo-width-option-label">Preserve original width</span>
+        </label>
+      </div>
+    </div>
 
     <div class="field field-tp-protection">
       <input type="hidden" name="final_tp_protection" id="final_tp_protection" value="on" />
@@ -705,9 +717,11 @@
 
   function applyStereoWidth(mode) {
     if (!form) return;
-    const field = form.querySelector('input[name="stereo_width_mode"]');
-    if (!field) return;
-    field.value = mode === "preserve" ? "preserve" : "follow_reference";
+    const value = mode === "preserve" ? "preserve" : "follow_reference";
+    const radio = form.querySelector(
+      'input[name="stereo_width_mode"][value="' + value + '"]'
+    );
+    if (radio) radio.checked = true;
   }
 
   function clearReferenceFromJob() {
