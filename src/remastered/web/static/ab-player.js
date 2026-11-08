@@ -5,6 +5,7 @@
   var SYNC_MS = 250;
   var HAVE_FUTURE_DATA = 3;
   var LOOP_EPSILON = 0.12;
+  var DURATION_MATCH_EPSILON = 0.35;
   var REPEAT_STORAGE_KEY = "remastered.abPlayer.repeat";
 
   function isTypingTarget(el) {
@@ -43,6 +44,8 @@
     var softPausing = false;
     var syncTimer = null;
     var repeatEnabled = true;
+    var pendingResumeOnVisible = false;
+    var useNativeLoop = false;
 
     function loadRepeatPreference() {
       try {
@@ -72,6 +75,7 @@
       repeatEnabled = !repeatEnabled;
       saveRepeatPreference();
       setRepeatUi();
+      applyRepeatEngine();
     }
 
     function audible() {
@@ -116,11 +120,24 @@
       return d;
     }
 
+    function durationsCloseEnough() {
+      var d1 = original.duration;
+      var d2 = remastered.duration;
+      if (!isFinite(d1) || !isFinite(d2) || d1 <= 0 || d2 <= 0) return false;
+      return Math.abs(d1 - d2) <= DURATION_MATCH_EPSILON;
+    }
+
     function loopEndTime() {
       var d1 = original.duration;
       var d2 = remastered.duration;
       if (!isFinite(d1) || !isFinite(d2) || d1 <= 0 || d2 <= 0) return 0;
       return Math.min(d1, d2);
+    }
+
+    function applyRepeatEngine() {
+      useNativeLoop = repeatEnabled && durationsCloseEnough();
+      original.loop = useNativeLoop;
+      remastered.loop = useNativeLoop;
     }
 
     function restartBothFromStart() {
@@ -144,6 +161,7 @@
 
     function checkLoopRestart() {
       if (!repeatEnabled || !userWantsPlay || seeking) return;
+      if (useNativeLoop) return;
       var end = loopEndTime();
       if (end <= LOOP_EPSILON) return;
       var master = audible();
@@ -153,14 +171,18 @@
     }
 
     function handleTrackEnded() {
-      if (repeatEnabled && userWantsPlay) {
-        restartBothFromStart();
+      if (!repeatEnabled || !userWantsPlay) {
+        if (original.ended && remastered.ended) {
+          userPauseBoth();
+          updateTimeUi();
+        }
         return;
       }
-      if (original.ended && remastered.ended) {
-        userPauseBoth();
-        updateTimeUi();
+      if (useNativeLoop) {
+        alignBothToMaster();
+        return;
       }
+      restartBothFromStart();
     }
 
     function updateTimeUi() {
@@ -204,6 +226,7 @@
 
     function userPauseBoth() {
       userWantsPlay = false;
+      pendingResumeOnVisible = false;
       buffering = false;
       softPausing = true;
       original.pause();
@@ -221,21 +244,17 @@
       softPausing = false;
     }
 
-    function playPromises() {
-      return [original.play(), remastered.play()];
-    }
-
     function handlePlayRejection(err) {
       if (err && err.name === "NotAllowedError") {
+        if (userWantsPlay && (document.hidden || document.visibilityState === "hidden")) {
+          pendingResumeOnVisible = true;
+          return;
+        }
         userPauseBoth();
       }
     }
 
-    function startPlaybackFromGesture() {
-      userWantsPlay = true;
-      alignBothToMaster();
-      setPlayIcon(true);
-      setBufferingUi(false);
+    function playBothAsync() {
       var p1;
       var p2;
       try {
@@ -246,6 +265,43 @@
         return;
       }
       Promise.all([p1, p2]).catch(handlePlayRejection);
+    }
+
+    function tryResumeAfterVisible() {
+      if (!userWantsPlay) return;
+      applyRepeatEngine();
+      var end = loopEndTime();
+      var master = audible();
+      if (
+        repeatEnabled &&
+        end > LOOP_EPSILON &&
+        (master.ended || master.currentTime >= end - LOOP_EPSILON)
+      ) {
+        restartBothFromStart();
+        return;
+      }
+      if (original.paused || remastered.paused) {
+        alignBothToMaster();
+        setPlayIcon(true);
+        playBothAsync();
+      }
+      pendingResumeOnVisible = false;
+    }
+
+    root._abOnVisible = function () {
+      if (document.visibilityState !== "visible") return;
+      if (pendingResumeOnVisible || (userWantsPlay && (original.paused || remastered.paused))) {
+        tryResumeAfterVisible();
+      }
+    };
+
+    function startPlaybackFromGesture() {
+      userWantsPlay = true;
+      pendingResumeOnVisible = false;
+      alignBothToMaster();
+      setPlayIcon(true);
+      setBufferingUi(false);
+      playBothAsync();
     }
 
     function resumeAfterBuffer() {
@@ -254,16 +310,7 @@
       buffering = false;
       setBufferingUi(false);
       setPlayIcon(true);
-      var p1;
-      var p2;
-      try {
-        p1 = original.play();
-        p2 = remastered.play();
-      } catch (err) {
-        handlePlayRejection(err);
-        return;
-      }
-      Promise.all([p1, p2]).catch(handlePlayRejection);
+      playBothAsync();
     }
 
     function onAudioWaiting(audio) {
@@ -299,16 +346,7 @@
       alignTime(remastered, t);
       updateTimeUi();
       if (userWantsPlay) {
-        var p1;
-        var p2;
-        try {
-          p1 = original.play();
-          p2 = remastered.play();
-        } catch (err) {
-          handlePlayRejection(err);
-          return;
-        }
-        Promise.all([p1, p2]).catch(handlePlayRejection);
+        playBothAsync();
       }
     }
 
@@ -330,9 +368,16 @@
       }
     }
 
+    function onMetadataLoaded() {
+      applyRepeatEngine();
+      updateTimeUi();
+    }
+
     loadRepeatPreference();
     setRepeatUi();
     applyMute();
+    applyRepeatEngine();
+    bindVisibilityResume();
 
     if (repeatBtn) {
       repeatBtn.addEventListener("click", function () {
@@ -370,7 +415,7 @@
         updateTimeUi();
         checkLoopRestart();
       });
-      audio.addEventListener("loadedmetadata", updateTimeUi);
+      audio.addEventListener("loadedmetadata", onMetadataLoaded);
       audio.addEventListener("ended", handleTrackEnded);
       audio.addEventListener("waiting", function () {
         onAudioWaiting(audio);
@@ -378,6 +423,11 @@
       audio.addEventListener("canplay", onAudioCanPlay);
       audio.addEventListener("playing", function () {
         onAudioPlaying();
+      });
+      audio.addEventListener("seeked", function () {
+        if (useNativeLoop && userWantsPlay) {
+          alignBothToMaster();
+        }
       });
     });
 
@@ -388,6 +438,7 @@
 
     root.addEventListener("ab-player-destroy", function () {
       if (syncTimer) window.clearInterval(syncTimer);
+      root._abOnVisible = null;
     });
 
     root._abHandleKey = function (e) {
@@ -417,6 +468,17 @@
       var root = document.querySelector("[data-ab-compare][data-ab-initialized]");
       if (!root || !root._abHandleKey) return;
       root._abHandleKey(e);
+    });
+  }
+
+  function bindVisibilityResume() {
+    if (window.__abPlayerVisibilityBound) return;
+    window.__abPlayerVisibilityBound = true;
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState !== "visible") return;
+      document.querySelectorAll("[data-ab-compare][data-ab-initialized='1']").forEach(function (root) {
+        if (typeof root._abOnVisible === "function") root._abOnVisible();
+      });
     });
   }
 
