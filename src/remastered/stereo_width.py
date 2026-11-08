@@ -146,5 +146,5 @@ def preserve_stereo_width(
 
 def stereo_width_label(mode: str | None) -> str:
     if mode == "preserve":
-        return "Keep original width"
+        return "Preserve original width"
     return "Follow reference (default)"

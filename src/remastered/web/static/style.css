@@ -428,6 +428,57 @@ a:hover {
   margin-left: 1.6rem;
 }
 
+.field-stereo-width {
+  margin: 0;
+}
+
+.stereo-width-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.stereo-width-option {
+  flex: 1 1 8.5rem;
+  min-width: 0;
+  cursor: pointer;
+  position: relative;
+}
+
+.stereo-width-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.stereo-width-option-label {
+  display: block;
+  padding: 0.5rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.stereo-width-option input:checked + .stereo-width-option-label {
+  border-color: rgba(168, 85, 247, 0.55);
+  background: rgba(139, 92, 246, 0.18);
+  color: var(--text);
+}
+
+.stereo-width-option input:focus-visible + .stereo-width-option-label {
+  outline: 2px solid rgba(168, 85, 247, 0.65);
+  outline-offset: 2px;
+}
+
 .job-form {
   display: flex;
   flex-direction: column;
