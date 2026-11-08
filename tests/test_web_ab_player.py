@@ -65,15 +65,18 @@ def test_ab_player_js_plays_synchronously_in_gesture_handler() -> None:
     assert "startPlaybackFromGesture()" in click_block
 
 
-def test_ab_player_js_repeat_loop_without_native_loop_attribute() -> None:
+def test_ab_player_js_hybrid_repeat_engine() -> None:
     source = AB_PLAYER_JS.read_text(encoding="utf-8")
     assert "restartBothFromStart" in source
     assert "checkLoopRestart" in source
+    assert "applyRepeatEngine" in source
+    assert "DURATION_MATCH_EPSILON" in source
+    assert "useNativeLoop" in source
+    assert "original.loop = useNativeLoop" in source
+    assert "pendingResumeOnVisible" in source
+    assert "visibilitychange" in source
     assert "REPEAT_STORAGE_KEY" in source
     assert "localStorage" in source
-    assert 'loop="' not in source
-    assert ".loop =" not in source
-    assert ".loop=" not in source
     ended_idx = source.index("addEventListener(\"ended\"")
     ended_block = source[ended_idx : ended_idx + 120]
     assert "handleTrackEnded" in ended_block
