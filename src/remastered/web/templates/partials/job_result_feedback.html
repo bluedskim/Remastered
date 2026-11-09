@@ -1,0 +1,31 @@
+{% if feedback_show %}
+<div
+  class="job-feedback"
+  data-job-feedback
+  data-job-id="{{ job.id }}"
+  data-user-rating="{% if feedback_user_rating is not none %}{{ feedback_user_rating }}{% endif %}"
+>
+  <span class="job-feedback-label small muted">Rate this result</span>
+  <div class="job-feedback-buttons" role="group" aria-label="Rate this result">
+    <button
+      type="button"
+      class="job-feedback-btn"
+      data-feedback-rating="1"
+      aria-label="Thumbs up"
+      title="Sounds good"
+    >👍</button>
+    <button
+      type="button"
+      class="job-feedback-btn"
+      data-feedback-rating="-1"
+      aria-label="Thumbs down"
+      title="Not satisfied"
+    >👎</button>
+  </div>
+  {% if feedback_admin %}
+  <span class="job-feedback-counts small muted" data-feedback-counts aria-live="polite">
+    👍 {{ feedback_counts.up }} · 👎 {{ feedback_counts.down }}
+  </span>
+  {% endif %}
+</div>
+{% endif %}

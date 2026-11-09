@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Job feedback — Remastered{% endblock %}
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/">← Back to home</a>
+</nav>
+<section class="card">
+  <h1 class="section-title">Job feedback</h1>
+  <p class="small muted">Signed-in user ratings on completed jobs (admin view).</p>
+  {% if feedback_rows %}
+  <div class="admin-feedback-table-wrap">
+    <table class="admin-feedback-table">
+      <thead>
+        <tr>
+          <th scope="col">Job</th>
+          <th scope="col">Rating</th>
+          <th scope="col">User</th>
+          <th scope="col">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in feedback_rows %}
+        <tr>
+          <td>
+            <a href="/jobs/{{ row.job_id }}">{{ job_display_title({'id': row.job_id, 'title': row.job_title, 'youtube_url': row.youtube_url, 'status': row.job_status}) }}</a>
+            <span class="small muted admin-feedback-job-id">{{ row.job_id }}</span>
+          </td>
+          <td>{{ row.rating_label }}</td>
+          <td class="admin-feedback-email">{{ row.user_email }}</td>
+          <td class="small muted">{{ row.updated_at[:19] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted empty-state">No feedback recorded yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
