@@ -55,7 +55,7 @@ def test_integration_already_safe_no_boost(tmp_path: Path) -> None:
     out = tmp_path / "mastered_16bit.wav"
     _write_wav(raw, _sine_hot(44100, 8000, 440.0, -6.0), 44100)
     shutil.copy2(raw, out)
-    g, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, _, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
     assert g == 0.0
     assert raw.read_bytes() == out.read_bytes() or out.stat().st_size > 0
 
@@ -71,7 +71,7 @@ def test_integration_silence_short(tmp_path: Path) -> None:
     tp = _ebur128_tp(raw)
     if tp is None:
         pytest.skip("ffmpeg returned no TP for near-silence short file")
-    g, pw, pa = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, pw, pa, _ = apply_final_true_peak_protection(raw, out, ws=ws)
     assert g == 0.0
     assert pw is not None and pw <= pass_ceiling_dbtp(ws) + 0.1
 
@@ -84,7 +84,7 @@ def test_integration_near_nyquist_hot(tmp_path: Path) -> None:
     n = sr // 2
     _write_wav(raw, _sine_hot(sr, n, sr * 0.45, 3.0), sr)
     shutil.copy2(raw, out)
-    g, pw, pa = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, pw, pa, _ = apply_final_true_peak_protection(raw, out, ws=ws)
     assert g <= 0.0
     m4a = tmp_path / "del.m4a"
     _encode_playback_aac(out, m4a)
@@ -102,7 +102,7 @@ def test_integration_transient_burst(tmp_path: Path) -> None:
     out = tmp_path / "mastered_16bit.wav"
     _write_wav(raw, audio, sr)
     shutil.copy2(raw, out)
-    g, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, _, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
     m4a = tmp_path / "del.m4a"
     _encode_playback_aac(out, m4a)
     _assert_strict_and_pass(out, m4a, ws)
@@ -135,7 +135,7 @@ def test_integration_48000_rate_supported(tmp_path: Path) -> None:
     _write_wav(raw, _sine_hot(sr, sr, 1200.0, 6.0), sr)
     shutil.copy2(raw, out)
     before = sf.read(str(raw), dtype="int16", always_2d=True)[0].shape[0]
-    g, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, _, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
     after = sf.read(str(out), dtype="int16", always_2d=True)[0].shape[0]
     assert before == after
     m4a = tmp_path / "del.m4a"
@@ -151,7 +151,7 @@ def test_integration_constant_gain_residual_only(tmp_path: Path) -> None:
     out = tmp_path / "mastered_16bit.wav"
     _write_wav(raw, _sine_hot(sr, sr, 997.0, 8.0), sr)
     shutil.copy2(raw, out)
-    g, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, _, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
     rin, _ = sf.read(str(raw), dtype="float32", always_2d=True)
     rout, _ = sf.read(str(out), dtype="float32", always_2d=True)
     lin = 10 ** (g / 20.0)
@@ -168,7 +168,7 @@ def test_integration_legacy_headroom_boundary_pass_ceiling(tmp_path: Path) -> No
     out = tmp_path / "mastered_16bit.wav"
     _write_wav(raw, _sine_hot(44100, 4000, 440.0, -4.0), 44100)
     shutil.copy2(raw, out)
-    g, pw, pa = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, pw, pa, _ = apply_final_true_peak_protection(raw, out, ws=ws)
     assert g == 0.0
     assert pw <= -1.5 + 0.06
     assert pa <= -1.5 + 0.06

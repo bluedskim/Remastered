@@ -60,6 +60,10 @@ def _install_common_mocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tu
         "remastered.web.worker.transcode_wav_for_playback",
         lambda p: p.with_suffix(".m4a"),
     )
+    monkeypatch.setattr(
+        "remastered.web.worker.verify_delivered_playback_peak",
+        lambda *a, **k: None,
+    )
     return work, ref
 
 
@@ -126,7 +130,7 @@ def test_worker_runs_tp_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     def fake_apply(raw: Path, out: Path, **kwargs):
         applied.append((raw, out))
         shutil.copy2(raw, out)
-        return (0.0, -6.0)
+        return (0.0, -6.0, -6.0, 0.0)
 
     monkeypatch.setattr("remastered.web.worker.copy_matchering_to_raw", fake_copy)
     monkeypatch.setattr(

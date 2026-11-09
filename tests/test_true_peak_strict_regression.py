@@ -32,13 +32,14 @@ def test_wav_safe_aac_unsafe_does_not_early_pass() -> None:
         patch("remastered.web.true_peak_protection._apply_gain_wav"),
         patch("shutil.copy2"),
     ):
-        g, pw, pa = apply_final_true_peak_protection(
+        g, pw, pa, _ = apply_final_true_peak_protection(
             Path("in.wav"),
             Path("out.wav"),
             ws=WebSettings(
                 true_peak_ceiling_dbtp=-1.0,
                 true_peak_pass_headroom_db=0.0,
                 true_peak_max_attempts=8,
+                true_peak_refine_max_attempts=0,
             ),
         )
     assert g < 0
@@ -63,13 +64,14 @@ def test_non_monotonic_aac_overshoot_after_wav_improves() -> None:
         patch("remastered.web.true_peak_protection._apply_gain_wav"),
         patch("shutil.copy2"),
     ):
-        g, pw, pa = apply_final_true_peak_protection(
+        g, pw, pa, _ = apply_final_true_peak_protection(
             Path("in.wav"),
             Path("out.wav"),
             ws=WebSettings(
                 true_peak_ceiling_dbtp=-1.0,
                 true_peak_pass_headroom_db=0.05,
                 true_peak_max_attempts=12,
+                true_peak_refine_max_attempts=0,
             ),
         )
     assert g < 0
@@ -144,7 +146,7 @@ def test_pass_at_pass_ceiling_margin_not_above() -> None:
         patch("remastered.web.true_peak_protection._encode_playback_aac"),
         patch("shutil.copy2"),
     ):
-        g, pw, pa = apply_final_true_peak_protection(Path("a"), Path("b"), ws=ws)
+        g, pw, pa, _ = apply_final_true_peak_protection(Path("a"), Path("b"), ws=ws)
     assert g == 0.0
     assert pw <= ceil
     assert pa <= ceil
@@ -165,10 +167,14 @@ def test_minus_1_04_wav_rejected_with_zero_margin() -> None:
         patch("remastered.web.true_peak_protection._apply_gain_wav"),
         patch("shutil.copy2"),
     ):
-        g, pw, pa = apply_final_true_peak_protection(
+        g, pw, pa, _ = apply_final_true_peak_protection(
             Path("a"),
             Path("b"),
-            ws=WebSettings(true_peak_pass_headroom_db=0.0, true_peak_max_attempts=6),
+            ws=WebSettings(
+                true_peak_pass_headroom_db=0.0,
+                true_peak_max_attempts=6,
+                true_peak_refine_max_attempts=0,
+            ),
         )
     assert g < 0
     assert pw <= -1.0

@@ -129,7 +129,7 @@ def test_apply_tp_real_ffmpeg_measures_wav_and_aac(tmp_path: Path) -> None:
         true_peak_max_attempts=12,
         true_peak_min_step_db=0.05,
     )
-    gain, peak_wav, peak_aac = apply_final_true_peak_protection(
+    gain, peak_wav, peak_aac, _ = apply_final_true_peak_protection(
         raw,
         out,
         ffmpeg_path="ffmpeg",

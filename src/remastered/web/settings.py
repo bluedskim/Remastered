@@ -42,6 +42,9 @@ class WebSettings(BaseSettings):
     true_peak_pass_headroom_db: float = 0.05
     true_peak_max_attempts: int = 12
     true_peak_min_step_db: float = 0.05
+    true_peak_refine_step_db: float = 0.25
+    # Extra upward refinement attempts after phase-1 pass (0 = legacy downward-only).
+    true_peak_refine_max_attempts: int = 10
 
     @property
     def references_path(self) -> Path:
