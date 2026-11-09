@@ -34,6 +34,10 @@ from remastered.web.job_video_download import (
     job_video_download_eligible,
 )
 from remastered.web.video_download_access import video_download_allowed_for_identity
+from remastered.web.job_feedback_ui import (
+    enrich_feedback_rows_for_admin,
+    job_feedback_template_context,
+)
 from remastered.web.media import (
     RETENTION_MESSAGE,
     media_exists,
@@ -351,6 +355,34 @@ def _job_media_context(
         "video_download_filename": video_download_filename,
         "rights_notice_short": rights_notice_short(ws.job_retention_days),
     }
+
+
+def _job_page_media_feedback_context(
+    job: dict,
+    *,
+    identity: RequestIdentity,
+    store: JobStore,
+) -> dict:
+    media_ctx = _job_media_context(job, identity=identity, store=store)
+    feedback_ctx = job_feedback_template_context(
+        job,
+        identity=identity,
+        store=store,
+        audio_ok=bool(media_ctx["audio_ok"]),
+        mastered_ok=bool(media_ctx["mastered_ok"]),
+    )
+    return {**media_ctx, **feedback_ctx}
+
+
+def _require_admin_visibility(
+    identity: RequestIdentity,
+    store: JobStore,
+) -> None:
+    if not video_download_allowed_for_identity(identity, store):
+        raise HTTPException(
+            status_code=403,
+            detail="This page is not available for your account.",
+        )
 
 
 def _owner_references_dir(owner_id: str) -> Path:
@@ -903,6 +935,82 @@ async def delete_job_post_api(
     return await _delete_job_for_identity(job_id, identity, store)
 
 
+@fastapi_application.post("/api/jobs/{job_id}/feedback")
+async def post_job_feedback_api(
+    job_id: str,
+    request: Request,
+    identity: RequestIdentity = Depends(require_account),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    try:
+        body = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400,
+            detail="Could not read your feedback. Try again.",
+        ) from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid feedback request.")
+    try:
+        rating = int(body.get("rating"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid feedback request.") from exc
+    if rating not in (1, -1):
+        raise HTTPException(status_code=400, detail="Invalid feedback request.")
+
+    job = await run_in_threadpool(
+        store.get_job_for_access,
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if (job.get("status") or "") != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail="Feedback is only available for completed jobs.",
+        )
+    media = _job_media_context(job, identity=identity, store=store)
+    if not (media["audio_ok"] or media["mastered_ok"]):
+        raise HTTPException(
+            status_code=400,
+            detail="Feedback is not available for this job.",
+        )
+
+    def _apply() -> dict:
+        return store.apply_job_feedback(job_id, identity.account_id, rating)
+
+    try:
+        payload = await run_in_threadpool(_apply)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid feedback request.") from exc
+    return JSONResponse(payload)
+
+
+@fastapi_application.get("/admin/feedback", response_class=HTMLResponse)
+def admin_job_feedback_list(
+    request: Request,
+    identity: RequestIdentity = Depends(require_account),
+    store: JobStore = Depends(get_store),
+) -> HTMLResponse:
+    _require_admin_visibility(identity, store)
+
+    def _load() -> list[dict]:
+        rows = store.list_job_feedback_admin()
+        return enrich_feedback_rows_for_admin(rows, store)
+
+    feedback_rows = _load()
+    return templates.TemplateResponse(
+        request,
+        "admin_job_feedback.html",
+        {
+            "feedback_rows": feedback_rows,
+            **_auth_template_context(identity),
+        },
+    )
+
+
 @fastapi_application.get("/jobs/{job_id}", response_class=HTMLResponse)
 def job_detail(
     request: Request,
@@ -918,7 +1026,7 @@ def job_detail(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
     logs = prepare_job_logs(store.get_logs(job_id))
-    media_ctx = _job_media_context(job, identity=identity, store=store)
+    page_ctx = _job_page_media_feedback_context(job, identity=identity, store=store)
     return templates.TemplateResponse(
         request,
         "job_detail.html",
@@ -928,7 +1036,7 @@ def job_detail(
             "stage_labels": STAGE_LABELS,
             "stages": WEB_STAGES,
             **_auth_template_context(identity),
-            **media_ctx,
+            **page_ctx,
             **_privacy_template_context(),
         },
     )
@@ -949,13 +1057,13 @@ def job_panel(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
     logs = prepare_job_logs(store.get_logs(job_id))
-    media_ctx = _job_media_context(job, identity=identity, store=store)
+    page_ctx = _job_page_media_feedback_context(job, identity=identity, store=store)
     ctx = {
         "job": _enrich_job(job, store),
         "logs": logs,
         "stage_labels": STAGE_LABELS,
         "stages": WEB_STAGES,
-        **media_ctx,
+        **page_ctx,
         **_auth_template_context(identity),
         **_privacy_template_context(),
     }

@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -174,6 +174,21 @@ class JobStore:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_client_ip ON jobs(client_ip)")
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS job_feedback (
+                job_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                rating INTEGER NOT NULL CHECK (rating IN (1, -1)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (job_id, user_id),
+                FOREIGN KEY (job_id) REFERENCES jobs(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_job_feedback_updated
+                ON job_feedback(updated_at DESC);
+            """
+        )
         self._migrate_auth_schema(conn)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -783,6 +798,7 @@ class JobStore:
                 return None
             job = self._row_to_job(row)
             conn.execute("DELETE FROM job_logs WHERE job_id = ?", (job_id,))
+            conn.execute("DELETE FROM job_feedback WHERE job_id = ?", (job_id,))
             conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
         return job
 
@@ -798,6 +814,10 @@ class JobStore:
             placeholders = ",".join("?" for _ in job_ids)
             conn.execute(
                 f"DELETE FROM job_logs WHERE job_id IN ({placeholders})",
+                job_ids,
+            )
+            conn.execute(
+                f"DELETE FROM job_feedback WHERE job_id IN ({placeholders})",
                 job_ids,
             )
             conn.execute(
@@ -1046,6 +1066,122 @@ class JobStore:
                 (created_before_iso,),
             ).fetchall()
         return [self._row_to_job(r) for r in rows]
+
+    def get_job_feedback_rating(self, job_id: str, user_id: str) -> int | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT rating FROM job_feedback
+                WHERE job_id = ? AND user_id = ?
+                """,
+                (job_id, user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        rating = int(row["rating"])
+        return rating if rating in (1, -1) else None
+
+    def job_feedback_counts(self, job_id: str) -> dict[str, int]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT rating, COUNT(*) AS c FROM job_feedback
+                WHERE job_id = ?
+                GROUP BY rating
+                """,
+                (job_id,),
+            ).fetchall()
+        up = down = 0
+        for row in rows:
+            if int(row["rating"]) == 1:
+                up = int(row["c"])
+            elif int(row["rating"]) == -1:
+                down = int(row["c"])
+        return {"up": up, "down": down}
+
+    def apply_job_feedback(
+        self, job_id: str, user_id: str, rating: int
+    ) -> dict[str, Any]:
+        """Toggle off when same rating; switch when different; insert when new."""
+        if rating not in (1, -1):
+            raise ValueError("invalid rating")
+        now = _utc_now()
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT rating FROM job_feedback
+                WHERE job_id = ? AND user_id = ?
+                """,
+                (job_id, user_id),
+            ).fetchone()
+            current: int | None = None
+            if row is not None:
+                current = int(row["rating"])
+            if current == rating:
+                conn.execute(
+                    "DELETE FROM job_feedback WHERE job_id = ? AND user_id = ?",
+                    (job_id, user_id),
+                )
+                result_rating: int | None = None
+            elif current is not None:
+                conn.execute(
+                    """
+                    UPDATE job_feedback
+                    SET rating = ?, updated_at = ?
+                    WHERE job_id = ? AND user_id = ?
+                    """,
+                    (rating, now, job_id, user_id),
+                )
+                result_rating = rating
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO job_feedback (
+                        job_id, user_id, rating, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (job_id, user_id, rating, now, now),
+                )
+                result_rating = rating
+        counts = self.job_feedback_counts(job_id)
+        return {"rating": result_rating, "counts": counts}
+
+    def list_job_feedback_admin(self, limit: int = 500) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 2000))
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    f.job_id,
+                    f.user_id,
+                    f.rating,
+                    f.created_at,
+                    f.updated_at,
+                    j.title,
+                    j.youtube_url,
+                    j.status
+                FROM job_feedback f
+                INNER JOIN jobs j ON j.id = f.job_id
+                ORDER BY f.updated_at DESC, f.job_id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            out.append(
+                {
+                    "job_id": row["job_id"],
+                    "user_id": row["user_id"],
+                    "rating": int(row["rating"]),
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                    "job_title": row["title"],
+                    "youtube_url": row["youtube_url"],
+                    "job_status": row["status"],
+                }
+            )
+        return out
 
     def mark_files_cleaned(self, job_id: str) -> None:
         self.update_job(job_id, files_cleaned=1)
