@@ -47,7 +47,7 @@ def test_apply_tp_passes_first_attempt_when_both_under_pass_ceiling() -> None:
         patch("remastered.web.true_peak_protection._apply_gain_wav") as ag,
         patch("shutil.copy2") as cp,
     ):
-        g, peak_wav, peak_aac = apply_final_true_peak_protection(
+        g, peak_wav, peak_aac, _ = apply_final_true_peak_protection(
             wav_in,
             wav_out,
             ws=WebSettings(
@@ -55,6 +55,7 @@ def test_apply_tp_passes_first_attempt_when_both_under_pass_ceiling() -> None:
                 true_peak_pass_headroom_db=0.05,
                 true_peak_max_attempts=5,
                 true_peak_min_step_db=0.05,
+                true_peak_refine_max_attempts=0,
             ),
         )
     assert g == 0.0
@@ -83,7 +84,7 @@ def test_apply_tp_rejects_aac_minus_0_7_at_minus_1_ceiling() -> None:
         patch("remastered.web.true_peak_protection._apply_gain_wav"),
         patch("shutil.copy2"),
     ):
-        g, pw, pa = apply_final_true_peak_protection(
+        g, pw, pa, _ = apply_final_true_peak_protection(
             wav_in,
             wav_out,
             ws=WebSettings(
@@ -91,6 +92,7 @@ def test_apply_tp_rejects_aac_minus_0_7_at_minus_1_ceiling() -> None:
                 true_peak_pass_headroom_db=0.0,
                 true_peak_max_attempts=8,
                 true_peak_min_step_db=0.05,
+                true_peak_refine_max_attempts=0,
             ),
         )
     assert g < 0
@@ -113,7 +115,7 @@ def test_apply_tp_rejects_aac_minus_0_6_without_legacy_tolerance() -> None:
         patch("remastered.web.true_peak_protection._apply_gain_wav"),
         patch("shutil.copy2"),
     ):
-        _, pw, pa = apply_final_true_peak_protection(
+        _, pw, pa, _ = apply_final_true_peak_protection(
             Path("in.wav"),
             Path("out.wav"),
             ws=WebSettings(
@@ -121,6 +123,7 @@ def test_apply_tp_rejects_aac_minus_0_6_without_legacy_tolerance() -> None:
                 true_peak_pass_headroom_db=0.0,
                 true_peak_max_attempts=10,
                 true_peak_min_step_db=0.05,
+                true_peak_refine_max_attempts=0,
             ),
         )
     assert pw <= -1.0
@@ -139,7 +142,7 @@ def test_apply_tp_no_boost_when_raw_already_under_ceiling(tmp_path: Path) -> Non
         ),
         patch("remastered.web.true_peak_protection._encode_playback_aac"),
     ):
-        g, _, _ = apply_final_true_peak_protection(
+        g, _, _, _ = apply_final_true_peak_protection(
             wav_in,
             wav_out,
             ws=WebSettings(
@@ -147,6 +150,7 @@ def test_apply_tp_no_boost_when_raw_already_under_ceiling(tmp_path: Path) -> Non
                 true_peak_pass_headroom_db=0.05,
                 true_peak_max_attempts=3,
                 true_peak_min_step_db=0.05,
+                true_peak_refine_max_attempts=0,
             ),
         )
     assert g == 0.0
@@ -181,6 +185,7 @@ def test_apply_tp_raises_after_max_attempts_and_restores_output(tmp_path: Path) 
                     true_peak_pass_headroom_db=0.0,
                     true_peak_max_attempts=3,
                     true_peak_min_step_db=0.05,
+                    true_peak_refine_max_attempts=0,
                 ),
             )
     assert wav_out.read_bytes() == b"RAW-MASTER"
@@ -204,7 +209,7 @@ def test_apply_tp_extra_attenuation_when_aac_overshoots(tmp_path: Path) -> None:
         patch("remastered.web.true_peak_protection._encode_playback_aac"),
         patch("remastered.web.true_peak_protection._apply_gain_wav") as ag,
     ):
-        g, _, _ = apply_final_true_peak_protection(
+        g, _, _, _ = apply_final_true_peak_protection(
             wav_in,
             wav_out,
             ws=WebSettings(
@@ -212,6 +217,7 @@ def test_apply_tp_extra_attenuation_when_aac_overshoots(tmp_path: Path) -> None:
                 true_peak_pass_headroom_db=0.0,
                 true_peak_max_attempts=8,
                 true_peak_min_step_db=0.05,
+                true_peak_refine_max_attempts=0,
             ),
         )
     assert g < 0

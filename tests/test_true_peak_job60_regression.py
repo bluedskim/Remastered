@@ -56,7 +56,7 @@ def test_job60_stock_matchering_strict_tp(tmp_path: Path) -> None:
     before_aac = _measure_true_peak_dbtp(before_m4a)
 
     t0 = time.monotonic()
-    gain, peak_wav, peak_aac = apply_final_true_peak_protection(
+    gain, peak_wav, peak_aac, phase1_gain = apply_final_true_peak_protection(
         raw, out, ffmpeg_path="ffmpeg", ws=ws
     )
     elapsed = time.monotonic() - t0
@@ -89,3 +89,4 @@ def test_job60_stock_matchering_strict_tp(tmp_path: Path) -> None:
     assert post_wav <= pass_ceil + 0.08
     assert post_aac <= pass_ceil + 0.08
     assert gain <= 0.0
+    assert gain >= phase1_gain

@@ -28,6 +28,7 @@ from remastered.web.stream_audio import transcode_wav_for_playback
 from remastered.web.true_peak_protection import (
     apply_final_true_peak_protection,
     copy_matchering_to_raw,
+    verify_delivered_playback_peak,
 )
 from remastered.web.job_user_messages import (
     MSG_INTERNAL,
@@ -270,11 +271,12 @@ class JobWorker:
                     logger.warning("Job %s original playback transcode failed: %s", job_id, exc)
                     log(f"Playback transcode failed (original): {exc}")
             if isinstance(mastered_wav, Path):
+                phase1_pass_gain: float | None = None
+                ws_web = WebSettings()
                 if job.get("final_tp_protection", True):
                     try:
-                        ws_web = WebSettings()
                         raw = copy_matchering_to_raw(mastered_wav)
-                        apply_final_true_peak_protection(
+                        _adopted, _pw, _pa, phase1_pass_gain = apply_final_true_peak_protection(
                             raw,
                             mastered_wav,
                             log=log,
@@ -298,8 +300,32 @@ class JobWorker:
                         )
                         return
                 try:
-                    transcode_wav_for_playback(mastered_wav)
+                    playback_m4a = transcode_wav_for_playback(mastered_wav)
+                    if job.get("final_tp_protection", True) and phase1_pass_gain is not None:
+                        verify_delivered_playback_peak(
+                            mastered_wav,
+                            playback_m4a,
+                            phase1_pass_gain_db=phase1_pass_gain,
+                            ffmpeg_path=self.settings.ffmpeg_path,
+                            ws=ws_web,
+                        )
                 except Exception as exc:  # noqa: BLE001
+                    if job.get("final_tp_protection", True) and phase1_pass_gain is not None:
+                        logger.exception(
+                            "Job %s mastered playback true-peak verify failed", job_id
+                        )
+                        safe, _ = classify_failure_message(
+                            str(exc), processing_stage=STAGE_FINALIZING
+                        )
+                        log(safe)
+                        self.store.update_job(
+                            job_id,
+                            status="failed",
+                            error=safe,
+                            stage_state=stage_state,
+                            processing_stage=STAGE_FINALIZING,
+                        )
+                        return
                     logger.warning(
                         "Job %s mastered playback transcode failed: %s", job_id, exc
                     )
