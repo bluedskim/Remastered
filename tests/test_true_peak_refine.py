@@ -15,22 +15,18 @@ from remastered.web.true_peak_protection import (
     verify_delivered_playback_peak,
 )
 
-_UPLOAD = Path(
-    "/home/ubuntu/.cursor/projects/agent-repos-remastered/uploads/tp_guard_lab_results_056b.json"
-)
+_FIXTURE_60A8 = Path(__file__).resolve().parent / "fixtures" / "tp_guard_60a8_table.json"
 
 
 def _load_60a8_sweep() -> dict[float, tuple[float, float]]:
-    data = json.loads(_UPLOAD.read_text(encoding="utf-8"))
+    data = json.loads(_FIXTURE_60A8.read_text(encoding="utf-8"))
     table: dict[float, tuple[float, float]] = {}
     for row in data["sweep"]["60a8"]:
         gain, wav, aac = row[0], row[1], row[2]
         table[round(gain, 2)] = (wav, aac)
-    for row in data["algoC"]["60a8"]["log"]:
-        tag = row[0]
-        if tag in {"P1", "P2", "P3"}:
-            _, gain, wav, aac = row
-            table[round(gain, 2)] = (wav, aac)
+    for row in data["algoC_log"]:
+        _, gain, wav, aac = row
+        table[round(gain, 2)] = (wav, aac)
     return table
 
 

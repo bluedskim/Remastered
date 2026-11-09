@@ -286,6 +286,7 @@ def apply_final_true_peak_protection(
         peak_wav = phase1_peak_wav
         peak_aac = phase1_peak_aac
         refined_from: float | None = None
+        phase2_measured_gain: float | None = None
 
         if (
             refine_max > 0
@@ -310,27 +311,34 @@ def apply_final_true_peak_protection(
                     peak_wav = pw
                     peak_aac = pa
                     refined_from = g_pass
+                    phase2_measured_gain = cand
                     break
             else:
                 render_from_raw(g_pass)
                 peak_wav = phase1_peak_wav
                 peak_aac = phase1_peak_aac
+                phase2_measured_gain = g_pass
 
         if abs(adopted_gain - g_pass) > 1e-9:
-            render_from_raw(adopted_gain)
-            pw, pa = measure_rendered()
-            if pw <= pass_ceiling and pa <= pass_ceiling:
-                peak_wav, peak_aac = pw, pa
-            else:
-                adopted_gain = g_pass
-                render_from_raw(g_pass)
+            already_verified = (
+                phase2_measured_gain is not None
+                and abs(adopted_gain - phase2_measured_gain) < 1e-9
+            )
+            if not already_verified:
+                render_from_raw(adopted_gain)
                 pw, pa = measure_rendered()
-                if pw > pass_ceiling or pa > pass_ceiling:
-                    raise RuntimeError(
-                        "True-peak protection could not verify the phase-1 pass gain."
-                    )
-                peak_wav, peak_aac = pw, pa
-                refined_from = None
+                if pw <= pass_ceiling and pa <= pass_ceiling:
+                    peak_wav, peak_aac = pw, pa
+                else:
+                    adopted_gain = g_pass
+                    render_from_raw(g_pass)
+                    pw, pa = measure_rendered()
+                    if pw > pass_ceiling or pa > pass_ceiling:
+                        raise RuntimeError(
+                            "True-peak protection could not verify the phase-1 pass gain."
+                        )
+                    peak_wav, peak_aac = pw, pa
+                    refined_from = None
 
         assert peak_wav is not None and peak_aac is not None
         assert adopted_gain <= 0.0 + 1e-9

@@ -66,7 +66,7 @@ def test_worker_updates_processing_stage(tmp_path: Path, monkeypatch: pytest.Mon
 
     def fake_apply_tp(_raw: Path, out: Path, **kwargs):
         shutil.copy2(_raw, out)
-        return (0.0, -6.0)
+        return (0.0, -6.0, -6.0, 0.0)
 
     monkeypatch.setattr(
         "remastered.web.worker.copy_matchering_to_raw",
@@ -75,6 +75,10 @@ def test_worker_updates_processing_stage(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(
         "remastered.web.worker.apply_final_true_peak_protection",
         fake_apply_tp,
+    )
+    monkeypatch.setattr(
+        "remastered.web.worker.verify_delivered_playback_peak",
+        lambda *a, **k: None,
     )
 
     store = JobStore(work / "jobs.db")
