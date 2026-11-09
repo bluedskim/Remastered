@@ -43,6 +43,21 @@ body {
   max-width: 100%;
 }
 
+.noscript-fallback {
+  padding: 1rem 0 0.5rem;
+}
+
+.noscript-fallback h1 {
+  font-size: 1.35rem;
+  margin: 0 0 0.35rem;
+}
+
+.noscript-fallback p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .page-bg {
   position: fixed;
   top: 0;
