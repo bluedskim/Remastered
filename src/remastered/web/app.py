@@ -5,7 +5,14 @@ from functools import partial
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
@@ -85,6 +92,14 @@ from remastered.web.youtube_thumb_cache import (
     is_valid_youtube_video_id,
     thumb_cache_path,
 )
+from remastered.web.seo import (
+    SITE_DESCRIPTION,
+    absolute_url,
+    build_robots_txt,
+    build_sitemap_xml,
+    home_json_ld,
+    web_page_json_ld,
+)
 from remastered.youtube_url import normalize_youtube_url
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -93,6 +108,31 @@ init_static_hashes(STATIC_DIR)
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
 templates.env.globals["job_display_title"] = job_display_title
 templates.env.globals["static_url"] = static_url
+templates.env.globals["site_description"] = SITE_DESCRIPTION
+
+
+def _merge_seo_context(
+    request: Request,
+    ctx: dict[str, object],
+    *,
+    path: str | None = None,
+    title: str = "Remastered",
+    description: str | None = None,
+    json_ld: dict | list | None = None,
+    og_type: str = "website",
+) -> dict[str, object]:
+    ws = _web_settings()
+    page_path = path if path is not None else request.url.path
+    desc = description or SITE_DESCRIPTION
+    ctx["site_description"] = SITE_DESCRIPTION
+    ctx["seo_page_title"] = title
+    ctx["seo_meta_description"] = desc
+    ctx["seo_canonical_url"] = absolute_url(page_path, ws)
+    ctx["seo_og_image_url"] = absolute_url(static_url("icon-512.png"), ws)
+    ctx["seo_og_type"] = og_type
+    if json_ld is not None:
+        ctx["seo_json_ld"] = json_ld
+    return ctx
 templates.env.globals["static_path_url"] = static_path_url
 
 STAGE_LABELS = {
@@ -191,22 +231,65 @@ async def youtube_video_meta(url: str = "") -> JSONResponse:
     return JSONResponse(payload)
 
 
+@fastapi_application.get("/robots.txt", response_class=PlainTextResponse)
+def robots_txt() -> PlainTextResponse:
+    return PlainTextResponse(
+        build_robots_txt(_web_settings()),
+        media_type="text/plain; charset=utf-8",
+    )
+
+
+@fastapi_application.get("/sitemap.xml")
+def sitemap_xml() -> Response:
+    return Response(
+        content=build_sitemap_xml(_web_settings()),
+        media_type="application/xml; charset=utf-8",
+    )
+
+
 @fastapi_application.get("/privacy", response_class=HTMLResponse)
 def privacy_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(
-        request,
-        "privacy.html",
-        _privacy_template_context(),
+    ws = _web_settings()
+    desc = (
+        "Privacy policy for Remastered: how we handle YouTube sources, "
+        "job audio, and automatic file retention."
     )
+    ctx = _privacy_template_context()
+    _merge_seo_context(
+        request,
+        ctx,
+        path="/privacy",
+        title="Privacy — Remastered",
+        description=desc,
+        json_ld=web_page_json_ld(
+            name="Privacy",
+            path="/privacy",
+            description=desc,
+            ws=ws,
+        ),
+    )
+    return templates.TemplateResponse(request, "privacy.html", ctx)
 
 
 @fastapi_application.get("/opensource", response_class=HTMLResponse)
 def opensource_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(
+    ws = _web_settings()
+    desc = "Open-source licenses and attribution for Remastered and its dependencies."
+    ctx = {**_privacy_template_context(), **_opensource_template_context()}
+    _merge_seo_context(
         request,
-        "opensource.html",
-        {**_privacy_template_context(), **_opensource_template_context()},
+        ctx,
+        path="/opensource",
+        title="Open source — Remastered",
+        description=desc,
+        json_ld=web_page_json_ld(
+            name="Open source",
+            path="/opensource",
+            description=desc,
+            ws=ws,
+        ),
     )
+    return templates.TemplateResponse(request, "opensource.html", ctx)
 
 
 @fastapi_application.get("/favicon.ico", include_in_schema=False)
@@ -521,11 +604,17 @@ def home(
     identity: RequestIdentity = Depends(require_identity),
     store: JobStore = Depends(get_store),
 ) -> HTMLResponse:
-    return templates.TemplateResponse(
+    ws = _web_settings()
+    ctx = _dashboard_context(request, identity, store)
+    _merge_seo_context(
         request,
-        "index.html",
-        _dashboard_context(request, identity, store),
+        ctx,
+        path="/",
+        title="Remastered — Home",
+        description=SITE_DESCRIPTION,
+        json_ld=home_json_ld(ws),
     )
+    return templates.TemplateResponse(request, "index.html", ctx)
 
 
 @fastapi_application.get("/dashboard", response_class=HTMLResponse)

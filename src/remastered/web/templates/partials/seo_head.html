@@ -1,0 +1,21 @@
+{% set _title = seo_page_title | default('Remastered') %}
+{% set _desc = seo_meta_description | default(site_description) %}
+{% set _canonical = seo_canonical_url | default(request.url, true) %}
+{% set _og_title = seo_og_title | default(_title) %}
+{% set _og_type = seo_og_type | default('website') %}
+<link rel="canonical" href="{{ _canonical }}" />
+<meta property="og:site_name" content="Remastered" />
+<meta property="og:title" content="{{ _og_title }}" />
+<meta property="og:description" content="{{ _desc }}" />
+<meta property="og:url" content="{{ _canonical }}" />
+<meta property="og:type" content="{{ _og_type }}" />
+<meta property="og:image" content="{{ seo_og_image_url }}" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="{{ _og_title }}" />
+<meta name="twitter:description" content="{{ _desc }}" />
+{% if seo_og_image_url %}
+<meta name="twitter:image" content="{{ seo_og_image_url }}" />
+{% endif %}
+{% if seo_json_ld %}
+<script type="application/ld+json">{{ seo_json_ld | tojson }}</script>
+{% endif %}
