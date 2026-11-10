@@ -1081,6 +1081,29 @@ class JobStore:
         rating = int(row["rating"])
         return rating if rating in (1, -1) else None
 
+    def get_job_feedback_ratings_for_user(
+        self, user_id: str, job_ids: list[str]
+    ) -> dict[str, int]:
+        """Batch lookup of the signed-in user's rating per job (list pages)."""
+        if not user_id or not job_ids:
+            return {}
+        unique = list(dict.fromkeys(job_ids))
+        placeholders = ",".join("?" * len(unique))
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT job_id, rating FROM job_feedback
+                WHERE user_id = ? AND job_id IN ({placeholders})
+                """,
+                (user_id, *unique),
+            ).fetchall()
+        out: dict[str, int] = {}
+        for row in rows:
+            rating = int(row["rating"])
+            if rating in (1, -1):
+                out[str(row["job_id"])] = rating
+        return out
+
     def job_feedback_counts(self, job_id: str) -> dict[str, int]:
         with self._conn() as conn:
             rows = conn.execute(

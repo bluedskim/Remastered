@@ -43,6 +43,7 @@ from remastered.web.job_video_download import (
 from remastered.web.video_download_access import video_download_allowed_for_identity
 from remastered.web.job_feedback_ui import (
     enrich_feedback_rows_for_admin,
+    enrich_jobs_list_feedback,
     job_feedback_template_context,
 )
 from remastered.web.media import (
@@ -594,6 +595,7 @@ def _dashboard_context(
         limit=JOBS_LIST_PAGE_SIZE,
     )
     jobs = [_enrich_job(j, store) for j in jobs_raw]
+    enrich_jobs_list_feedback(jobs, identity=identity, store=store)
     jobs_next_cursor = None
     if jobs_has_more and jobs_raw:
         last = jobs_raw[-1]
@@ -678,6 +680,7 @@ async def jobs_list_page_api(
 
     jobs_raw, has_more = await run_in_threadpool(_fetch)
     enriched = [_enrich_job(j, store) for j in jobs_raw]
+    enrich_jobs_list_feedback(enriched, identity=identity, store=store)
     next_cursor = None
     if has_more and jobs_raw:
         last = jobs_raw[-1]

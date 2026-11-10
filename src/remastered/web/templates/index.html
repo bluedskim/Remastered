@@ -216,6 +216,9 @@
 {% endif %}
 <script src="{{ static_url('job-delete.js') }}" defer></script>
 <script src="{{ static_url('job-list-more.js') }}" defer></script>
+{% if auth_user %}
+<script src="{{ static_url('job-feedback.js') }}" defer></script>
+{% endif %}
 <script>
 (function () {
   const IS_SIGNED_IN = {{ "true" if auth_user else "false" }};

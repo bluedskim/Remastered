@@ -497,6 +497,21 @@ a:hover {
   box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.25);
 }
 
+.job-feedback--list {
+  margin: 0;
+  padding: 0 0.15rem 0.1rem;
+  border-top: none;
+  justify-content: flex-end;
+}
+
+.job-feedback-btn--sm {
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 1rem;
+  border-radius: 8px;
+}
+
 .admin-feedback-table-wrap {
   overflow-x: auto;
   margin-top: 1rem;
@@ -938,6 +953,14 @@ button,
 
 .job-card-thumb-link:hover {
   text-decoration: none;
+}
+
+.job-card-block {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .job-card-shell .job-card {
