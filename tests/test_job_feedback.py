@@ -273,6 +273,87 @@ def test_admin_feedback_list_access(
     assert other.get("/admin/feedback").status_code == 403
 
 
+def test_home_job_list_shows_user_feedback_rating(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    _signup(client, caplog, "list-fb@example.com")
+    job_rated = _create_completed_job(client, url="https://www.youtube.com/watch?v=listrated")
+    job_plain = _create_completed_job(client, url="https://www.youtube.com/watch?v=listplain")
+    client.post(f"/api/jobs/{job_rated}/feedback", json={"rating": 1})
+
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "job-feedback--list" in home.text
+    assert "job-feedback.js" in home.text
+    assert "data-feedback-counts" not in home.text
+
+    rated_block = re.search(
+        rf'data-job-id="{re.escape(job_rated)}"[^>]*data-user-rating="1"',
+        home.text,
+    )
+    assert rated_block, "rated job should show thumbs-up selection on the list"
+
+    plain_block = re.search(
+        rf'data-job-id="{re.escape(job_plain)}"[^>]*data-user-rating=""',
+        home.text,
+    )
+    assert plain_block, "unrated job should not show a numeric vote count on the list"
+
+
+def test_home_job_list_hides_feedback_when_signed_out(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    _signup(client, caplog, "list-out@example.com")
+    _create_completed_job(client)
+    client.post("/logout", follow_redirects=False)
+
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "job-feedback--list" not in home.text
+
+
+def test_get_job_feedback_ratings_for_user_batch(tmp_path: Path) -> None:
+    store = JobStore(tmp_path / "batch.db")
+    now = "2026-01-01T00:00:00+00:00"
+    user = "user-a"
+    ids = []
+    for i in range(3):
+        job_id = store.create_job(
+            user_id=user,
+            youtube_url=f"https://www.youtube.com/watch?v=batch{i}",
+            reference_path="ref.wav",
+            title=f"J{i}",
+            description="",
+            privacy="private",
+            upload_enabled=False,
+        )
+        ids.append(job_id)
+        with store._conn() as conn:
+            conn.execute(
+                "UPDATE jobs SET status = 'completed', updated_at = ? WHERE id = ?",
+                (now, job_id),
+            )
+    with store._conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO job_feedback (job_id, user_id, rating, created_at, updated_at)
+            VALUES (?, ?, 1, ?, ?)
+            """,
+            (ids[0], user, now, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO job_feedback (job_id, user_id, rating, created_at, updated_at)
+            VALUES (?, ?, -1, ?, ?)
+            """,
+            (ids[2], user, now, now),
+        )
+
+    mapped = store.get_job_feedback_ratings_for_user(user, ids)
+    assert mapped == {ids[0]: 1, ids[2]: -1}
+    assert store.get_job_feedback_ratings_for_user("", ids) == {}
+
+
 def test_delete_job_removes_feedback(
     client: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:

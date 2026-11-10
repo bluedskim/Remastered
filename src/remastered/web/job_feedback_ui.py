@@ -1,10 +1,51 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from remastered.config import resolve_settings
 from remastered.web.db import JobStore
 from remastered.web.identity import RequestIdentity
+from remastered.web.media import media_exists
 from remastered.web.video_download_access import trusted_account_email
+
+
+def _feedback_media_ok(job: dict[str, Any], work_dir: Path) -> bool:
+    audio_ok = media_exists(job.get("audio_path"), job, work_dir)
+    mastered_ok = media_exists(job.get("mastered_path"), job, work_dir)
+    return audio_ok or mastered_ok
+
+
+def enrich_jobs_list_feedback(
+    jobs: list[dict[str, Any]],
+    *,
+    identity: RequestIdentity,
+    store: JobStore,
+) -> None:
+    """Attach feedback_show and feedback_user_rating for home / list API rows."""
+    if not identity.account_id:
+        for job in jobs:
+            job["feedback_show"] = False
+            job["feedback_user_rating"] = None
+        return
+
+    work_dir = resolve_settings().work_dir
+    eligible_ids: list[str] = []
+    for job in jobs:
+        show = (job.get("status") or "") == "completed" and _feedback_media_ok(
+            job, work_dir
+        )
+        if show:
+            eligible_ids.append(job["id"])
+
+    ratings = store.get_job_feedback_ratings_for_user(
+        identity.account_id, eligible_ids
+    )
+
+    for job in jobs:
+        show = job["id"] in eligible_ids
+        job["feedback_show"] = show
+        job["feedback_user_rating"] = ratings.get(job["id"]) if show else None
 
 
 def job_feedback_template_context(
