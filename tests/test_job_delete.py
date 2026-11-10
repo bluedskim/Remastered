@@ -226,6 +226,37 @@ def test_delete_still_available_via_http_delete(client: TestClient) -> None:
     assert store.get_job(job_id) is None
 
 
+def test_remove_post_alias_deletes_job(client: TestClient) -> None:
+    job_id = _create_completed_job(client)
+    work_dir = resolve_settings().work_dir
+    store = JobStore(work_dir / "remastered_jobs.db")
+    assert client.post(f"/api/jobs/{job_id}/remove").status_code == 200
+    assert store.get_job(job_id) is None
+
+
+def test_job_list_markup_keeps_buttons_outside_card_link(client: TestClient) -> None:
+    import re
+
+    job_id = _create_completed_job(client)
+    home = client.get("/")
+    assert home.status_code == 200
+    match = re.search(
+        rf'<li class="job-list-item">[\s\S]*?{re.escape(job_id)}[\s\S]*?</li>',
+        home.text,
+    )
+    assert match
+    li = match.group(0)
+    assert 'class="job-card-link"' in li
+    assert 'data-job-delete="' in li
+    link_start = li.find('<a class="job-card-link"')
+    assert link_start != -1
+    link_end = li.find("</a>", link_start)
+    assert link_end != -1
+    assert "data-job-delete" not in li[link_start:link_end]
+    if "data-feedback-rating=" in li:
+        assert "data-feedback-rating=" not in li[link_start:link_end]
+
+
 def test_job_detail_page_has_delete_control(client: TestClient) -> None:
     job_id = _create_completed_job(client)
     detail = client.get(f"/jobs/{job_id}")
