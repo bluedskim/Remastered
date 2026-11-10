@@ -497,19 +497,35 @@ a:hover {
   box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.25);
 }
 
+.job-card-footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
 .job-feedback--list {
+  display: inline-flex;
   margin: 0;
-  padding: 0 0.15rem 0.1rem;
+  padding: 0;
   border-top: none;
-  justify-content: flex-end;
+  gap: 0;
+  flex-wrap: nowrap;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.job-feedback--list .job-feedback-buttons {
+  gap: 0;
 }
 
 .job-feedback-btn--sm {
-  min-width: 2rem;
-  min-height: 2rem;
-  padding: 0.2rem 0.4rem;
-  font-size: 1rem;
-  border-radius: 8px;
+  min-width: 1.65rem;
+  min-height: 1.65rem;
+  padding: 0.1rem 0.25rem;
+  font-size: 0.92rem;
+  border-radius: 6px;
+  line-height: 1;
 }
 
 .admin-feedback-table-wrap {
