@@ -15,6 +15,7 @@ from remastered.paths import ensure_dir
 from remastered.stereo_width import (
     DEFAULT_STEREO_WIDTH_MODE,
     StereoWidthMode,
+    follow_reference_stereo_width,
     preserve_stereo_width,
     stereo_side_mid_ratio_db,
 )
@@ -152,42 +153,50 @@ def run_matchering(
         stereo_width,
     )
 
-    if stereo_width == "follow_reference":
-        results: list[mg.Result] = [mg.Result(str(output_path), subtype)]
-        mg.process(
-            str(target_wav),
-            str(reference_wav),
-            results,
-            config=config,
-            preview_result=preview_result,
-        )
-    else:
-        target, reference, sample_rate = _load_and_check_pair(
-            target_wav, reference_wav, config
-        )
-        target_snapshot = np.copy(target)
-        sm_orig = stereo_side_mid_ratio_db(target_snapshot)
-        _log(f"Stereo width (original Side/Mid): {sm_orig:.2f} dB")
+    target, reference, sample_rate = _load_and_check_pair(target_wav, reference_wav, config)
+    target_snapshot = np.copy(target)
+    sm_orig = stereo_side_mid_ratio_db(target_snapshot)
+    _log(f"Stereo width (original Side/Mid): {sm_orig:.2f} dB")
 
-        pre_limiter, final_amp = _matchering_no_limiter(target, reference, config)
-        sm_pre = stereo_side_mid_ratio_db(pre_limiter)
-        _log(f"Stereo width (after mastering, before correction): {sm_pre:.2f} dB")
+    pre_limiter, final_amp = _matchering_no_limiter(target, reference, config)
+    sm_pre = stereo_side_mid_ratio_db(pre_limiter)
+    _log(f"Stereo width (after mastering, before correction): {sm_pre:.2f} dB")
 
+    if stereo_width == "preserve":
         corrected = preserve_stereo_width(target_snapshot, pre_limiter, sample_rate)
         sm_corr = stereo_side_mid_ratio_db(corrected)
         _log(f"Stereo width (after width correction): {sm_corr:.2f} dB")
+    else:
+        corrected, decision = follow_reference_stereo_width(
+            target_snapshot, reference, pre_limiter, sample_rate
+        )
+        ref_sm = stereo_side_mid_ratio_db(reference)
+        _log(f"Stereo width (reference Side/Mid): {ref_sm:.2f} dB")
+        if decision.source_sm_db >= decision.reference_sm_db:
+            _log(
+                "Stereo width: source already wider than reference; "
+                f"kept source width ({decision.mastered_sm_db:.2f} → "
+                f"{decision.result_sm_db:.2f} dB S/M, reference "
+                f"{decision.reference_sm_db:.2f} dB)"
+            )
+        else:
+            _log(
+                "Stereo width: source narrower than reference; "
+                f"opened toward reference ({decision.mastered_sm_db:.2f} → "
+                f"{decision.result_sm_db:.2f} dB S/M, target {decision.reference_sm_db:.2f} dB)"
+            )
 
-        final = _finalize_limited(corrected, final_amp, config)
-        sm_final = stereo_side_mid_ratio_db(final)
-        _log(f"Stereo width (after limiter): {sm_final:.2f} dB")
+    final = _finalize_limited(corrected, final_amp, config)
+    sm_final = stereo_side_mid_ratio_db(final)
+    _log(f"Stereo width (after limiter): {sm_final:.2f} dB")
 
-        from matchering.saver import save
+    from matchering.saver import save
 
-        save(str(output_path), final, sample_rate, subtype)
-        if preview_result is not None:
-            from matchering.preview_creator import create_preview
+    save(str(output_path), final, sample_rate, subtype)
+    if preview_result is not None:
+        from matchering.preview_creator import create_preview
 
-            create_preview(target_snapshot, final, config, None, preview_result)
+        create_preview(target_snapshot, final, config, None, preview_result)
 
     if not output_path.is_file():
         raise RuntimeError("matchering did not produce an output file")

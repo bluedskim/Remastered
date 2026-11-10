@@ -59,7 +59,7 @@ def test_home_without_google_env(client: TestClient) -> None:
     text = resp.text
     assert 'name="stereo_width_mode" value="follow_reference"' in text
     assert 'name="stereo_width_mode" value="preserve"' in text
-    assert "Follow reference (default)" in text
+    assert "Open toward reference width (default)" in text
     assert "Preserve original width" in text
     assert 'class="field field-stereo-width"' in text
     assert "Google" not in resp.text

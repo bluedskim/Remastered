@@ -7,12 +7,14 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+from matchering.dsp import lr_to_ms, ms_to_lr
 
 from remastered.master import run_matchering
 from remastered.stereo_width import (
     DEFAULT_STEREO_WIDTH_MODE,
+    _apply_stereo_width_donor,
+    follow_reference_stereo_width,
     preserve_stereo_width,
-    stereo_lr_correlation,
     stereo_side_mid_ratio_db,
     stereo_width_label,
 )
@@ -21,28 +23,45 @@ from remastered.stereo_width import (
 def test_default_mode_and_labels() -> None:
     assert DEFAULT_STEREO_WIDTH_MODE == "follow_reference"
     assert "default" in stereo_width_label("follow_reference").lower()
+    assert "reference" in stereo_width_label("follow_reference").lower()
     assert "default" not in stereo_width_label("preserve").lower()
-    assert stereo_width_label(None) == "Follow reference (default)"
+    assert stereo_width_label(None) == "Open toward reference width (default)"
 
 
 def _write_wide_stereo_wav(path: Path, duration: float = 4.0, sr: int = 44100) -> None:
-    """Wide, imbalanced stereo (like hard-panned material with level difference L/R)."""
+    """Wide stereo with strong, measurable side energy (mid/side tones)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    n = int(sr * duration)
-    t = np.arange(n, dtype=np.float64) / sr
-    left = 0.36 * np.sin(2 * math.pi * 440.0 * t)
-    right = 0.09 * np.sin(2 * math.pi * 520.0 * t)
-    stereo = np.column_stack([left, right]).astype(np.float32)
+    stereo = _synthetic_stereo(sr, duration, side_amp=0.28).astype(np.float32)
     sf.write(path, stereo, sr, subtype="PCM_16")
 
 
-def _write_narrow_reference_wav(path: Path, freq: float = 440.0, duration: float = 4.0, sr: int = 44100) -> None:
+def _write_narrow_stereo_wav(path: Path, freq: float = 440.0, duration: float = 4.0, sr: int = 44100) -> None:
+    """Nearly mono source (narrow S/M)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     n = int(sr * duration)
     t = np.arange(n, dtype=np.float64) / sr
     tone = 0.35 * np.sin(2 * math.pi * freq * t)
-    mono = tone
-    stereo = np.column_stack([mono, mono]).astype(np.float32)
+    left = tone
+    right = tone * 0.92
+    stereo = np.column_stack([left, right]).astype(np.float32)
+    sf.write(path, stereo, sr, subtype="PCM_16")
+
+
+def _write_reference_stereo_wav(
+    path: Path,
+    *,
+    side_scale: float = 0.55,
+    freq: float = 440.0,
+    duration: float = 4.0,
+    sr: int = 44100,
+) -> None:
+    """Stereo reference with controllable width via mid/side balance."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    n = int(sr * duration)
+    t = np.arange(n, dtype=np.float64) / sr
+    mid = 0.35 * np.sin(2 * math.pi * freq * t)
+    side = 0.35 * side_scale * np.sin(2 * math.pi * (freq * 1.02) * t)
+    stereo = ms_to_lr(mid, side).astype(np.float32)
     sf.write(path, stereo, sr, subtype="PCM_16")
 
 
@@ -51,15 +70,17 @@ def _read_stereo_wav(path: Path) -> tuple[np.ndarray, int]:
     return data.astype(np.float64), int(sr)
 
 
-def test_preserve_restores_side_mid_ratio(tmp_path: Path) -> None:
+def test_follow_reference_skips_narrowing_when_source_already_wider(tmp_path: Path) -> None:
     target = tmp_path / "target.wav"
     reference = tmp_path / "reference.wav"
     _write_wide_stereo_wav(target)
-    _write_narrow_reference_wav(reference)
+    _write_reference_stereo_wav(reference, side_scale=0.15)
 
     orig, _ = _read_stereo_wav(target)
     sm_orig = stereo_side_mid_ratio_db(orig)
-    assert sm_orig > -15.0
+    ref, _ = _read_stereo_wav(reference)
+    sm_ref = stereo_side_mid_ratio_db(ref)
+    assert sm_orig > sm_ref + 1.0, "fixture: source should be wider than reference (S/M)"
 
     out_follow = tmp_path / "follow"
     result_follow = run_matchering(
@@ -72,31 +93,124 @@ def test_preserve_restores_side_mid_ratio(tmp_path: Path) -> None:
     mastered_follow, _ = _read_stereo_wav(result_follow.output_path)
     sm_follow = stereo_side_mid_ratio_db(mastered_follow)
 
-    out_preserve = tmp_path / "preserve"
-    result_preserve = run_matchering(
+    assert sm_follow >= sm_orig - 1.0, (
+        "follow_reference must not narrow an already-wider source "
+        f"(orig={sm_orig:.2f}, out={sm_follow:.2f}, ref={sm_ref:.2f} dB S/M)"
+    )
+
+
+def test_follow_reference_widens_narrow_source_toward_reference(tmp_path: Path) -> None:
+    target = tmp_path / "target.wav"
+    reference = tmp_path / "reference.wav"
+    _write_narrow_stereo_wav(target)
+    _write_reference_stereo_wav(reference, side_scale=0.6)
+
+    orig, _ = _read_stereo_wav(target)
+    sm_orig = stereo_side_mid_ratio_db(orig)
+    ref, _ = _read_stereo_wav(reference)
+    sm_ref = stereo_side_mid_ratio_db(ref)
+    assert sm_orig < sm_ref - 2.0, "fixture: source should be narrower than reference"
+
+    result = run_matchering(
         target,
         reference,
-        out_preserve,
+        tmp_path / "out",
         bit_depth=16,
-        stereo_width="preserve",
+        stereo_width="follow_reference",
     )
-    mastered_preserve, _ = _read_stereo_wav(result_preserve.output_path)
-    sm_preserve = stereo_side_mid_ratio_db(mastered_preserve)
+    mastered, _ = _read_stereo_wav(result.output_path)
+    sm_out = stereo_side_mid_ratio_db(mastered)
 
-    ref_sm, _ = _read_stereo_wav(reference)
-    sm_ref = stereo_side_mid_ratio_db(ref_sm)
-    assert sm_follow < sm_orig - 2.0, "follow_reference should narrow toward reference"
-    assert abs(sm_preserve - sm_orig) < 1.0, (
-        f"preserve should stay within 1 dB of original S/M (orig={sm_orig:.2f}, out={sm_preserve:.2f})"
+    assert sm_out > sm_orig + 2.0, "narrow source should be widened"
+    assert abs(sm_out - sm_ref) < abs(sm_orig - sm_ref)
+
+
+def test_preserve_restores_side_mid_ratio() -> None:
+    sr = 44100
+    source = _synthetic_stereo(sr, 4.0, side_amp=0.28)
+    mastered = _synthetic_stereo(sr, 4.0, side_amp=0.06)
+    sm_orig = stereo_side_mid_ratio_db(source)
+    sm_pre = stereo_side_mid_ratio_db(mastered)
+    assert sm_pre < sm_orig - 2.0
+
+    out = preserve_stereo_width(source, mastered, sr)
+    sm_out = stereo_side_mid_ratio_db(out)
+    assert abs(sm_out - sm_orig) < 1.5, (
+        f"preserve should restore source S/M (orig={sm_orig:.2f}, out={sm_out:.2f})"
     )
-    assert abs(sm_follow - sm_ref) < abs(sm_preserve - sm_ref)
+
+
+def _synthetic_stereo(
+    sr: int,
+    duration: float,
+    side_amp: float,
+    *,
+    freq: float = 440.0,
+) -> np.ndarray:
+    n = int(sr * duration)
+    t = np.arange(n, dtype=np.float64) / sr
+    mid = 0.4 * np.sin(2 * math.pi * freq * t)
+    side = side_amp * np.sin(2 * math.pi * (freq * 1.01) * t)
+    return ms_to_lr(mid, side)
+
+
+def test_follow_reference_unit_preserves_width_when_source_wider() -> None:
+    sr = 44100
+    source = _synthetic_stereo(sr, 3.0, side_amp=0.35)
+    reference = _synthetic_stereo(sr, 3.0, side_amp=0.08)
+    mastered = _synthetic_stereo(sr, 3.0, side_amp=0.05)
+    src_sm = stereo_side_mid_ratio_db(source)
+    ref_sm = stereo_side_mid_ratio_db(reference)
+    mst_sm = stereo_side_mid_ratio_db(mastered)
+    assert src_sm > ref_sm
+    assert mst_sm < src_sm - 0.5, "fixture: matchering-like narrowing"
+
+    out, decision = follow_reference_stereo_width(source, reference, mastered, sr)
+    assert decision.applied
+    out_sm = stereo_side_mid_ratio_db(out)
+    assert out_sm > mst_sm + 0.5
+    assert abs(out_sm - src_sm) < abs(out_sm - ref_sm)
+
+
+def test_follow_reference_unit_caps_overshoot_at_reference() -> None:
+    sr = 44100
+    source = _synthetic_stereo(sr, 4.0, side_amp=0.02)
+    reference = _synthetic_stereo(sr, 4.0, side_amp=0.2)
+    mastered = _synthetic_stereo(sr, 4.0, side_amp=0.45)
+    ref_sm = stereo_side_mid_ratio_db(reference)
+    mst_sm = stereo_side_mid_ratio_db(mastered)
+    assert stereo_side_mid_ratio_db(source) < ref_sm
+    assert mst_sm > ref_sm + 0.5, "fixture: mastered overshoots reference width"
+
+    out, decision = follow_reference_stereo_width(source, reference, mastered, sr)
+    assert decision.applied
+    out_sm = stereo_side_mid_ratio_db(out)
+    assert out_sm <= ref_sm + 0.75
+    assert abs(out_sm - ref_sm) < abs(mst_sm - ref_sm)
+
+
+def test_follow_reference_unit_widens_narrow_mastered() -> None:
+    sr = 44100
+    source = _synthetic_stereo(sr, 4.0, side_amp=0.03)
+    reference = _synthetic_stereo(sr, 4.0, side_amp=0.22)
+    mastered = _synthetic_stereo(sr, 4.0, side_amp=0.04)
+    ref_sm = stereo_side_mid_ratio_db(reference)
+    src_sm = stereo_side_mid_ratio_db(source)
+    mst_sm = stereo_side_mid_ratio_db(mastered)
+    assert src_sm < ref_sm and mst_sm < ref_sm - 1.0
+
+    out, decision = follow_reference_stereo_width(source, reference, mastered, sr)
+    assert decision.applied
+    out_sm = stereo_side_mid_ratio_db(out)
+    assert out_sm > mst_sm + 1.0
+    assert abs(out_sm - ref_sm) < 3.5
 
 
 def test_no_clipping_16bit(tmp_path: Path) -> None:
     target = tmp_path / "target.wav"
     reference = tmp_path / "reference.wav"
     _write_wide_stereo_wav(target, duration=3.0)
-    _write_narrow_reference_wav(reference, duration=3.0)
+    _write_reference_stereo_wav(reference, duration=3.0)
     result = run_matchering(
         target,
         reference,
@@ -123,11 +237,76 @@ def test_mono_near_mono_is_noop() -> None:
     assert np.allclose(out, mastered)
 
 
-def test_preserve_keeps_lower_lr_correlation_than_follow(tmp_path: Path) -> None:
+def test_apply_donor_widens_mastered_toward_donor() -> None:
+    sr = 44100
+    source = _synthetic_stereo(sr, 3.0, side_amp=0.2)
+    reference = _synthetic_stereo(sr, 3.0, side_amp=0.25)
+    mastered = _synthetic_stereo(sr, 3.0, side_amp=0.05)
+    mst_sm = stereo_side_mid_ratio_db(mastered)
+    out = _apply_stereo_width_donor(reference, mastered, sr)
+    assert stereo_side_mid_ratio_db(out) > mst_sm + 1.0
+
+
+def test_apply_donor_output_length_matches_mastered_when_reference_shorter() -> None:
+    sr = 44100
+    reference = _synthetic_stereo(sr, 2.0, side_amp=0.35)
+    source = _synthetic_stereo(sr, 6.0, side_amp=0.04)
+    mastered = _synthetic_stereo(sr, 6.0, side_amp=0.03)
+    out = _apply_stereo_width_donor(reference, mastered, sr)
+    assert len(out) == len(mastered)
+    assert out.shape == mastered.shape
+    assert stereo_side_mid_ratio_db(out) > stereo_side_mid_ratio_db(mastered) + 0.5
+
+
+def test_apply_donor_output_length_matches_mastered_when_reference_longer() -> None:
+    sr = 44100
+    reference = _synthetic_stereo(sr, 8.0, side_amp=0.35)
+    mastered = _synthetic_stereo(sr, 3.0, side_amp=0.03)
+    out = _apply_stereo_width_donor(reference, mastered, sr)
+    assert len(out) == len(mastered)
+    assert stereo_side_mid_ratio_db(out) > stereo_side_mid_ratio_db(mastered) + 0.5
+
+
+def test_follow_reference_donor_does_not_truncate_to_reference_length() -> None:
+    sr = 44100
+    source = _synthetic_stereo(sr, 5.0, side_amp=0.03)
+    reference = _synthetic_stereo(sr, 2.0, side_amp=0.28)
+    mastered = _synthetic_stereo(sr, 5.0, side_amp=0.04)
+    assert stereo_side_mid_ratio_db(source) < stereo_side_mid_ratio_db(reference)
+    out, decision = follow_reference_stereo_width(source, reference, mastered, sr)
+    assert len(out) == len(mastered) == len(source)
+    assert decision.applied
+    assert stereo_side_mid_ratio_db(out) > stereo_side_mid_ratio_db(mastered) + 0.5
+
+
+def test_run_matchering_output_length_matches_source_not_reference(tmp_path: Path) -> None:
+    sr = 44100
+    target = tmp_path / "target.wav"
+    reference = tmp_path / "reference.wav"
+    _write_narrow_stereo_wav(target, duration=5.0)
+    _write_reference_stereo_wav(reference, side_scale=0.55, duration=2.0)
+    target_audio, _ = _read_stereo_wav(target)
+    reference_audio, _ = _read_stereo_wav(reference)
+    assert len(target_audio) > len(reference_audio)
+
+    result = run_matchering(
+        target,
+        reference,
+        tmp_path / "out",
+        bit_depth=16,
+        stereo_width="follow_reference",
+    )
+    mastered, sr_out = _read_stereo_wav(result.output_path)
+    assert sr_out == sr
+    assert len(mastered) == len(target_audio)
+    assert len(mastered) > len(reference_audio)
+
+
+def test_preserve_and_follow_wide_source_match_width(tmp_path: Path) -> None:
     target = tmp_path / "target.wav"
     reference = tmp_path / "reference.wav"
     _write_wide_stereo_wav(target)
-    _write_narrow_reference_wav(reference)
+    _write_reference_stereo_wav(reference, side_scale=0.15)
 
     preserve_out, _ = _read_stereo_wav(
         run_matchering(target, reference, tmp_path / "out", stereo_width="preserve").output_path
@@ -135,4 +314,6 @@ def test_preserve_keeps_lower_lr_correlation_than_follow(tmp_path: Path) -> None
     follow_out, _ = _read_stereo_wav(
         run_matchering(target, reference, tmp_path / "f", stereo_width="follow_reference").output_path
     )
-    assert stereo_lr_correlation(preserve_out) < stereo_lr_correlation(follow_out)
+    sm_p = stereo_side_mid_ratio_db(preserve_out)
+    sm_f = stereo_side_mid_ratio_db(follow_out)
+    assert abs(sm_p - sm_f) < 1.5, "wide source: preserve and follow should both keep source width"
