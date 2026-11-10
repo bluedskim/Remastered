@@ -36,11 +36,13 @@
           {% endif %}
           <div class="job-card-footer">
             <span class="job-card-meta small muted">{{ job.relative_time }}</span>
-            <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+            <span class="job-card-footer-actions">
+              {% include "partials/job_list_feedback.html" %}
+              <span class="status-pill {{ job.status_pill_class }}">{{ job.status_display }}</span>
+            </span>
           </div>
         </div>
       </a>
-      {% include "partials/job_list_feedback.html" %}
     </div>
   </div>
 </li>

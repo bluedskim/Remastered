@@ -293,11 +293,47 @@ def test_home_job_list_shows_user_feedback_rating(
     )
     assert rated_block, "rated job should show thumbs-up selection on the list"
 
-    plain_block = re.search(
-        rf'data-job-id="{re.escape(job_plain)}"[^>]*data-user-rating=""',
+    rated_li = re.search(
+        rf'<li class="job-list-item">.*?{re.escape(job_rated)}.*?</li>',
         home.text,
+        re.DOTALL,
     )
-    assert plain_block, "unrated job should not show a numeric vote count on the list"
+    assert rated_li
+    assert rated_li.group(0).count("data-feedback-rating=") == 1
+    assert "job-card-footer-actions" in rated_li.group(0)
+
+    plain_li = re.search(
+        rf'<li class="job-list-item">.*?{re.escape(job_plain)}.*?</li>',
+        home.text,
+        re.DOTALL,
+    )
+    assert plain_li
+    assert "data-job-feedback" not in plain_li.group(0)
+    assert "data-feedback-rating=" not in plain_li.group(0)
+
+
+def test_jobs_list_api_shows_only_selected_feedback_icon(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    _signup(client, caplog, "api-list-fb@example.com")
+    job_down = _create_completed_job(client, url="https://www.youtube.com/watch?v=apidown")
+    client.post(f"/api/jobs/{job_down}/feedback", json={"rating": -1})
+
+    resp = client.get("/api/jobs/list")
+    assert resp.status_code == 200
+    html = resp.json()["html"]
+    assert f'data-job-id="{job_down}"' in html
+    assert 'data-user-rating="-1"' in html
+    assert html.count(f'data-job-id="{job_down}"') == 1
+    job_snippet = re.search(
+        rf'<li class="job-list-item">.*?{re.escape(job_down)}.*?</li>',
+        html,
+        re.DOTALL,
+    )
+    assert job_snippet
+    assert job_snippet.group(0).count("data-feedback-rating=") == 1
+    assert 'data-feedback-rating="-1"' in job_snippet.group(0)
+    assert 'data-feedback-rating="1"' not in job_snippet.group(0)
 
 
 def test_home_job_list_hides_feedback_when_signed_out(

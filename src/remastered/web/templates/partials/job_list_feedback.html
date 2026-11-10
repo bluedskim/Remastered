@@ -1,25 +1,30 @@
-{% if job.feedback_show %}
+{% if job.feedback_show and job.feedback_user_rating is not none %}
 <div
   class="job-feedback job-feedback--list"
   data-job-feedback
   data-job-id="{{ job.id }}"
-  data-user-rating="{% if job.feedback_user_rating is not none %}{{ job.feedback_user_rating }}{% endif %}"
+  data-user-rating="{{ job.feedback_user_rating }}"
 >
   <div class="job-feedback-buttons" role="group" aria-label="Your rating for this result">
+    {% if job.feedback_user_rating == 1 %}
     <button
       type="button"
-      class="job-feedback-btn job-feedback-btn--sm"
+      class="job-feedback-btn job-feedback-btn--sm job-feedback-btn--active"
       data-feedback-rating="1"
+      aria-pressed="true"
       aria-label="Thumbs up"
       title="Sounds good"
     >👍</button>
+    {% elif job.feedback_user_rating == -1 %}
     <button
       type="button"
-      class="job-feedback-btn job-feedback-btn--sm"
+      class="job-feedback-btn job-feedback-btn--sm job-feedback-btn--active"
       data-feedback-rating="-1"
+      aria-pressed="true"
       aria-label="Thumbs down"
       title="Not satisfied"
     >👎</button>
+    {% endif %}
   </div>
 </div>
 {% endif %}
