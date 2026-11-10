@@ -247,6 +247,61 @@ def test_apply_donor_widens_mastered_toward_donor() -> None:
     assert stereo_side_mid_ratio_db(out) > mst_sm + 1.0
 
 
+def test_apply_donor_output_length_matches_mastered_when_reference_shorter() -> None:
+    sr = 44100
+    reference = _synthetic_stereo(sr, 2.0, side_amp=0.35)
+    source = _synthetic_stereo(sr, 6.0, side_amp=0.04)
+    mastered = _synthetic_stereo(sr, 6.0, side_amp=0.03)
+    out = _apply_stereo_width_donor(reference, mastered, sr)
+    assert len(out) == len(mastered)
+    assert out.shape == mastered.shape
+    assert stereo_side_mid_ratio_db(out) > stereo_side_mid_ratio_db(mastered) + 0.5
+
+
+def test_apply_donor_output_length_matches_mastered_when_reference_longer() -> None:
+    sr = 44100
+    reference = _synthetic_stereo(sr, 8.0, side_amp=0.35)
+    mastered = _synthetic_stereo(sr, 3.0, side_amp=0.03)
+    out = _apply_stereo_width_donor(reference, mastered, sr)
+    assert len(out) == len(mastered)
+    assert stereo_side_mid_ratio_db(out) > stereo_side_mid_ratio_db(mastered) + 0.5
+
+
+def test_follow_reference_donor_does_not_truncate_to_reference_length() -> None:
+    sr = 44100
+    source = _synthetic_stereo(sr, 5.0, side_amp=0.03)
+    reference = _synthetic_stereo(sr, 2.0, side_amp=0.28)
+    mastered = _synthetic_stereo(sr, 5.0, side_amp=0.04)
+    assert stereo_side_mid_ratio_db(source) < stereo_side_mid_ratio_db(reference)
+    out, decision = follow_reference_stereo_width(source, reference, mastered, sr)
+    assert len(out) == len(mastered) == len(source)
+    assert decision.applied
+    assert stereo_side_mid_ratio_db(out) > stereo_side_mid_ratio_db(mastered) + 0.5
+
+
+def test_run_matchering_output_length_matches_source_not_reference(tmp_path: Path) -> None:
+    sr = 44100
+    target = tmp_path / "target.wav"
+    reference = tmp_path / "reference.wav"
+    _write_narrow_stereo_wav(target, duration=5.0)
+    _write_reference_stereo_wav(reference, side_scale=0.55, duration=2.0)
+    target_audio, _ = _read_stereo_wav(target)
+    reference_audio, _ = _read_stereo_wav(reference)
+    assert len(target_audio) > len(reference_audio)
+
+    result = run_matchering(
+        target,
+        reference,
+        tmp_path / "out",
+        bit_depth=16,
+        stereo_width="follow_reference",
+    )
+    mastered, sr_out = _read_stereo_wav(result.output_path)
+    assert sr_out == sr
+    assert len(mastered) == len(target_audio)
+    assert len(mastered) > len(reference_audio)
+
+
 def test_preserve_and_follow_wide_source_match_width(tmp_path: Path) -> None:
     target = tmp_path / "target.wav"
     reference = tmp_path / "reference.wav"
