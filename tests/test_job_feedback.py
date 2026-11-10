@@ -227,6 +227,25 @@ def test_completed_page_shows_feedback_for_signed_in(
     assert 'data-job-feedback' in signed.text
     assert "Rate this result" in signed.text
     assert "job-feedback.js" in signed.text
+    assert "data-feedback-counts" not in signed.text
+
+
+def test_completed_page_hides_vote_counts_even_for_admin(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "REMASTERED_WEB_VIDEO_DOWNLOAD_ALLOWED_EMAILS",
+        "admin-nocounts@example.com",
+    )
+    reset_video_download_allowed_emails_cache()
+    _signup(client, caplog, "admin-nocounts@example.com")
+    job_id = _create_completed_job(client)
+    page = client.get(f"/jobs/{job_id}")
+    assert page.status_code == 200
+    assert "data-feedback-counts" not in page.text
+    assert "data-feedback-rating" in page.text
 
 
 def test_admin_feedback_list_access(

@@ -161,6 +161,14 @@ def test_job_feedback_screenshots(feedback_screenshots_site) -> None:
         page.goto(f"{base}/jobs/{job_id}", wait_until="networkidle")
         fb = page.locator(".job-feedback")
         fb.scroll_into_view_if_needed()
+        assert page.locator("[data-feedback-counts]").count() == 0
+        assert fb.locator(".job-feedback-btn--active").count() == 1
+        console_errors: list[str] = []
+        page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
+        fb.locator('[data-feedback-rating="-1"]').click()
+        page.wait_for_timeout(300)
+        assert fb.locator(".job-feedback-btn--active").count() == 1
+        assert not console_errors
         page.locator(".card-player").screenshot(path=str(desktop))
 
         mobile_ctx = browser.new_context(viewport={"width": 390, "height": 900})
@@ -168,6 +176,7 @@ def test_job_feedback_screenshots(feedback_screenshots_site) -> None:
         mobile_page = mobile_ctx.new_page()
         mobile_page.goto(f"{base}/jobs/{job_id}", wait_until="networkidle")
         mobile_page.locator(".job-feedback").scroll_into_view_if_needed()
+        assert mobile_page.locator("[data-feedback-counts]").count() == 0
         mobile_page.locator(".job-feedback").screenshot(path=str(mobile))
 
         admin_ctx = browser.new_context(viewport={"width": 1100, "height": 800})

@@ -4,10 +4,7 @@ from typing import Any
 
 from remastered.web.db import JobStore
 from remastered.web.identity import RequestIdentity
-from remastered.web.video_download_access import (
-    trusted_account_email,
-    video_download_allowed_for_identity,
-)
+from remastered.web.video_download_access import trusted_account_email
 
 
 def job_feedback_template_context(
@@ -18,7 +15,7 @@ def job_feedback_template_context(
     audio_ok: bool,
     mastered_ok: bool,
 ) -> dict[str, Any]:
-    """Template flags for completed-job thumbs UI and optional admin counts."""
+    """Template flags for completed-job thumbs UI."""
     show = bool(
         identity.account_id
         and (job.get("status") or "") == "completed"
@@ -28,17 +25,11 @@ def job_feedback_template_context(
         return {
             "feedback_show": False,
             "feedback_user_rating": None,
-            "feedback_counts": {"up": 0, "down": 0},
-            "feedback_admin": False,
         }
     user_rating = store.get_job_feedback_rating(job["id"], identity.account_id)
-    counts = store.job_feedback_counts(job["id"])
-    is_admin = video_download_allowed_for_identity(identity, store)
     return {
         "feedback_show": True,
         "feedback_user_rating": user_rating,
-        "feedback_counts": counts,
-        "feedback_admin": is_admin,
     }
 
 

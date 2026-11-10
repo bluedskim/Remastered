@@ -24,13 +24,6 @@
     }
   }
 
-  function updateAdminCounts(root, counts) {
-    var el = root.querySelector("[data-feedback-counts]");
-    if (!el || !counts) return;
-    el.textContent =
-      "\uD83D\uDC4D " + (counts.up || 0) + " \u00b7 \uD83D\uDC4E " + (counts.down || 0);
-  }
-
   function sendVote(root, jobId, rating) {
     if (!jobId || root.dataset.feedbackInFlight === "1") return;
     setInFlight(root, true);
@@ -58,7 +51,6 @@
       })
       .then(function (data) {
         applyRating(root, data.rating == null ? null : Number(data.rating));
-        if (data.counts) updateAdminCounts(root, data.counts);
       })
       .catch(function (err) {
         window.alert(

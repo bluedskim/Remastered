@@ -497,17 +497,6 @@ a:hover {
   box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.25);
 }
 
-.job-feedback-counts {
-  flex: 1 1 100%;
-}
-
-@media (min-width: 480px) {
-  .job-feedback-counts {
-    flex: 0 1 auto;
-    margin-left: auto;
-  }
-}
-
 .admin-feedback-table-wrap {
   overflow-x: auto;
   margin-top: 1rem;
