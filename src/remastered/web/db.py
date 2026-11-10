@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -114,6 +114,7 @@ class JobStore:
                     reference_youtube_title TEXT,
                     processing_stage TEXT NOT NULL DEFAULT 'queued',
                     final_tp_protection INTEGER NOT NULL DEFAULT 1,
+                    memo TEXT NOT NULL DEFAULT '',
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
                 """
@@ -164,6 +165,13 @@ class JobStore:
                 conn.execute(
                     """
                     ALTER TABLE jobs ADD COLUMN final_tp_protection INTEGER NOT NULL DEFAULT 1
+                    """
+                )
+            cols = self._job_columns(conn)
+            if "memo" not in cols:
+                conn.execute(
+                    """
+                    ALTER TABLE jobs ADD COLUMN memo TEXT NOT NULL DEFAULT ''
                     """
                 )
             self._backfill_legacy_jobs(conn)
@@ -519,6 +527,7 @@ class JobStore:
             "reference_path",
             "processing_stage",
             "final_tp_protection",
+            "memo",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
@@ -1237,4 +1246,5 @@ class JobStore:
             data["final_tp_protection"] = bool(data["final_tp_protection"])
         else:
             data["final_tp_protection"] = True
+        data.setdefault("memo", "")
         return data

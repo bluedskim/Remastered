@@ -7,6 +7,7 @@
     {% include "partials/job_detail_actions.html" %}
   </div>
 </nav>
+{% include "partials/job_memo.html" %}
 <div id="job-status"
      {% if job.status not in ('completed', 'failed', 'cancelled') %}
      hx-get="/jobs/{{ job.id }}/panel"
@@ -22,4 +23,5 @@
 <script src="{{ static_url('video-download.js') }}" defer></script>
 <script src="{{ static_url('job-delete.js') }}" defer></script>
 <script src="{{ static_url('job-feedback.js') }}" defer></script>
+<script src="{{ static_url('job-memo.js') }}" defer></script>
 {% endblock %}

@@ -46,6 +46,11 @@ from remastered.web.job_feedback_ui import (
     enrich_jobs_list_feedback,
     job_feedback_template_context,
 )
+from remastered.web.job_memo import (
+    MEMO_INVALID_BODY_MESSAGE,
+    MEMO_SAVE_FAILED_MESSAGE,
+    normalize_job_memo,
+)
 from remastered.web.media import (
     RETENTION_MESSAGE,
     media_exists,
@@ -1078,6 +1083,47 @@ async def post_job_feedback_api(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid feedback request.") from exc
     return JSONResponse(payload)
+
+
+@fastapi_application.put("/api/jobs/{job_id}/memo")
+async def put_job_memo_api(
+    job_id: str,
+    request: Request,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    try:
+        body = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400,
+            detail=MEMO_SAVE_FAILED_MESSAGE,
+        ) from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail=MEMO_INVALID_BODY_MESSAGE)
+
+    job = await run_in_threadpool(
+        store.get_job_for_access,
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    memo, err = normalize_job_memo(body.get("memo"))
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+    def _save() -> str:
+        store.update_job(job_id, memo=memo)
+        return memo or ""
+
+    try:
+        saved = await run_in_threadpool(_save)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=MEMO_SAVE_FAILED_MESSAGE) from exc
+    return JSONResponse({"memo": saved})
 
 
 @fastapi_application.get("/admin/feedback", response_class=HTMLResponse)

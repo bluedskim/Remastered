@@ -1025,6 +1025,59 @@ button,
   flex-wrap: wrap;
 }
 
+.job-memo {
+  margin-bottom: 1rem;
+}
+
+.job-memo-hint {
+  margin: 0.15rem 0 0.5rem;
+}
+
+.job-memo-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.job-memo-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 3.25rem;
+  max-height: 8rem;
+  font: inherit;
+  line-height: 1.4;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+  color: inherit;
+}
+
+.job-memo-input:focus {
+  outline: 2px solid rgba(168, 85, 247, 0.45);
+  outline-offset: 1px;
+}
+
+.job-memo-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.job-memo-counter--over {
+  color: #fca5a5;
+}
+
+.job-memo-status--ok {
+  color: #86efac;
+}
+
+.job-memo-status--error {
+  color: #fca5a5;
+}
+
 .retry-form-notice {
   margin: 0 0 1rem;
   padding: 0.65rem 0.85rem;
