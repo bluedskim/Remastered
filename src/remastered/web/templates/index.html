@@ -147,13 +147,17 @@
       <div class="stereo-width-toggle" role="radiogroup" aria-labelledby="stereo-width-label">
         <label class="stereo-width-option">
           <input type="radio" name="stereo_width_mode" value="follow_reference" checked />
-          <span class="stereo-width-option-label">Follow reference (default)</span>
+          <span class="stereo-width-option-label">Open toward reference width (default)</span>
         </label>
         <label class="stereo-width-option">
           <input type="radio" name="stereo_width_mode" value="preserve" />
           <span class="stereo-width-option-label">Preserve original width</span>
         </label>
       </div>
+      <p class="small muted hint" id="stereo-width-hint">
+        If your source is narrower than the reference, we widen the result up to the reference width.
+        We do not narrow a source that is already wider than the reference.
+      </p>
     </div>
 
     <div class="field field-tp-protection">

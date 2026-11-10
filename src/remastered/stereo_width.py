@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
@@ -17,7 +18,10 @@ _N_BANDS = 10
 
 
 def stereo_side_mid_ratio_db(stereo: np.ndarray) -> float:
-    """Side/Mid RMS level ratio in dB (20·log10 RMS_side / RMS_mid)."""
+    """Side/Mid RMS level ratio in dB (20·log10 RMS_side / RMS_mid).
+
+    More negative values mean a narrower stereo image; values closer to 0 dB are wider.
+    """
     stereo = np.asarray(stereo, dtype=np.float64)
     if stereo.ndim != 2 or stereo.shape[1] != 2:
         return float("-inf")
@@ -47,33 +51,29 @@ def _smooth_gains(gains: np.ndarray, window: int = 3) -> np.ndarray:
     return np.convolve(gains, kernel, mode="same")
 
 
-def preserve_stereo_width(
-    original: np.ndarray,
+def _apply_stereo_width_donor(
+    width_donor: np.ndarray,
     mastered: np.ndarray,
     sample_rate: int,
     *,
     n_bands: int = _N_BANDS,
     gain_clamp_db: float = _GAIN_CLAMP_DB,
-    mono_threshold_db: float = _MONO_SIDE_MID_THRESHOLD_DB,
 ) -> np.ndarray:
-    """Restore per-band side/mid energy ratios from the original onto the mastered signal."""
-    original = np.asarray(original, dtype=np.float64)
+    """Scale mastered side per band to match the donor's side/mid energy ratios."""
+    width_donor = np.asarray(width_donor, dtype=np.float64)
     mastered = np.asarray(mastered, dtype=np.float64)
-    if original.ndim != 2 or mastered.ndim != 2 or original.shape[1] != 2:
+    if width_donor.ndim != 2 or mastered.ndim != 2 or width_donor.shape[1] != 2:
         return mastered
     if mastered.shape[1] != 2:
         return mastered
 
-    n = min(len(original), len(mastered))
+    n = min(len(width_donor), len(mastered))
     if n < 256:
         return mastered[:n]
-    original = original[:n]
+    width_donor = width_donor[:n]
     mastered = mastered[:n]
 
-    if stereo_side_mid_ratio_db(original) < mono_threshold_db:
-        return mastered
-
-    orig_mid, orig_side = lr_to_ms(original)
+    donor_mid, donor_side = lr_to_ms(width_donor)
     out_mid, out_side = lr_to_ms(mastered)
 
     nperseg = min(4096, max(512, (n // 8) | 1))
@@ -90,8 +90,8 @@ def preserve_stereo_width(
         )
         return freqs, times, z
 
-    f, _t, z_om = _stft(orig_mid)
-    _f, _t, z_os = _stft(orig_side)
+    f, _t, z_om = _stft(donor_mid)
+    _f, _t, z_os = _stft(donor_side)
     _f, _t, z_pm = _stft(out_mid)
     _f, _t, z_ps = _stft(out_side)
 
@@ -109,12 +109,12 @@ def preserve_stereo_width(
         os_ = float(np.mean(np.abs(z_os[mask]) ** 2))
         pm = float(np.mean(np.abs(z_pm[mask]) ** 2))
         ps = float(np.mean(np.abs(z_ps[mask]) ** 2))
-        ratio_orig = np.sqrt(os_ / max(om, 1e-20))
+        ratio_donor = np.sqrt(os_ / max(om, 1e-20))
         ratio_out = np.sqrt(ps / max(pm, 1e-20))
-        gain = ratio_orig / max(ratio_out, 1e-20)
+        gain = ratio_donor / max(ratio_out, 1e-20)
         gain_db = float(np.clip(20.0 * np.log10(max(gain, 1e-20)), -gain_clamp_db, gain_clamp_db))
         band_gain_linear[mask] = 10.0 ** (gain_db / 20.0)
-        orig_sm_ratio[mask] = ratio_orig
+        orig_sm_ratio[mask] = ratio_donor
 
     band_gain_linear = _smooth_gains(band_gain_linear, window=3)
     orig_sm_ratio = _smooth_gains(orig_sm_ratio, window=3)
@@ -144,7 +144,88 @@ def preserve_stereo_width(
     return ms_to_lr(out_mid, side_corr)
 
 
+def preserve_stereo_width(
+    original: np.ndarray,
+    mastered: np.ndarray,
+    sample_rate: int,
+    *,
+    n_bands: int = _N_BANDS,
+    gain_clamp_db: float = _GAIN_CLAMP_DB,
+    mono_threshold_db: float = _MONO_SIDE_MID_THRESHOLD_DB,
+) -> np.ndarray:
+    """Restore per-band side/mid energy ratios from the original onto the mastered signal."""
+    original = np.asarray(original, dtype=np.float64)
+    mastered = np.asarray(mastered, dtype=np.float64)
+    if original.ndim != 2 or mastered.ndim != 2 or original.shape[1] != 2:
+        return mastered
+    if stereo_side_mid_ratio_db(original) < mono_threshold_db:
+        return mastered
+    return _apply_stereo_width_donor(
+        original, mastered, sample_rate, n_bands=n_bands, gain_clamp_db=gain_clamp_db
+    )
+
+
+@dataclass
+class FollowReferenceStereoDecision:
+    """Outcome of follow-reference stereo width policy (S/M = Side RMS vs Mid RMS in dB)."""
+
+    source_sm_db: float
+    reference_sm_db: float
+    mastered_sm_db: float
+    applied: bool
+    result_sm_db: float
+
+
+def follow_reference_stereo_width(
+    source: np.ndarray,
+    reference: np.ndarray,
+    mastered: np.ndarray,
+    sample_rate: int,
+    *,
+    n_bands: int = _N_BANDS,
+    gain_clamp_db: float = _GAIN_CLAMP_DB,
+) -> tuple[np.ndarray, FollowReferenceStereoDecision]:
+    """Open a narrower source toward reference width; never narrow an already-wider source."""
+    source = np.asarray(source, dtype=np.float64)
+    reference = np.asarray(reference, dtype=np.float64)
+    mastered = np.asarray(mastered, dtype=np.float64)
+
+    src_sm = stereo_side_mid_ratio_db(source)
+    ref_sm = stereo_side_mid_ratio_db(reference)
+    mst_sm = stereo_side_mid_ratio_db(mastered)
+
+    # Higher S/M (less negative) = wider — never squeeze toward the narrower reference.
+    if src_sm >= ref_sm:
+        corrected = preserve_stereo_width(
+            source,
+            mastered,
+            sample_rate,
+            n_bands=n_bands,
+            gain_clamp_db=gain_clamp_db,
+        )
+        result_sm = stereo_side_mid_ratio_db(corrected)
+        return corrected, FollowReferenceStereoDecision(
+            source_sm_db=src_sm,
+            reference_sm_db=ref_sm,
+            mastered_sm_db=mst_sm,
+            applied=True,
+            result_sm_db=result_sm,
+        )
+
+    corrected = _apply_stereo_width_donor(
+        reference, mastered, sample_rate, n_bands=n_bands, gain_clamp_db=gain_clamp_db
+    )
+    result_sm = stereo_side_mid_ratio_db(corrected)
+    return corrected, FollowReferenceStereoDecision(
+        source_sm_db=src_sm,
+        reference_sm_db=ref_sm,
+        mastered_sm_db=mst_sm,
+        applied=True,
+        result_sm_db=result_sm,
+    )
+
+
 def stereo_width_label(mode: str | None) -> str:
     if mode == "preserve":
         return "Preserve original width"
-    return "Follow reference (default)"
+    return "Open toward reference width (default)"
