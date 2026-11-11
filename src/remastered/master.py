@@ -16,6 +16,7 @@ from remastered.stereo_width import (
     DEFAULT_STEREO_WIDTH_MODE,
     StereoWidthMode,
     follow_reference_stereo_width,
+    hold_stereo_width_target,
     preserve_stereo_width,
     stereo_side_mid_ratio_db,
 )
@@ -186,9 +187,17 @@ def run_matchering(
                 f"{decision.result_sm_db:.2f} dB S/M, target {decision.reference_sm_db:.2f} dB)"
             )
 
-    final = _finalize_limited(corrected, final_amp, config)
+    limited = _finalize_limited(corrected, final_amp, config)
+    sm_limited = stereo_side_mid_ratio_db(limited)
+    _log(f"Stereo width (after limiter): {sm_limited:.2f} dB")
+
+    final = hold_stereo_width_target(corrected, limited, sample_rate)
     sm_final = stereo_side_mid_ratio_db(final)
-    _log(f"Stereo width (after limiter): {sm_final:.2f} dB")
+    if abs(sm_final - sm_limited) >= 0.05:
+        _log(
+            "Stereo width: restored target after limiter "
+            f"({sm_limited:.2f} → {sm_final:.2f} dB S/M)"
+        )
 
     from matchering.saver import save
 

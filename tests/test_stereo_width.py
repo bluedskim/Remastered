@@ -9,15 +9,19 @@ import numpy as np
 import soundfile as sf
 from matchering.dsp import lr_to_ms, ms_to_lr
 
-from remastered.master import run_matchering
+import remastered.master as master_mod
+from remastered.master import _finalize_limited, run_matchering
 from remastered.stereo_width import (
     DEFAULT_STEREO_WIDTH_MODE,
     _apply_stereo_width_donor,
     follow_reference_stereo_width,
+    hold_stereo_width_target,
     preserve_stereo_width,
     stereo_side_mid_ratio_db,
     stereo_width_label,
 )
+
+_POST_WIDTH_TARGET_TOLERANCE_DB = 0.4
 
 
 def test_default_mode_and_labels() -> None:
@@ -300,6 +304,144 @@ def test_run_matchering_output_length_matches_source_not_reference(tmp_path: Pat
     assert sr_out == sr
     assert len(mastered) == len(target_audio)
     assert len(mastered) > len(reference_audio)
+
+
+def _finalize_with_side_gain(audio, final_amp, config, side_gain: float):
+    """Simulate a loudness stage that boosts side more than mid (S/M drift)."""
+    limited = _finalize_limited(audio, final_amp, config)
+    mid, side = lr_to_ms(limited)
+    return ms_to_lr(mid, side * side_gain)
+
+
+def test_hold_stereo_width_target_recovers_from_drift() -> None:
+    sr = 44100
+    target = _synthetic_stereo(sr, 4.0, side_amp=0.12)
+    drifted = _synthetic_stereo(sr, 4.0, side_amp=0.45)
+    sm_target = stereo_side_mid_ratio_db(target)
+    sm_drift = stereo_side_mid_ratio_db(drifted)
+    assert sm_drift > sm_target + 2.0
+
+    held = hold_stereo_width_target(target, drifted, sr)
+    sm_held = stereo_side_mid_ratio_db(held)
+    assert abs(sm_held - sm_target) < _POST_WIDTH_TARGET_TOLERANCE_DB
+
+
+def test_preserve_final_holds_width_stage_after_limiter_drift(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "target.wav"
+    reference = tmp_path / "reference.wav"
+    _write_narrow_stereo_wav(target, freq=330.0)
+    _write_reference_stereo_wav(reference, side_scale=0.5, freq=330.0)
+
+    baseline = run_matchering(
+        target,
+        reference,
+        tmp_path / "baseline",
+        bit_depth=16,
+        stereo_width="preserve",
+    )
+    sm_baseline = stereo_side_mid_ratio_db(_read_stereo_wav(baseline.output_path)[0])
+
+    def _drifting_finalize(audio, final_amp, config):
+        return _finalize_with_side_gain(audio, final_amp, config, side_gain=2.2)
+
+    monkeypatch.setattr(master_mod, "_finalize_limited", _drifting_finalize)
+
+    result = run_matchering(
+        target,
+        reference,
+        tmp_path / "out",
+        bit_depth=16,
+        stereo_width="preserve",
+    )
+    mastered, _ = _read_stereo_wav(result.output_path)
+    sm_out = stereo_side_mid_ratio_db(mastered)
+
+    assert abs(sm_out - sm_baseline) < _POST_WIDTH_TARGET_TOLERANCE_DB, (
+        "preserve output must match the width-stage target after post-width limiting drift "
+        f"(baseline={sm_baseline:.2f}, out={sm_out:.2f} dB S/M)"
+    )
+
+
+def test_follow_reference_wide_source_holds_width_after_limiter_drift(
+    tmp_path: Path, monkeypatch
+) -> None:
+    target = tmp_path / "target.wav"
+    reference = tmp_path / "reference.wav"
+    _write_wide_stereo_wav(target)
+    _write_reference_stereo_wav(reference, side_scale=0.12)
+
+    baseline = run_matchering(
+        target,
+        reference,
+        tmp_path / "baseline",
+        bit_depth=16,
+        stereo_width="follow_reference",
+    )
+    sm_baseline = stereo_side_mid_ratio_db(_read_stereo_wav(baseline.output_path)[0])
+
+    def _drifting_finalize(audio, final_amp, config):
+        return _finalize_with_side_gain(audio, final_amp, config, side_gain=2.0)
+
+    monkeypatch.setattr(master_mod, "_finalize_limited", _drifting_finalize)
+
+    result = run_matchering(
+        target,
+        reference,
+        tmp_path / "wide",
+        bit_depth=16,
+        stereo_width="follow_reference",
+    )
+    mastered, _ = _read_stereo_wav(result.output_path)
+    sm_out = stereo_side_mid_ratio_db(mastered)
+
+    assert abs(sm_out - sm_baseline) < _POST_WIDTH_TARGET_TOLERANCE_DB, (
+        "follow_reference must keep the width-stage target after limiter drift on a wide source "
+        f"(baseline={sm_baseline:.2f}, out={sm_out:.2f} dB S/M)"
+    )
+
+
+def test_follow_reference_narrow_source_holds_opened_target_after_limiter_drift(
+    tmp_path: Path, monkeypatch
+) -> None:
+    target = tmp_path / "target.wav"
+    reference = tmp_path / "reference.wav"
+    _write_narrow_stereo_wav(target)
+    _write_reference_stereo_wav(reference, side_scale=0.55)
+    orig, _ = _read_stereo_wav(target)
+    ref, _ = _read_stereo_wav(reference)
+    sm_orig = stereo_side_mid_ratio_db(orig)
+    sm_ref = stereo_side_mid_ratio_db(ref)
+    assert sm_orig < sm_ref - 2.0
+
+    baseline = run_matchering(
+        target,
+        reference,
+        tmp_path / "baseline",
+        bit_depth=16,
+        stereo_width="follow_reference",
+    )
+    sm_baseline = stereo_side_mid_ratio_db(_read_stereo_wav(baseline.output_path)[0])
+
+    def _drifting_finalize(audio, final_amp, config):
+        return _finalize_with_side_gain(audio, final_amp, config, side_gain=2.5)
+
+    monkeypatch.setattr(master_mod, "_finalize_limited", _drifting_finalize)
+
+    result = run_matchering(
+        target,
+        reference,
+        tmp_path / "narrow",
+        bit_depth=16,
+        stereo_width="follow_reference",
+    )
+    mastered, _ = _read_stereo_wav(result.output_path)
+    sm_out = stereo_side_mid_ratio_db(mastered)
+
+    assert abs(sm_out - sm_baseline) < _POST_WIDTH_TARGET_TOLERANCE_DB, (
+        "follow_reference narrow source must hold the same opened target after limiter drift "
+        f"(baseline={sm_baseline:.2f}, drifted pipeline={sm_out:.2f}, ref={sm_ref:.2f} dB S/M)"
+    )
+    assert sm_out > sm_orig + 2.0
 
 
 def test_preserve_and_follow_wide_source_match_width(tmp_path: Path) -> None:
