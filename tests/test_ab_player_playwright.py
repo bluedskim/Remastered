@@ -75,6 +75,7 @@ def _ab_player_html(*, original_src: str, remastered_src: str) -> str:
       <input type="range" data-ab-volume min="0" max="100" value="100" />
     </div>
   </div>
+  <script src="/static/ab-loudness-match.js"></script>
   <script src="/static/ab-player.js"></script>
 </body>
 </html>"""

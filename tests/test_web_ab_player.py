@@ -42,6 +42,9 @@ def test_job_players_ab_compare_template(jinja_env: Environment) -> None:
     assert "Rights notice" in html
     assert 'data-ab-repeat' in html
     assert "Repeat (R)" in html
+    assert 'data-ab-loudness-match' in html
+    assert "Match loudness (playback only)" in html
+    assert "downloads are unchanged" in html
 
 
 def test_ab_player_js_does_not_cancel_play_on_waiting_or_stalled() -> None:
