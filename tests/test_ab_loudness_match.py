@@ -6,6 +6,7 @@ import pytest
 
 from remastered.web.ab_loudness_match import (
     attenuation_db_to_linear,
+    format_playback_attenuation_indicator,
     playback_attenuation_gains_db,
     playback_attenuation_gains_linear,
 )
@@ -59,13 +60,46 @@ def test_ab_loudness_match_js_exports_api() -> None:
 def test_ab_player_wires_loudness_match_toggle() -> None:
     source = AB_PLAYER_JS.read_text(encoding="utf-8")
     assert "[data-ab-loudness-match]" in source
+    assert "[data-ab-loudness-attenuation]" in source
     assert "loudnessMatchEnabled" in source
+    assert "loudnessMeasureReady" in source
+    assert "updateLoudnessAttenuationIndicator" in source
     assert "scheduleLoudnessMeasurement" in source
     assert "RemasteredAbLoudnessMatch" in source
     assert "LOUDNESS_MATCH_STORAGE_KEY" in source
+    assert "vol.value =" not in source
 
 
 def test_attenuation_db_to_linear() -> None:
     assert attenuation_db_to_linear(-6.0) == pytest.approx(10 ** (-6.0 / 20.0))
     assert attenuation_db_to_linear(0.0) == 1.0
     assert attenuation_db_to_linear(-80.0) == pytest.approx(10 ** (-80.0 / 20.0))
+
+
+@pytest.mark.parametrize(
+    ("side", "db", "expected"),
+    [
+        ("remastered", -3.2, "Remastered \u22123.2 dB"),
+        ("original", -6.0, "Original \u22126.0 dB"),
+        ("remastered", 0.0, None),
+        ("original", -0.02, None),
+        ("original", -0.2, "Original \u22120.2 dB"),
+    ],
+)
+def test_format_playback_attenuation_indicator(
+    side: str, db: float, expected: str | None
+) -> None:
+    assert format_playback_attenuation_indicator(side, db) == expected
+
+
+def test_format_playback_attenuation_indicator_invalid_side() -> None:
+    assert format_playback_attenuation_indicator("before", -3.0) is None
+
+
+def test_ab_player_indicator_hides_when_matching_off_or_not_ready() -> None:
+    source = AB_PLAYER_JS.read_text(encoding="utf-8")
+    idx = source.index("function updateLoudnessAttenuationIndicator")
+    block = source[idx : idx + 520]
+    assert "!loudnessMatchEnabled || !loudnessMeasureReady" in block
+    assert 'loudnessAttenEl.hidden = true' in block
+    assert "formatAttenuationDb" in block

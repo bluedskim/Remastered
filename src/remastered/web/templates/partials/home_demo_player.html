@@ -8,6 +8,7 @@
       <button type="button" class="ab-listen-btn" data-ab-side="original" aria-pressed="false">Original</button>
       <span class="ab-listen-sep" aria-hidden="true">|</span>
       <button type="button" class="ab-listen-btn ab-listen-btn--active" data-ab-side="remastered" aria-pressed="true">Remastered</button>
+      <span class="ab-loudness-attenuation small muted" data-ab-loudness-attenuation hidden aria-live="polite"></span>
     </div>
     <div class="ab-audio-host" aria-hidden="true">
       <audio data-audio="original" preload="metadata" src="{{ static_path_url(home_demo_samples.before_static_path) }}"></audio>

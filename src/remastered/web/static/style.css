@@ -1731,6 +1731,17 @@ button,
   margin: 0;
 }
 
+.ab-loudness-attenuation {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.ab-listen-toggle .ab-loudness-attenuation {
+  margin-left: 0.15rem;
+}
+
 .ab-compare--compact .ab-loudness-row {
   margin-bottom: 0.55rem;
 }
