@@ -1703,7 +1703,7 @@ button,
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 0.75rem;
-  margin-bottom: 0.75rem;
+  margin: 0.35rem 0 0.25rem;
 }
 
 .ab-loudness-match-btn {
@@ -1743,7 +1743,7 @@ button,
 }
 
 .ab-compare--compact .ab-loudness-row {
-  margin-bottom: 0.55rem;
+  margin: 0.3rem 0 0.2rem;
 }
 
 .ab-segment {

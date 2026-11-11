@@ -46,6 +46,12 @@ def test_job_players_ab_compare_template(jinja_env: Environment) -> None:
     assert 'data-ab-loudness-attenuation' in html
     assert "Match loudness (playback only)" in html
     assert "downloads are unchanged" in html
+    listen = html.index("data-ab-listen-toggle")
+    transport = html.index('class="ab-transport"')
+    loudness = html.index("data-ab-loudness-match")
+    keys = html.index("ab-keys-hint")
+    downloads = html.index("ab-downloads")
+    assert listen < transport < loudness < keys < downloads
 
 
 def test_ab_player_js_does_not_cancel_play_on_waiting_or_stalled() -> None:

@@ -4,13 +4,6 @@
 
   {% if ab_compare_ok %}
   <div class="ab-compare" data-ab-compare>
-    <div class="ab-loudness-row">
-      <button type="button" class="ab-loudness-match-btn ab-loudness-match-on" data-ab-loudness-match aria-pressed="true" title="Match playback loudness for A/B comparison">
-        Match loudness (playback only)
-      </button>
-      <p class="ab-loudness-hint small muted">Adjusts preview volume when switching A/B; downloads are unchanged.</p>
-      <span class="ab-loudness-attenuation small" data-ab-loudness-attenuation hidden aria-live="polite"></span>
-    </div>
     <div class="ab-listen-toggle" role="group" aria-label="Listening source" data-ab-listen-toggle>
       <span class="ab-listen-label">Listening:</span>
       <button type="button" class="ab-listen-btn" data-ab-side="original" aria-pressed="false">Original</button>
@@ -31,6 +24,13 @@
         <span class="small muted">Volume</span>
         <input type="range" class="ab-volume" data-ab-volume min="0" max="100" value="100" aria-label="Volume" />
       </label>
+    </div>
+    <div class="ab-loudness-row">
+      <button type="button" class="ab-loudness-match-btn ab-loudness-match-on" data-ab-loudness-match aria-pressed="true" title="Match playback loudness for A/B comparison">
+        Match loudness (playback only)
+      </button>
+      <p class="ab-loudness-hint small muted">Adjusts preview volume when switching A/B; downloads are unchanged.</p>
+      <span class="ab-loudness-attenuation small" data-ab-loudness-attenuation hidden aria-live="polite"></span>
     </div>
     <p class="small muted ab-keys-hint">Space play/pause · A/B switch track · T toggle · R repeat</p>
     <div class="ab-downloads">
