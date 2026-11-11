@@ -36,3 +36,13 @@ def playback_attenuation_gains_linear(
         attenuation_db_to_linear(orig_db),
         attenuation_db_to_linear(rem_db),
     )
+
+
+def format_playback_attenuation_indicator(side: str, attenuation_db: float) -> str | None:
+    """Compact UI label for playback-only loudness-match attenuation on ``side``."""
+    if side not in ("original", "remastered"):
+        return None
+    if not math.isfinite(attenuation_db) or attenuation_db >= -0.05:
+        return None
+    label = "Original" if side == "original" else "Remastered"
+    return f"{label} \u2212{abs(attenuation_db):.1f} dB"

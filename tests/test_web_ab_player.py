@@ -43,6 +43,7 @@ def test_job_players_ab_compare_template(jinja_env: Environment) -> None:
     assert 'data-ab-repeat' in html
     assert "Repeat (R)" in html
     assert 'data-ab-loudness-match' in html
+    assert 'data-ab-loudness-attenuation' in html
     assert "Match loudness (playback only)" in html
     assert "downloads are unchanged" in html
 

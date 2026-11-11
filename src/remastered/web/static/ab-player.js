@@ -33,6 +33,7 @@
     var playBtn = root.querySelector("[data-ab-play]");
     var repeatBtn = root.querySelector("[data-ab-repeat]");
     var loudnessMatchBtn = root.querySelector("[data-ab-loudness-match]");
+    var loudnessAttenEl = root.querySelector("[data-ab-loudness-attenuation]");
     var seek = root.querySelector("[data-ab-seek]");
     var vol = root.querySelector("[data-ab-volume]");
     var timeCur = root.querySelector("[data-ab-time-current]");
@@ -50,6 +51,8 @@
     var useNativeLoop = false;
     var loudnessMatchEnabled = true;
     var loudnessGainLinear = { original: 1, remastered: 1 };
+    var loudnessGainDb = { original: 0, remastered: 0 };
+    var loudnessMeasureReady = false;
     var loudnessMeasureToken = 0;
     var loudnessMeasureAttempted = false;
 
@@ -93,11 +96,40 @@
       }
     }
 
+    function formatAttenuationDb(db) {
+      if (!isFinite(db) || db >= -0.05) return null;
+      return "\u2212" + Math.abs(db).toFixed(1) + " dB";
+    }
+
+    function sideDisplayLabel(side) {
+      return side === "original" ? "Original" : "Remastered";
+    }
+
+    function updateLoudnessAttenuationIndicator() {
+      if (!loudnessAttenEl) return;
+      if (!loudnessMatchEnabled || !loudnessMeasureReady) {
+        loudnessAttenEl.hidden = true;
+        loudnessAttenEl.textContent = "";
+        return;
+      }
+      var db = activeSide === "original" ? loudnessGainDb.original : loudnessGainDb.remastered;
+      var attenuation = formatAttenuationDb(db);
+      if (!attenuation) {
+        loudnessAttenEl.hidden = true;
+        loudnessAttenEl.textContent = "";
+        return;
+      }
+      loudnessAttenEl.hidden = false;
+      loudnessAttenEl.textContent = sideDisplayLabel(activeSide) + " " + attenuation;
+    }
+
     function setLoudnessMatchUi() {
-      if (!loudnessMatchBtn) return;
-      loudnessMatchBtn.setAttribute("aria-pressed", loudnessMatchEnabled ? "true" : "false");
-      loudnessMatchBtn.classList.toggle("ab-loudness-match-on", loudnessMatchEnabled);
+      if (loudnessMatchBtn) {
+        loudnessMatchBtn.setAttribute("aria-pressed", loudnessMatchEnabled ? "true" : "false");
+        loudnessMatchBtn.classList.toggle("ab-loudness-match-on", loudnessMatchEnabled);
+      }
       root.classList.toggle("ab-loudness-match-active", loudnessMatchEnabled);
+      updateLoudnessAttenuationIndicator();
     }
 
     function toggleLoudnessMatch() {
@@ -140,9 +172,13 @@
           var lOrig = pair[0];
           var lRem = pair[1];
           if (!isFinite(lOrig) || !isFinite(lRem)) return;
+          if (typeof api.attenuationGainsDb === "function") {
+            loudnessGainDb = api.attenuationGainsDb(lOrig, lRem);
+          }
           if (typeof api.attenuationGainsLinear === "function") {
             loudnessGainLinear = api.attenuationGainsLinear(lOrig, lRem);
           }
+          loudnessMeasureReady = true;
           applyMute();
         })
         .catch(function () {
@@ -186,6 +222,7 @@
           btn.getAttribute("data-ab-side") === activeSide
         );
       });
+      updateLoudnessAttenuationIndicator();
     }
 
     function setPlayIcon(wantsPlay) {
@@ -464,6 +501,7 @@
     setRepeatUi();
     setLoudnessMatchUi();
     applyMute();
+    updateLoudnessAttenuationIndicator();
     applyRepeatEngine();
     bindVisibilityResume();
     scheduleLoudnessMeasurement();
