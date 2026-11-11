@@ -208,9 +208,34 @@ def test_memo_persists_across_panel_poll(client: TestClient) -> None:
     for _ in range(5):
         panel = client.get(f"/jobs/{job_id}/panel")
         assert panel.status_code in (200, 286)
+        assert "data-job-memo" not in panel.text
+        assert 'id="job-memo"' not in panel.text
         time.sleep(0.02)
     detail = client.get(f"/jobs/{job_id}")
     assert "during run" in detail.text
+
+
+def _memo_index_before_log_box(html: str) -> None:
+    memo_pos = html.find('id="job-memo"')
+    assert memo_pos != -1, "memo card missing"
+    log_pos = html.find("data-job-log-box")
+    assert log_pos != -1, "log box missing"
+    assert memo_pos < log_pos, "memo must appear before log box in document order"
+
+
+def test_memo_card_renders_above_log_while_job_running(client: TestClient) -> None:
+    job_id = _create_job(client)
+    detail = client.get(f"/jobs/{job_id}")
+    assert detail.status_code == 200
+    _memo_index_before_log_box(detail.text)
+
+
+def test_memo_card_renders_above_log_when_job_terminal(client: TestClient) -> None:
+    job_id = _create_job(client)
+    _wait_job_complete(client, job_id)
+    detail = client.get(f"/jobs/{job_id}")
+    assert detail.status_code == 200
+    _memo_index_before_log_box(detail.text)
 
 
 def test_memo_survives_after_job_completes(client: TestClient) -> None:

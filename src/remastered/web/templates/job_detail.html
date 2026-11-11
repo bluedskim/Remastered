@@ -7,14 +7,17 @@
     {% include "partials/job_detail_actions.html" %}
   </div>
 </nav>
-{% include "partials/job_memo.html" %}
 <div id="job-status"
      {% if job.status not in ('completed', 'failed', 'cancelled') %}
      hx-get="/jobs/{{ job.id }}/panel"
      hx-trigger="load, every 2s"
      hx-swap="innerHTML"
      {% endif %}>
-  {% include "partials/job_panel_status.html" %}
+  {% include "partials/job_panel_overview.html" %}
+</div>
+{% include "partials/job_memo.html" %}
+<div id="job-status-log">
+  {% include "partials/job_panel_log.html" %}
 </div>
 <div id="job-players">
   {% include "partials/job_players.html" %}

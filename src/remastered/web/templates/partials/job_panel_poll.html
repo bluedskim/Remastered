@@ -1,4 +1,7 @@
-{% include "partials/job_panel_status.html" %}
+{% include "partials/job_panel_overview.html" %}
+<div id="job-status-log" hx-swap-oob="innerHTML">
+  {% include "partials/job_panel_log.html" %}
+</div>
 {% if job.status in ('completed', 'failed', 'cancelled') %}
 <div id="job-detail-actions" hx-swap-oob="innerHTML">
   {% include "partials/job_detail_actions.html" %}

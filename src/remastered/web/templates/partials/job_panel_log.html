@@ -1,0 +1,10 @@
+<section class="card card-logs">
+  <h2 class="section-title">Log</h2>
+  <div class="log-box" data-job-log-box>
+    {% for line in logs %}
+    <div class="log-line">[{{ line.created_at[11:19] }}] {{ line.message }}</div>
+    {% else %}
+    <div class="log-line muted">No log entries</div>
+    {% endfor %}
+  </div>
+</section>

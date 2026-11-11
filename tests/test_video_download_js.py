@@ -18,6 +18,7 @@ def test_job_detail_loads_video_download_script() -> None:
     poll = JOB_PANEL_POLL_HTML.read_text(encoding="utf-8")
     assert 'id="job-players"' in poll
     assert "hx-swap-oob" in poll
+    assert 'id="job-status-log"' in poll
 
 
 def test_job_players_partial_exposes_video_download_button() -> None:
