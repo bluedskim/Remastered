@@ -8,9 +8,10 @@ from pathlib import Path
 import matchering as mg
 import numpy as np
 from matchering.dsp import amplify
-from matchering.limiter import limit
+from matchering.limiter import limit as stock_limit
 
 from remastered.config import BitDepth
+from remastered.experiments.tp_aware_limiter.enabled import experiment_tp_aware_limiter_enabled
 from remastered.paths import ensure_dir
 from remastered.stereo_width import (
     DEFAULT_STEREO_WIDTH_MODE,
@@ -101,12 +102,23 @@ def _load_and_check_pair(
     return target, reference, int(config.internal_sample_rate)
 
 
+def _select_limiter():
+    if experiment_tp_aware_limiter_enabled():
+        from remastered.experiments.tp_aware_limiter.hyrax_tp import limit
+
+        logger.warning(
+            "REMASTERED_EXPERIMENT_TP_AWARE_LIMITER is enabled (developer experiment limiter)."
+        )
+        return limit
+    return stock_limit
+
+
 def _finalize_limited(
     audio: np.ndarray,
     final_amplitude_coefficient: float,
     config: mg.Config,
 ) -> np.ndarray:
-    limited = limit(audio, config)
+    limited = _select_limiter()(audio, config)
     return amplify(limited, final_amplitude_coefficient)
 
 
