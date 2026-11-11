@@ -1,0 +1,24 @@
+<section
+  class="card job-memo"
+  id="job-memo"
+  data-job-memo
+  data-job-id="{{ job.id }}"
+>
+  <label class="field-label" for="job-memo-input">Memo</label>
+  <p class="small muted job-memo-hint">Private note for this job (up to 100 characters).</p>
+  <div class="job-memo-row">
+    <textarea
+      id="job-memo-input"
+      class="job-memo-input"
+      name="memo"
+      rows="2"
+      placeholder="Add a short note…"
+      data-job-memo-input
+    >{{ job.memo or '' }}</textarea>
+    <div class="job-memo-actions">
+      <span class="small muted job-memo-counter" data-job-memo-counter aria-live="polite"></span>
+      <button type="button" class="btn btn-secondary btn-sm" data-job-memo-save>Save</button>
+    </div>
+  </div>
+  <p class="small job-memo-status" data-job-memo-status hidden></p>
+</section>
