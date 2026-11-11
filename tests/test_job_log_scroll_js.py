@@ -6,8 +6,8 @@ from remastered.web.app import PACKAGE_DIR
 
 JOB_LOG_SCROLL_JS = Path(PACKAGE_DIR) / "static" / "job-log-scroll.js"
 JOB_DETAIL_HTML = Path(PACKAGE_DIR) / "templates" / "job_detail.html"
-JOB_PANEL_STATUS_HTML = (
-    Path(PACKAGE_DIR) / "templates" / "partials" / "job_panel_status.html"
+JOB_PANEL_LOG_HTML = (
+    Path(PACKAGE_DIR) / "templates" / "partials" / "job_panel_log.html"
 )
 
 
@@ -17,7 +17,7 @@ def test_job_detail_loads_log_scroll_script() -> None:
 
 
 def test_log_box_has_scroll_hook_attribute() -> None:
-    panel = JOB_PANEL_STATUS_HTML.read_text(encoding="utf-8")
+    panel = JOB_PANEL_LOG_HTML.read_text(encoding="utf-8")
     assert "data-job-log-box" in panel
     assert 'class="log-box"' in panel
 
@@ -36,3 +36,14 @@ def test_job_log_scroll_stores_state_on_job_status_root() -> None:
     source = JOB_LOG_SCROLL_JS.read_text(encoding="utf-8")
     assert "jobLogScroll" in source
     assert "data-job-log-box" in source
+    assert "job-status-log" in source
+
+
+def test_job_detail_places_memo_between_status_and_log() -> None:
+    html = JOB_DETAIL_HTML.read_text(encoding="utf-8")
+    assert 'id="job-status-log"' in html
+    assert "partials/job_memo.html" in html
+    memo_pos = html.index("partials/job_memo.html")
+    log_pos = html.index('id="job-status-log"')
+    status_pos = html.index('id="job-status"')
+    assert status_pos < memo_pos < log_pos

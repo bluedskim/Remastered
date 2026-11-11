@@ -2,19 +2,26 @@
   "use strict";
 
   var JOB_STATUS_ID = "job-status";
+  var JOB_STATUS_LOG_ID = "job-status-log";
   var NEAR_BOTTOM_PX = 48;
 
   function jobStatusTarget(el) {
     if (!el) return null;
-    if (el.id === JOB_STATUS_ID) return el;
-    if (el.closest && el.closest("#" + JOB_STATUS_ID)) {
-      return document.getElementById(JOB_STATUS_ID);
+    if (el.id === JOB_STATUS_ID || el.id === JOB_STATUS_LOG_ID) return el;
+    if (el.closest) {
+      if (el.closest("#" + JOB_STATUS_ID)) {
+        return document.getElementById(JOB_STATUS_ID);
+      }
+      if (el.closest("#" + JOB_STATUS_LOG_ID)) {
+        return document.getElementById(JOB_STATUS_LOG_ID);
+      }
     }
     return null;
   }
 
   function logBox(root) {
-    return root ? root.querySelector("[data-job-log-box], .log-box") : null;
+    if (!root) return null;
+    return root.querySelector("[data-job-log-box], .log-box");
   }
 
   function distanceFromBottom(box) {
