@@ -234,6 +234,27 @@ def follow_reference_stereo_width(
     )
 
 
+def hold_stereo_width_target(
+    width_target: np.ndarray,
+    processed: np.ndarray,
+    sample_rate: int,
+    *,
+    n_bands: int = _N_BANDS,
+    gain_clamp_db: float = _GAIN_CLAMP_DB,
+) -> np.ndarray:
+    """Restore per-band S/M from ``width_target`` onto ``processed`` after gain or limiting.
+
+    Used after the limiter so later loudness stages do not undo the width policy outcome.
+    """
+    return _apply_stereo_width_donor(
+        width_target,
+        processed,
+        sample_rate,
+        n_bands=n_bands,
+        gain_clamp_db=gain_clamp_db,
+    )
+
+
 def stereo_width_label(mode: str | None) -> str:
     if mode == "preserve":
         return "Preserve original width"
