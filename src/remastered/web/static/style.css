@@ -1040,24 +1040,35 @@ button,
 }
 
 .job-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
   padding: 0.85rem 1.05rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.12);
   color: inherit;
-  text-decoration: none;
-  transition: border-color 0.15s, transform 0.12s;
   min-width: 0;
   max-width: 100%;
   min-height: 44px;
   overflow: hidden;
+  transition: border-color 0.15s, transform 0.12s;
 }
 
 .job-card:hover {
-  text-decoration: none;
   border-color: rgba(168, 85, 247, 0.45);
   transform: translateY(-1px);
+}
+
+.job-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.job-card-link:hover {
+  text-decoration: none;
 }
 
 .job-card-title {

@@ -41,3 +41,10 @@ def test_job_delete_js_uses_document_click_delegation() -> None:
     assert 'closest("[data-job-delete]")' in source
     assert "deleteWired" not in source
     assert "htmx:oobAfterSwap" not in source
+
+
+def test_job_delete_js_avoids_blocked_delete_url_segment() -> None:
+    source = JOB_DELETE_JS.read_text(encoding="utf-8")
+    assert 'method: "DELETE"' in source
+    assert 'encodeURIComponent(jobId) + "/delete"' not in source
+    assert 'encodeURIComponent(jobId) + "/remove"' in source

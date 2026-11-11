@@ -56,19 +56,38 @@
 
     setDeleteInFlight(btn, true);
 
-    fetch("/api/jobs/" + encodeURIComponent(jobId) + "/delete", {
-      method: "POST",
+    function finishDelete(resp) {
+      if (!resp.ok) throw new Error("delete failed");
+      if (redirectHome) {
+        window.location.href = "/";
+        return;
+      }
+      if (onSuccess) onSuccess();
+    }
+
+    function postRemove() {
+      return fetch("/api/jobs/" + encodeURIComponent(jobId) + "/remove", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+    }
+
+    fetch("/api/jobs/" + encodeURIComponent(jobId), {
+      method: "DELETE",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
     })
       .then(function (resp) {
-        if (!resp.ok) throw new Error("delete failed");
-        if (redirectHome) {
-          window.location.href = "/";
-          return;
-        }
-        if (onSuccess) onSuccess();
+        if (resp.ok) return resp;
+        if (resp.status === 405) return postRemove();
+        throw new Error("delete failed");
       })
+      .catch(function (err) {
+        if (err && err.message === "delete failed") throw err;
+        return postRemove();
+      })
+      .then(finishDelete)
       .catch(function () {
         setDeleteInFlight(btn, false);
         window.alert("Could not delete this job. Try again.");

@@ -1027,6 +1027,16 @@ async def delete_job_post_api(
     return await _delete_job_for_identity(job_id, identity, store)
 
 
+@fastapi_application.post("/api/jobs/{job_id}/remove")
+async def delete_job_remove_post_api(
+    job_id: str,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    """POST without a ``/delete`` URL segment (some privacy extensions block that path)."""
+    return await _delete_job_for_identity(job_id, identity, store)
+
+
 @fastapi_application.post("/api/jobs/{job_id}/feedback")
 async def post_job_feedback_api(
     job_id: str,
