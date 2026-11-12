@@ -6,6 +6,7 @@ import pytest
 
 from remastered.web.ab_loudness_match import (
     attenuation_db_to_linear,
+    attenuation_db_to_volume_percent,
     format_playback_attenuation_indicator,
     playback_attenuation_gains_db,
     playback_attenuation_gains_linear,
@@ -77,13 +78,29 @@ def test_attenuation_db_to_linear() -> None:
 
 
 @pytest.mark.parametrize(
+    ("db", "expected_percent"),
+    [
+        (-2.6, 74),
+        (-3.2, 69),
+        (-6.0, 50),
+        (-0.2, 98),
+        (0.0, None),
+        (-0.02, None),
+    ],
+)
+def test_attenuation_db_to_volume_percent(db: float, expected_percent: int | None) -> None:
+    assert attenuation_db_to_volume_percent(db) == expected_percent
+
+
+@pytest.mark.parametrize(
     ("side", "db", "expected"),
     [
-        ("remastered", -3.2, "Remastered \u22123.2 dB"),
-        ("original", -6.0, "Original \u22126.0 dB"),
+        ("remastered", -3.2, "Remastered 69% volume"),
+        ("original", -6.0, "Original 50% volume"),
+        ("remastered", -2.6, "Remastered 74% volume"),
         ("remastered", 0.0, None),
         ("original", -0.02, None),
-        ("original", -0.2, "Original \u22120.2 dB"),
+        ("original", -0.2, "Original 98% volume"),
     ],
 )
 def test_format_playback_attenuation_indicator(
@@ -102,4 +119,4 @@ def test_ab_player_indicator_hides_when_matching_off_or_not_ready() -> None:
     block = source[idx : idx + 520]
     assert "!loudnessMatchEnabled || !loudnessMeasureReady" in block
     assert 'loudnessAttenEl.hidden = true' in block
-    assert "formatAttenuationDb" in block
+    assert "formatAttenuationVolumePercent" in block

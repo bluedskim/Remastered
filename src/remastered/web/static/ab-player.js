@@ -96,9 +96,14 @@
       }
     }
 
-    function formatAttenuationDb(db) {
+    function formatAttenuationVolumePercent(db) {
       if (!isFinite(db) || db >= -0.05) return null;
-      return "\u2212" + Math.abs(db).toFixed(1) + " dB";
+      var api = loudnessApi();
+      var linear =
+        api && typeof api.attenuationDbToLinear === "function"
+          ? api.attenuationDbToLinear(db)
+          : Math.pow(10, db / 20);
+      return String(Math.round(linear * 100)) + "% volume";
     }
 
     function sideDisplayLabel(side) {
@@ -113,14 +118,14 @@
         return;
       }
       var db = activeSide === "original" ? loudnessGainDb.original : loudnessGainDb.remastered;
-      var attenuation = formatAttenuationDb(db);
-      if (!attenuation) {
+      var volumeLabel = formatAttenuationVolumePercent(db);
+      if (!volumeLabel) {
         loudnessAttenEl.hidden = true;
         loudnessAttenEl.textContent = "";
         return;
       }
       loudnessAttenEl.hidden = false;
-      loudnessAttenEl.textContent = sideDisplayLabel(activeSide) + " " + attenuation;
+      loudnessAttenEl.textContent = sideDisplayLabel(activeSide) + " " + volumeLabel;
     }
 
     function setLoudnessMatchUi() {
