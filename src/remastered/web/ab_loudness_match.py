@@ -27,6 +27,13 @@ def attenuation_db_to_linear(db: float) -> float:
     return 10.0 ** (db / 20.0)
 
 
+def attenuation_db_to_volume_percent(db: float) -> int | None:
+    """Whole-percent playback volume ratio for attenuation ``db`` (matches ``attenuation_db_to_linear``)."""
+    if not math.isfinite(db) or db >= -0.05:
+        return None
+    return round(attenuation_db_to_linear(db) * 100.0)
+
+
 def playback_attenuation_gains_linear(
     lufs_original: float,
     lufs_remastered: float,
@@ -42,7 +49,8 @@ def format_playback_attenuation_indicator(side: str, attenuation_db: float) -> s
     """Compact UI label for playback-only loudness-match attenuation on ``side``."""
     if side not in ("original", "remastered"):
         return None
-    if not math.isfinite(attenuation_db) or attenuation_db >= -0.05:
+    percent = attenuation_db_to_volume_percent(attenuation_db)
+    if percent is None:
         return None
     label = "Original" if side == "original" else "Remastered"
-    return f"{label} \u2212{abs(attenuation_db):.1f} dB"
+    return f"{label} {percent}% volume"
