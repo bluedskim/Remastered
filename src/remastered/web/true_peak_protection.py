@@ -175,53 +175,46 @@ def _write_attenuated_master(
             staging.unlink(missing_ok=True)
 
 
-def _measure_wav_and_aac_peaks(
-    wav_path: Path,
+def _measure_aac_peak_from_wav(
+    guarded_wav: Path,
     *,
+    extra_gain_db: float = 0.0,
     ffmpeg_path: str = "ffmpeg",
-) -> tuple[float, float]:
-    peak_wav = _measure_true_peak_dbtp(wav_path, ffmpeg_path=ffmpeg_path)
-    if peak_wav is None:
-        raise RuntimeError("True peak measurement failed (WAV).")
+) -> float:
+    """Encode playback AAC from ``guarded_wav`` (optionally further attenuated) and measure TP."""
     with tempfile.TemporaryDirectory() as td:
-        m4a = Path(td) / "check.m4a"
-        _encode_playback_aac(wav_path, m4a, ffmpeg_path=ffmpeg_path)
+        td_path = Path(td)
+        encode_src = guarded_wav
+        if extra_gain_db < -1e-9:
+            encode_src = td_path / "preview_src.wav"
+            _apply_gain_wav(
+                guarded_wav,
+                encode_src,
+                extra_gain_db,
+                ffmpeg_path=ffmpeg_path,
+            )
+        m4a = td_path / "check.m4a"
+        _encode_playback_aac(encode_src, m4a, ffmpeg_path=ffmpeg_path)
         peak_aac = _measure_true_peak_dbtp(m4a, ffmpeg_path=ffmpeg_path)
     if peak_aac is None:
         raise RuntimeError("True peak measurement failed (AAC).")
-    return peak_wav, peak_aac
+    return peak_aac
 
 
-def apply_final_true_peak_protection(
+def _protect_wav_only(
     raw_mastered_wav: Path,
     output_mastered_wav: Path,
     *,
-    log: Callable[[str], None] | None = None,
-    ffmpeg_path: str = "ffmpeg",
-    ws: WebSettings | None = None,
-) -> tuple[float, float, float, float]:
-    """Attenuate with constant gain from ``raw_mastered_wav`` until checks pass.
-
-    Every write to ``output_mastered_wav`` is derived from ``raw_mastered_wav`` with
-    ``volume=dB`` (no boost — total gain <= 0). Measures true peak on WAV and on AAC
-    decoded the same way as browser playback (192k). Bounded attempts.
-
-    Returns ``(adopted_gain_db, peak_wav_dbtp, peak_aac_dbtp, phase1_pass_gain_db)``.
-    ``phase1_pass_gain_db`` is the first passing gain from the downward search (worker
-    fallback if delivered playback overshoots). On failure restores output before raising.
-    """
-    ws = ws or WebSettings()
+    ws: WebSettings,
+    ffmpeg_path: str,
+) -> tuple[float, float, float]:
+    """Constant-gain WAV protection only. Returns (adopted_gain, peak_wav, phase1_pass_gain)."""
     ceiling = float(ws.true_peak_ceiling_dbtp)
     pass_ceiling = pass_ceiling_dbtp(ws)
     max_attempts = int(ws.true_peak_max_attempts)
     min_step = float(ws.true_peak_min_step_db)
     refine_step = float(ws.true_peak_refine_step_db)
     refine_max = int(ws.true_peak_refine_max_attempts)
-
-    def _lg(msg: str) -> None:
-        if log:
-            log(msg)
-        logger.info(msg)
 
     peak_raw = _measure_true_peak_dbtp(raw_mastered_wav, ffmpeg_path=ffmpeg_path)
     if peak_raw is None:
@@ -235,14 +228,6 @@ def apply_final_true_peak_protection(
             ffmpeg_path=ffmpeg_path,
         )
 
-    def _restore_output() -> None:
-        shutil.copy2(raw_mastered_wav, output_mastered_wav)
-
-    def measure_rendered() -> tuple[float, float]:
-        return _measure_wav_and_aac_peaks(
-            output_mastered_wav, ffmpeg_path=ffmpeg_path
-        )
-
     total_gain = 0.0
     if peak_raw > ceiling:
         total_gain = min(0.0, ceiling - peak_raw)
@@ -250,109 +235,191 @@ def apply_final_true_peak_protection(
     render_from_raw(total_gain)
 
     last_wav: float | None = None
-    last_aac: float | None = None
     phase1_pass_gain: float | None = None
     phase1_peak_wav: float | None = None
-    phase1_peak_aac: float | None = None
     phase1_attempts = 0
-    try:
-        for attempt in range(1, max_attempts + 1):
-            phase1_attempts = attempt
-            peak_wav, peak_aac = measure_rendered()
-            last_wav = peak_wav
-            last_aac = peak_aac
 
-            if peak_wav <= pass_ceiling and peak_aac <= pass_ceiling:
-                phase1_pass_gain = total_gain
-                phase1_peak_wav = peak_wav
-                phase1_peak_aac = peak_aac
+    for attempt in range(1, max_attempts + 1):
+        phase1_attempts = attempt
+        peak_wav = _measure_true_peak_dbtp(
+            output_mastered_wav, ffmpeg_path=ffmpeg_path
+        )
+        if peak_wav is None:
+            raise RuntimeError("True peak measurement failed (WAV).")
+        last_wav = peak_wav
+
+        if peak_wav <= pass_ceiling:
+            phase1_pass_gain = total_gain
+            phase1_peak_wav = peak_wav
+            break
+
+        wav_over = max(0.0, peak_wav - pass_ceiling)
+        step = max(wav_over, min_step)
+        total_gain -= step
+        render_from_raw(total_gain)
+    else:
+        raise RuntimeError(
+            f"True-peak WAV protection failed after {max_attempts} attempts "
+            f"(pass <= {pass_ceiling:.2f} dBTP, last WAV {last_wav:.2f}, "
+            f"gain {total_gain:.3f} dB)."
+        )
+
+    assert phase1_pass_gain is not None
+    g_pass = phase1_pass_gain
+    adopted_gain = g_pass
+    peak_wav = phase1_peak_wav
+    assert peak_wav is not None
+
+    if (
+        refine_max > 0
+        and phase1_attempts >= 2
+        and refine_step > 0
+        and g0 > g_pass + 1e-9
+    ):
+        candidates: list[float] = []
+        k = 1
+        while len(candidates) < refine_max:
+            cand = g0 - k * refine_step
+            if cand <= g_pass + 1e-9:
                 break
+            candidates.append(min(0.0, cand))
+            k += 1
 
-            wav_over = max(0.0, peak_wav - pass_ceiling)
-            aac_over = max(0.0, peak_aac - pass_ceiling)
-            step = max(wav_over, aac_over, min_step)
-            total_gain -= step
-            render_from_raw(total_gain)
+        for cand in candidates:
+            render_from_raw(cand)
+            pw = _measure_true_peak_dbtp(
+                output_mastered_wav, ffmpeg_path=ffmpeg_path
+            )
+            if pw is None:
+                raise RuntimeError("True peak measurement failed (WAV).")
+            if pw <= pass_ceiling:
+                adopted_gain = cand
+                peak_wav = pw
+                break
         else:
-            raise RuntimeError(
-                f"True-peak protection failed after {max_attempts} attempts "
-                f"(pass <= {pass_ceiling:.2f} dBTP, last WAV {last_wav:.2f}, "
-                f"last AAC {last_aac:.2f}, gain {total_gain:.3f} dB)."
+            render_from_raw(g_pass)
+            peak_wav = phase1_peak_wav
+
+    if abs(adopted_gain - g_pass) > 1e-9:
+        render_from_raw(adopted_gain)
+        pw = _measure_true_peak_dbtp(output_mastered_wav, ffmpeg_path=ffmpeg_path)
+        if pw is None:
+            raise RuntimeError("True peak measurement failed (WAV).")
+        if pw <= pass_ceiling:
+            peak_wav = pw
+        else:
+            adopted_gain = g_pass
+            render_from_raw(g_pass)
+            pw = _measure_true_peak_dbtp(
+                output_mastered_wav, ffmpeg_path=ffmpeg_path
             )
+            if pw is None or pw > pass_ceiling:
+                raise RuntimeError(
+                    "True-peak protection could not verify the phase-1 pass gain."
+                )
+            peak_wav = pw
 
-        assert phase1_pass_gain is not None
-        g_pass = phase1_pass_gain
-        adopted_gain = g_pass
-        peak_wav = phase1_peak_wav
-        peak_aac = phase1_peak_aac
-        refined_from: float | None = None
-        phase2_measured_gain: float | None = None
+    assert peak_wav <= pass_ceiling
+    return adopted_gain, peak_wav, g_pass
 
-        if (
-            refine_max > 0
-            and phase1_attempts >= 2
-            and refine_step > 0
-            and g0 > g_pass + 1e-9
-        ):
-            candidates: list[float] = []
-            k = 1
-            while len(candidates) < refine_max:
-                cand = g0 - k * refine_step
-                if cand <= g_pass + 1e-9:
-                    break
-                candidates.append(min(0.0, cand))
-                k += 1
 
-            for cand in candidates:
-                render_from_raw(cand)
-                pw, pa = measure_rendered()
-                if pw <= pass_ceiling and pa <= pass_ceiling:
-                    adopted_gain = cand
-                    peak_wav = pw
-                    peak_aac = pa
-                    refined_from = g_pass
-                    phase2_measured_gain = cand
-                    break
-            else:
-                render_from_raw(g_pass)
-                peak_wav = phase1_peak_wav
-                peak_aac = phase1_peak_aac
-                phase2_measured_gain = g_pass
+def _find_preview_extra_gain(
+    guarded_wav: Path,
+    *,
+    ws: WebSettings,
+    ffmpeg_path: str,
+) -> tuple[float, float]:
+    """Extra attenuation on guarded WAV for AAC preview only. Returns (extra_db, peak_aac)."""
+    pass_ceiling = pass_ceiling_dbtp(ws)
+    max_attempts = int(ws.true_peak_max_attempts)
+    min_step = float(ws.true_peak_min_step_db)
 
-        if abs(adopted_gain - g_pass) > 1e-9:
-            already_verified = (
-                phase2_measured_gain is not None
-                and abs(adopted_gain - phase2_measured_gain) < 1e-9
-            )
-            if not already_verified:
-                render_from_raw(adopted_gain)
-                pw, pa = measure_rendered()
-                if pw <= pass_ceiling and pa <= pass_ceiling:
-                    peak_wav, peak_aac = pw, pa
-                else:
-                    adopted_gain = g_pass
-                    render_from_raw(g_pass)
-                    pw, pa = measure_rendered()
-                    if pw > pass_ceiling or pa > pass_ceiling:
-                        raise RuntimeError(
-                            "True-peak protection could not verify the phase-1 pass gain."
-                        )
-                    peak_wav, peak_aac = pw, pa
-                    refined_from = None
+    extra = 0.0
+    last_aac: float | None = None
+    peak_aac: float | None = None
 
-        assert peak_wav is not None and peak_aac is not None
-        assert adopted_gain <= 0.0 + 1e-9
-        assert peak_wav <= pass_ceiling and peak_aac <= pass_ceiling
+    for attempt in range(1, max_attempts + 1):
+        peak_aac = _measure_aac_peak_from_wav(
+            guarded_wav,
+            extra_gain_db=extra,
+            ffmpeg_path=ffmpeg_path,
+        )
+        last_aac = peak_aac
+        if peak_aac <= pass_ceiling:
+            return extra, peak_aac
+
+        aac_over = max(0.0, peak_aac - pass_ceiling)
+        step = max(aac_over, min_step)
+        extra -= step
+
+    raise RuntimeError(
+        f"True-peak preview protection failed after {max_attempts} attempts "
+        f"(pass <= {pass_ceiling:.2f} dBTP, last AAC {last_aac:.2f}, "
+        f"preview extra {extra:.3f} dB)."
+    )
+
+
+def apply_final_true_peak_protection(
+    raw_mastered_wav: Path,
+    output_mastered_wav: Path,
+    *,
+    log: Callable[[str], None] | None = None,
+    ffmpeg_path: str = "ffmpeg",
+    ws: WebSettings | None = None,
+) -> tuple[float, float, float, float]:
+    """Attenuate mastered WAV and plan preview-only extra gain (separate constants).
+
+    WAV output is derived from ``raw_mastered_wav`` with the minimal constant gain so
+    its true peak is <= pass ceiling. Browser preview AAC is encoded separately with
+    optional additional constant attenuation on top of that WAV (never applied to the
+    saved file).
+
+    Returns ``(wav_gain_db, peak_wav_dbtp, peak_aac_dbtp, preview_extra_gain_db)``.
+    ``preview_extra_gain_db`` is <= 0 and is passed to playback transcode. On failure
+    restores output before raising.
+    """
+    ws = ws or WebSettings()
+    pass_ceiling = pass_ceiling_dbtp(ws)
+    ceiling = float(ws.true_peak_ceiling_dbtp)
+
+    def _lg(msg: str) -> None:
+        if log:
+            log(msg)
+        logger.info(msg)
+
+    def _restore_output() -> None:
+        shutil.copy2(raw_mastered_wav, output_mastered_wav)
+
+    try:
+        wav_gain, peak_wav, _g_pass = _protect_wav_only(
+            raw_mastered_wav,
+            output_mastered_wav,
+            ws=ws,
+            ffmpeg_path=ffmpeg_path,
+        )
+
+        preview_extra, peak_aac = _find_preview_extra_gain(
+            output_mastered_wav,
+            ws=ws,
+            ffmpeg_path=ffmpeg_path,
+        )
 
         msg = (
-            f"True-peak protection: total gain {adopted_gain:.3f} dB; "
-            f"WAV {peak_wav:.2f} dBTP, AAC decode {peak_aac:.2f} dBTP "
-            f"(pass <= {pass_ceiling:.2f} dBTP, target {ceiling:.2f} dBTP)."
+            f"True-peak protection: WAV gain {wav_gain:.3f} dB "
+            f"({peak_wav:.2f} dBTP"
         )
-        if refined_from is not None:
-            msg += f" (refined from {refined_from:.3f} dB)."
+        if preview_extra < -1e-9:
+            msg += (
+                f"); preview extra {preview_extra:.3f} dB "
+                f"(AAC decode {peak_aac:.2f} dBTP"
+            )
+        else:
+            msg += f"; AAC decode {peak_aac:.2f} dBTP"
+        msg += (
+            f"; pass <= {pass_ceiling:.2f} dBTP, target {ceiling:.2f} dBTP)."
+        )
         _lg(msg)
-        return adopted_gain, peak_wav, peak_aac, g_pass
+        return wav_gain, peak_wav, peak_aac, preview_extra
     except Exception:
         _restore_output()
         raise
@@ -362,11 +429,15 @@ def verify_delivered_playback_peak(
     mastered_wav: Path,
     playback_m4a: Path,
     *,
-    phase1_pass_gain_db: float,
+    preview_extra_gain_db: float,
     ffmpeg_path: str = "ffmpeg",
     ws: WebSettings | None = None,
-) -> None:
-    """Re-render at ``phase1_pass_gain_db`` if the streamed M4A true peak is over ceiling."""
+) -> float:
+    """Re-encode preview with more attenuation if delivered M4A true peak is over ceiling.
+
+    Returns the ``preview_extra_gain_db`` used after any correction (<= input).
+    Does not modify ``mastered_wav``.
+    """
     from remastered.web.stream_audio import transcode_wav_for_playback
 
     ws = ws or WebSettings()
@@ -375,30 +446,32 @@ def verify_delivered_playback_peak(
     if peak is None:
         raise RuntimeError("True peak measurement failed (delivered playback).")
     if peak <= pass_ceiling:
-        return
+        return preview_extra_gain_db
 
-    raw = raw_mastered_path_for_final(mastered_wav)
-    if not raw.is_file():
-        raise RuntimeError("True-peak playback verify failed: raw master missing.")
-    _write_attenuated_master(
-        raw,
-        mastered_wav,
-        phase1_pass_gain_db,
-        ffmpeg_path=ffmpeg_path,
+    extra = preview_extra_gain_db
+    min_step = float(ws.true_peak_min_step_db)
+    max_attempts = int(ws.true_peak_max_attempts)
+    last_peak: float | None = peak
+
+    for _ in range(max_attempts):
+        over = max(0.0, last_peak - pass_ceiling) if last_peak is not None else min_step
+        step = max(over, min_step)
+        extra -= step
+        refreshed = transcode_wav_for_playback(
+            mastered_wav,
+            extra_gain_db=extra,
+            ffmpeg_path=ffmpeg_path,
+        )
+        peak_delivered = _measure_true_peak_dbtp(refreshed, ffmpeg_path=ffmpeg_path)
+        if peak_delivered is None:
+            raise RuntimeError("True peak measurement failed (delivered playback).")
+        last_peak = peak_delivered
+        if peak_delivered <= pass_ceiling:
+            return extra
+
+    raise RuntimeError(
+        "True-peak protection failed after playback transcode verification."
     )
-    pw, pa = _measure_wav_and_aac_peaks(mastered_wav, ffmpeg_path=ffmpeg_path)
-    if pw > pass_ceiling or pa > pass_ceiling:
-        raise RuntimeError(
-            "True-peak protection failed after playback transcode verification."
-        )
-    refreshed = transcode_wav_for_playback(mastered_wav)
-    peak_delivered = _measure_true_peak_dbtp(refreshed, ffmpeg_path=ffmpeg_path)
-    if peak_delivered is None:
-        raise RuntimeError("True peak measurement failed (delivered playback).")
-    if peak_delivered > pass_ceiling:
-        raise RuntimeError(
-            "True-peak protection failed after playback transcode verification."
-        )
 
 
 def raw_mastered_path_for_final(final_mastered_wav: Path) -> Path:
