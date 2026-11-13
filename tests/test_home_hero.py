@@ -59,6 +59,6 @@ def test_home_demo_player_renders_when_configured(
     resp = home_client.get("/")
     assert "Hear the difference" in resp.text
     assert 'data-ab-compare' in resp.text
-    assert 'data-ab-loudness-attenuation' in resp.text
+    assert "data-ab-loudness-attenuation" not in resp.text
     assert "samples/before.m4a" in resp.text
     assert "ab-player.js" in resp.text

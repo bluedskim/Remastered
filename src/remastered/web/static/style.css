@@ -1698,6 +1698,12 @@ button,
   margin: 0 0 0.85rem;
 }
 
+.ab-remaster-volume {
+  margin: 0 0 0.65rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 .ab-loudness-row {
   display: flex;
   flex-wrap: wrap;

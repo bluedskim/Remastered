@@ -33,7 +33,6 @@
     var playBtn = root.querySelector("[data-ab-play]");
     var repeatBtn = root.querySelector("[data-ab-repeat]");
     var loudnessMatchBtn = root.querySelector("[data-ab-loudness-match]");
-    var loudnessAttenEl = root.querySelector("[data-ab-loudness-attenuation]");
     var seek = root.querySelector("[data-ab-seek]");
     var vol = root.querySelector("[data-ab-volume]");
     var timeCur = root.querySelector("[data-ab-time-current]");
@@ -96,45 +95,12 @@
       }
     }
 
-    function formatAttenuationVolumePercent(db) {
-      if (!isFinite(db) || db >= -0.05) return null;
-      var api = loudnessApi();
-      var linear =
-        api && typeof api.attenuationDbToLinear === "function"
-          ? api.attenuationDbToLinear(db)
-          : Math.pow(10, db / 20);
-      return String(Math.round(linear * 100)) + "% volume";
-    }
-
-    function sideDisplayLabel(side) {
-      return side === "original" ? "Original" : "Remastered";
-    }
-
-    function updateLoudnessAttenuationIndicator() {
-      if (!loudnessAttenEl) return;
-      if (!loudnessMatchEnabled || !loudnessMeasureReady) {
-        loudnessAttenEl.hidden = true;
-        loudnessAttenEl.textContent = "";
-        return;
-      }
-      var db = activeSide === "original" ? loudnessGainDb.original : loudnessGainDb.remastered;
-      var volumeLabel = formatAttenuationVolumePercent(db);
-      if (!volumeLabel) {
-        loudnessAttenEl.hidden = true;
-        loudnessAttenEl.textContent = "";
-        return;
-      }
-      loudnessAttenEl.hidden = false;
-      loudnessAttenEl.textContent = sideDisplayLabel(activeSide) + " " + volumeLabel;
-    }
-
     function setLoudnessMatchUi() {
       if (loudnessMatchBtn) {
         loudnessMatchBtn.setAttribute("aria-pressed", loudnessMatchEnabled ? "true" : "false");
         loudnessMatchBtn.classList.toggle("ab-loudness-match-on", loudnessMatchEnabled);
       }
       root.classList.toggle("ab-loudness-match-active", loudnessMatchEnabled);
-      updateLoudnessAttenuationIndicator();
     }
 
     function toggleLoudnessMatch() {
@@ -227,7 +193,6 @@
           btn.getAttribute("data-ab-side") === activeSide
         );
       });
-      updateLoudnessAttenuationIndicator();
     }
 
     function setPlayIcon(wantsPlay) {
@@ -506,7 +471,6 @@
     setRepeatUi();
     setLoudnessMatchUi();
     applyMute();
-    updateLoudnessAttenuationIndicator();
     applyRepeatEngine();
     bindVisibilityResume();
     scheduleLoudnessMeasurement();

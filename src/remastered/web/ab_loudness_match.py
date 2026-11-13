@@ -45,6 +45,23 @@ def playback_attenuation_gains_linear(
     )
 
 
+def remaster_volume_percent_of_original(
+    lufs_mastered_wav: float,
+    lufs_original: float,
+) -> int | None:
+    """Whole percent: remastered WAV loudness relative to original source (100 = same level)."""
+    if not (math.isfinite(lufs_mastered_wav) and math.isfinite(lufs_original)):
+        return None
+    ratio = 10.0 ** ((lufs_mastered_wav - lufs_original) / 20.0)
+    return round(ratio * 100.0)
+
+
+def format_remaster_volume_of_original_line(percent: int | None) -> str | None:
+    if percent is None:
+        return None
+    return f"Remastered is {percent}% of original volume"
+
+
 def format_playback_attenuation_indicator(side: str, attenuation_db: float) -> str | None:
     """Compact UI label for playback-only loudness-match attenuation on ``side``."""
     if side not in ("original", "remastered"):

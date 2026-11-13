@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -115,6 +115,8 @@ class JobStore:
                     processing_stage TEXT NOT NULL DEFAULT 'queued',
                     final_tp_protection INTEGER NOT NULL DEFAULT 1,
                     memo TEXT NOT NULL DEFAULT '',
+                    lufs_original REAL,
+                    lufs_mastered_wav REAL,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
                 """
@@ -174,6 +176,12 @@ class JobStore:
                     ALTER TABLE jobs ADD COLUMN memo TEXT NOT NULL DEFAULT ''
                     """
                 )
+            cols = self._job_columns(conn)
+            if "lufs_original" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN lufs_original REAL")
+            cols = self._job_columns(conn)
+            if "lufs_mastered_wav" not in cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN lufs_mastered_wav REAL")
             self._backfill_legacy_jobs(conn)
 
         self._backfill_job_titles_from_logs(conn)
@@ -528,6 +536,8 @@ class JobStore:
             "processing_stage",
             "final_tp_protection",
             "memo",
+            "lufs_original",
+            "lufs_mastered_wav",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

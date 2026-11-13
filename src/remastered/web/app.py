@@ -433,6 +433,17 @@ def _job_media_context(
         else RETENTION_MESSAGE
     )
 
+    remaster_volume_of_original_line: str | None = None
+    if audio_ok and mastered_ok:
+        from remastered.web.job_loudness_metrics import resolve_remaster_volume_of_original_line
+
+        remaster_volume_of_original_line = resolve_remaster_volume_of_original_line(
+            job,
+            store=store,
+            work_dir=work,
+            ffmpeg_path=settings.ffmpeg_path,
+        )
+
     return {
         "audio_ok": audio_ok,
         "mastered_ok": mastered_ok,
@@ -443,6 +454,7 @@ def _job_media_context(
         "video_download_show": video_download_show,
         "video_download_filename": video_download_filename,
         "rights_notice_short": rights_notice_short(ws.job_retention_days),
+        "remaster_volume_of_original_line": remaster_volume_of_original_line,
     }
 
 
