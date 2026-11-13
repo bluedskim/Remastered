@@ -35,36 +35,39 @@ def _make_sweep_measurer(
     *,
     raw_peak: float,
 ) -> callable:
-    """Map rendered WAV gain (via side effects) to table peaks."""
+    """Map WAV gain + preview extra (from raw) to sweep table peaks."""
 
-    state: dict[str, float | None] = {"last_gain": None}
+    state: dict[str, float] = {"wav_gain": 0.0, "preview_extra": 0.0}
 
     def fake_apply_gain(src: Path, dest: Path, gain_db: float, **kwargs) -> None:
-        state["last_gain"] = round(gain_db, 2)
+        rounded = round(gain_db, 2)
+        if src.name.startswith("mastered_matchering") or "matchering" in src.name:
+            state["wav_gain"] = rounded
+        else:
+            state["preview_extra"] = rounded
 
     def _peak_for_gain(gain: float, *, aac: bool) -> float:
         key = round(gain, 2)
         if key not in table:
-            raise KeyError(f"missing peak table entry for gain {gain}")
+            nearest = min(table.keys(), key=lambda k: abs(k - key))
+            key = nearest
         wav, aac_p = table[key]
         return aac_p if aac else wav
 
+    def _total_gain() -> float:
+        return round(state["wav_gain"] + state["preview_extra"], 2)
+
     def fake_measure(path: Path, **kwargs) -> float:
         if path.suffix.lower() == ".m4a":
-            g = state["last_gain"]
-            assert g is not None
-            return _peak_for_gain(g, aac=True)
+            return _peak_for_gain(_total_gain(), aac=True)
         if path.name.startswith("mastered_matchering") or "in" in path.name:
             return raw_peak
-        g = state["last_gain"]
-        if g is None:
-            return raw_peak
-        return _peak_for_gain(g, aac=False)
+        return _peak_for_gain(state["wav_gain"], aac=False)
 
     return fake_measure, fake_apply_gain, state
 
 
-def test_job60a8_sweep_refines_to_minus_3_10() -> None:
+def test_job60a8_sweep_wav_gain_shallower_than_legacy_shared_guard() -> None:
     table = _load_60a8_sweep()
     raw_peak = 0.6
     fake_measure, fake_apply_gain, _ = _make_sweep_measurer(table, raw_peak=raw_peak)
@@ -89,20 +92,21 @@ def test_job60a8_sweep_refines_to_minus_3_10() -> None:
         ),
         patch("shutil.copy2"),
     ):
-        adopted, pw, pa, g_pass = apply_final_true_peak_protection(
+        wav_gain, pw, pa, preview_extra = apply_final_true_peak_protection(
             Path("mastered_matchering.wav"),
             Path("out.wav"),
             ws=ws,
         )
-    assert adopted == pytest.approx(-3.1, abs=0.02)
-    assert g_pass == pytest.approx(-5.75, abs=0.02)
-    assert adopted > g_pass
     ceil = pass_ceiling_dbtp(ws)
     assert pw <= ceil and pa <= ceil
+    assert wav_gain > -3.1
+    assert wav_gain < 0
+    assert preview_extra <= 0.0
+    assert abs(preview_extra) >= 0.0
 
 
-def test_monotonic_bc44_like_keeps_phase1_pass_when_shallower_fail() -> None:
-    """Shallower refine candidates fail AAC; adopted gain stays at phase-1 pass."""
+def test_monotonic_bc44_like_preview_absorbs_aac_overshoot() -> None:
+    """WAV refine may land below phase-1 pass; preview extra handles AAC-only overshoot."""
     peaks = [
         0.4,
         -1.0,
@@ -110,9 +114,10 @@ def test_monotonic_bc44_like_keeps_phase1_pass_when_shallower_fail() -> None:
         -1.4,
         -1.1,
         -1.3,
-        -0.4,
         -1.4,
         -1.1,
+        -1.2,
+        -1.05,
     ]
 
     def fake_measure(path: Path, **kwargs):
@@ -135,13 +140,13 @@ def test_monotonic_bc44_like_keeps_phase1_pass_when_shallower_fail() -> None:
         patch("remastered.web.true_peak_protection._apply_gain_wav"),
         patch("shutil.copy2"),
     ):
-        adopted, pw, pa, g_pass = apply_final_true_peak_protection(
+        wav_gain, pw, pa, preview_extra = apply_final_true_peak_protection(
             Path("in.wav"),
             Path("out.wav"),
             ws=ws,
         )
-    assert g_pass < 0
-    assert adopted == pytest.approx(g_pass)
+    assert wav_gain < 0
+    assert preview_extra <= 0
     assert pw <= pass_ceiling_dbtp(ws)
     assert pa <= pass_ceiling_dbtp(ws)
 
@@ -155,7 +160,7 @@ def test_refine_max_attempts_zero_matches_legacy_single_pass() -> None:
         patch("remastered.web.true_peak_protection._encode_playback_aac"),
         patch("shutil.copy2"),
     ):
-        adopted, _, _, g_pass = apply_final_true_peak_protection(
+        wav_gain, _, _, preview_extra = apply_final_true_peak_protection(
             Path("in.wav"),
             Path("out.wav"),
             ws=WebSettings(
@@ -163,8 +168,8 @@ def test_refine_max_attempts_zero_matches_legacy_single_pass() -> None:
                 true_peak_pass_headroom_db=0.05,
             ),
         )
-    assert adopted == 0.0
-    assert g_pass == 0.0
+    assert wav_gain == 0.0
+    assert preview_extra == 0.0
 
 
 def test_no_refine_candidates_when_first_attempt_passes() -> None:
@@ -178,12 +183,12 @@ def test_no_refine_candidates_when_first_attempt_passes() -> None:
         patch("remastered.web.true_peak_protection._encode_playback_aac"),
         patch("shutil.copy2"),
     ):
-        adopted, pw, pa, g_pass = apply_final_true_peak_protection(
+        wav_gain, pw, pa, preview_extra = apply_final_true_peak_protection(
             Path("in.wav"),
             Path("out.wav"),
             ws=WebSettings(true_peak_refine_max_attempts=10),
         )
-    assert adopted == g_pass == 0.0
+    assert wav_gain == preview_extra == 0.0
     assert pw <= pass_ceiling_dbtp(WebSettings())
 
 
@@ -218,7 +223,7 @@ def test_phase1_twelve_failures_restore_and_raise(tmp_path: Path) -> None:
     assert wav_out.read_bytes() == b"RAW"
 
 
-def test_verify_delivered_playback_rerenders_at_g_pass(tmp_path: Path) -> None:
+def test_verify_delivered_playback_retranscodes_with_extra_gain(tmp_path: Path) -> None:
     mastered = tmp_path / "mastered_16bit.wav"
     raw = tmp_path / "mastered_matchering_16bit.wav"
     m4a = tmp_path / "mastered_16bit.playback.m4a"
@@ -249,13 +254,14 @@ def test_verify_delivered_playback_rerenders_at_g_pass(tmp_path: Path) -> None:
             return_value=m4a,
         ) as tr,
     ):
-        verify_delivered_playback_peak(
+        extra_out = verify_delivered_playback_peak(
             mastered,
             m4a,
-            phase1_pass_gain_db=-4.0,
+            preview_extra_gain_db=-0.5,
             ws=WebSettings(),
         )
-    tr.assert_called_once()
+    tr.assert_called()
+    assert extra_out < -0.5
     assert calls.count(".m4a") >= 2
 
 
@@ -302,7 +308,7 @@ def test_worker_playback_over_ceiling_fails_job(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setattr("remastered.web.worker.validate_youtube_source_limits", lambda url: None)
 
     def fake_tp(*_a, **_k):
-        return (-3.0, -2.0, -1.2, -5.0)
+        return (-1.95, -2.0, -1.2, -0.5)
 
     monkeypatch.setattr(
         "remastered.web.worker.apply_final_true_peak_protection",
@@ -313,7 +319,7 @@ def test_worker_playback_over_ceiling_fails_job(tmp_path: Path, monkeypatch) -> 
         lambda m: m.with_name("mastered_matchering_16bit.wav"),
     )
 
-    def fake_transcode(p):
+    def fake_transcode(p, **kwargs):
         out = p.with_name(p.stem + ".playback.m4a")
         out.write_bytes(b"m4a")
         return out

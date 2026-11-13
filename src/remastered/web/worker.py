@@ -271,17 +271,19 @@ class JobWorker:
                     logger.warning("Job %s original playback transcode failed: %s", job_id, exc)
                     log(f"Playback transcode failed (original): {exc}")
             if isinstance(mastered_wav, Path):
-                phase1_pass_gain: float | None = None
+                preview_extra_gain: float | None = None
                 ws_web = WebSettings()
                 if job.get("final_tp_protection", True):
                     try:
                         raw = copy_matchering_to_raw(mastered_wav)
-                        _adopted, _pw, _pa, phase1_pass_gain = apply_final_true_peak_protection(
-                            raw,
-                            mastered_wav,
-                            log=log,
-                            ffmpeg_path=self.settings.ffmpeg_path,
-                            ws=ws_web,
+                        _wav_gain, _pw, _pa, preview_extra_gain = (
+                            apply_final_true_peak_protection(
+                                raw,
+                                mastered_wav,
+                                log=log,
+                                ffmpeg_path=self.settings.ffmpeg_path,
+                                ws=ws_web,
+                            )
                         )
                     except Exception as exc:  # noqa: BLE001
                         logger.exception(
@@ -300,7 +302,11 @@ class JobWorker:
                         )
                         return
                 try:
-                    playback_m4a = transcode_wav_for_playback(mastered_wav)
+                    playback_m4a = transcode_wav_for_playback(
+                        mastered_wav,
+                        extra_gain_db=float(preview_extra_gain or 0.0),
+                        ffmpeg_path=self.settings.ffmpeg_path,
+                    )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(
                         "Job %s mastered playback transcode failed: %s", job_id, exc
@@ -309,13 +315,13 @@ class JobWorker:
                 else:
                     if (
                         job.get("final_tp_protection", True)
-                        and phase1_pass_gain is not None
+                        and preview_extra_gain is not None
                     ):
                         try:
                             verify_delivered_playback_peak(
                                 mastered_wav,
                                 playback_m4a,
-                                phase1_pass_gain_db=phase1_pass_gain,
+                                preview_extra_gain_db=preview_extra_gain,
                                 ffmpeg_path=self.settings.ffmpeg_path,
                                 ws=ws_web,
                             )

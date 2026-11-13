@@ -12,6 +12,7 @@ import soundfile as sf
 
 from remastered.web.settings import WebSettings
 from remastered.web.true_peak_protection import (
+    _apply_gain_wav,
     _encode_playback_aac,
     apply_final_true_peak_protection,
     pass_ceiling_dbtp,
@@ -36,6 +37,21 @@ def _sine_hot(sr: int, n: int, freq: float, db: float) -> np.ndarray:
     amp = 10 ** (db / 20.0)
     s = amp * np.sin(2 * np.pi * freq * t)
     return np.stack([s, s], axis=1).astype(np.float32)
+
+
+def _encode_preview_m4a(
+    guarded_wav: Path,
+    m4a: Path,
+    *,
+    preview_extra_db: float = 0.0,
+) -> None:
+    if preview_extra_db < -1e-9:
+        staged = guarded_wav.with_name(guarded_wav.stem + "_preview_src.wav")
+        _apply_gain_wav(guarded_wav, staged, preview_extra_db)
+        _encode_playback_aac(staged, m4a)
+        staged.unlink(missing_ok=True)
+    else:
+        _encode_playback_aac(guarded_wav, m4a)
 
 
 def _assert_strict_and_pass(path_wav: Path, path_m4a: Path, ws: WebSettings) -> None:
@@ -84,10 +100,10 @@ def test_integration_near_nyquist_hot(tmp_path: Path) -> None:
     n = sr // 2
     _write_wav(raw, _sine_hot(sr, n, sr * 0.45, 3.0), sr)
     shutil.copy2(raw, out)
-    g, pw, pa, _ = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, pw, pa, preview_extra = apply_final_true_peak_protection(raw, out, ws=ws)
     assert g <= 0.0
     m4a = tmp_path / "del.m4a"
-    _encode_playback_aac(out, m4a)
+    _encode_preview_m4a(out, m4a, preview_extra_db=preview_extra)
     _assert_strict_and_pass(out, m4a, ws)
 
 
@@ -102,9 +118,9 @@ def test_integration_transient_burst(tmp_path: Path) -> None:
     out = tmp_path / "mastered_16bit.wav"
     _write_wav(raw, audio, sr)
     shutil.copy2(raw, out)
-    g, _, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, _, _, preview_extra = apply_final_true_peak_protection(raw, out, ws=ws)
     m4a = tmp_path / "del.m4a"
-    _encode_playback_aac(out, m4a)
+    _encode_preview_m4a(out, m4a, preview_extra_db=preview_extra)
     _assert_strict_and_pass(out, m4a, ws)
     assert g <= 0.0
 
@@ -120,9 +136,9 @@ def test_integration_unbalanced_stereo(tmp_path: Path) -> None:
     out = tmp_path / "mastered_16bit.wav"
     _write_wav(raw, np.stack([left, right], axis=1).astype(np.float32), sr)
     shutil.copy2(raw, out)
-    apply_final_true_peak_protection(raw, out, ws=ws)
+    _, _, _, preview_extra = apply_final_true_peak_protection(raw, out, ws=ws)
     m4a = tmp_path / "del.m4a"
-    _encode_playback_aac(out, m4a)
+    _encode_preview_m4a(out, m4a, preview_extra_db=preview_extra)
     _assert_strict_and_pass(out, m4a, ws)
 
 
@@ -135,11 +151,11 @@ def test_integration_48000_rate_supported(tmp_path: Path) -> None:
     _write_wav(raw, _sine_hot(sr, sr, 1200.0, 6.0), sr)
     shutil.copy2(raw, out)
     before = sf.read(str(raw), dtype="int16", always_2d=True)[0].shape[0]
-    g, _, _, _ = apply_final_true_peak_protection(raw, out, ws=ws)
+    g, _, _, preview_extra = apply_final_true_peak_protection(raw, out, ws=ws)
     after = sf.read(str(out), dtype="int16", always_2d=True)[0].shape[0]
     assert before == after
     m4a = tmp_path / "del.m4a"
-    _encode_playback_aac(out, m4a)
+    _encode_preview_m4a(out, m4a, preview_extra_db=preview_extra)
     _assert_strict_and_pass(out, m4a, ws)
     assert g <= 0.0
 

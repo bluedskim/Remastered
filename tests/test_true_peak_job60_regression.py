@@ -56,7 +56,7 @@ def test_job60_stock_matchering_strict_tp(tmp_path: Path) -> None:
     before_aac = _measure_true_peak_dbtp(before_m4a)
 
     t0 = time.monotonic()
-    gain, peak_wav, peak_aac, phase1_gain = apply_final_true_peak_protection(
+    gain, peak_wav, peak_aac, preview_extra = apply_final_true_peak_protection(
         raw, out, ffmpeg_path="ffmpeg", ws=ws
     )
     elapsed = time.monotonic() - t0
@@ -64,7 +64,14 @@ def test_job60_stock_matchering_strict_tp(tmp_path: Path) -> None:
     pass_ceil = pass_ceiling_dbtp(ws)
     post_wav = _measure_true_peak_dbtp(out)
     post_m4a = tmp_path / "after.m4a"
-    _encode_playback_aac(out, post_m4a)
+    if preview_extra < -1e-9:
+        from remastered.web.true_peak_protection import _apply_gain_wav
+
+        guarded = tmp_path / "preview_src.wav"
+        _apply_gain_wav(out, guarded, preview_extra, ffmpeg_path="ffmpeg")
+        _encode_playback_aac(guarded, post_m4a, ffmpeg_path="ffmpeg")
+    else:
+        _encode_playback_aac(out, post_m4a, ffmpeg_path="ffmpeg")
     post_aac = _measure_true_peak_dbtp(post_m4a)
 
     proof = {
@@ -89,4 +96,4 @@ def test_job60_stock_matchering_strict_tp(tmp_path: Path) -> None:
     assert post_wav <= pass_ceil + 0.08
     assert post_aac <= pass_ceil + 0.08
     assert gain <= 0.0
-    assert gain >= phase1_gain
+    assert preview_extra <= 0.0
