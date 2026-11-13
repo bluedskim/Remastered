@@ -8,8 +8,10 @@ from remastered.web.ab_loudness_match import (
     attenuation_db_to_linear,
     attenuation_db_to_volume_percent,
     format_playback_attenuation_indicator,
+    format_remaster_volume_of_original_line,
     playback_attenuation_gains_db,
     playback_attenuation_gains_linear,
+    remaster_volume_percent_of_original,
 )
 from remastered.web.app import PACKAGE_DIR
 
@@ -61,10 +63,10 @@ def test_ab_loudness_match_js_exports_api() -> None:
 def test_ab_player_wires_loudness_match_toggle() -> None:
     source = AB_PLAYER_JS.read_text(encoding="utf-8")
     assert "[data-ab-loudness-match]" in source
-    assert "[data-ab-loudness-attenuation]" in source
+    assert "[data-ab-loudness-attenuation]" not in source
     assert "loudnessMatchEnabled" in source
     assert "loudnessMeasureReady" in source
-    assert "updateLoudnessAttenuationIndicator" in source
+    assert "updateLoudnessAttenuationIndicator" not in source
     assert "scheduleLoudnessMeasurement" in source
     assert "RemasteredAbLoudnessMatch" in source
     assert "LOUDNESS_MATCH_STORAGE_KEY" in source
@@ -113,10 +115,8 @@ def test_format_playback_attenuation_indicator_invalid_side() -> None:
     assert format_playback_attenuation_indicator("before", -3.0) is None
 
 
-def test_ab_player_indicator_hides_when_matching_off_or_not_ready() -> None:
-    source = AB_PLAYER_JS.read_text(encoding="utf-8")
-    idx = source.index("function updateLoudnessAttenuationIndicator")
-    block = source[idx : idx + 520]
-    assert "!loudnessMatchEnabled || !loudnessMeasureReady" in block
-    assert 'loudnessAttenEl.hidden = true' in block
-    assert "formatAttenuationVolumePercent" in block
+def test_remaster_volume_line_helpers_match_formula() -> None:
+    assert remaster_volume_percent_of_original(-20.0, -26.0) == 200
+    assert (
+        format_remaster_volume_of_original_line(115) == "Remastered is 115% of original volume"
+    )

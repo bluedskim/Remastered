@@ -25,6 +25,7 @@ from remastered.web.processing_stage import (
 from remastered.web.reference_resolve import REFERENCE_DOWNLOAD_FAILED, resolve_reference_wav
 from remastered.web.reference_youtube import is_youtube_reference_job
 from remastered.web.stream_audio import transcode_wav_for_playback
+from remastered.web.job_loudness_metrics import measure_and_store_job_lufs
 from remastered.web.true_peak_protection import (
     apply_final_true_peak_protection,
     copy_matchering_to_raw,
@@ -342,6 +343,8 @@ class JobWorker:
                                 processing_stage=STAGE_FINALIZING,
                             )
                             return
+            audio_path_str = str(result.get("audio", ""))
+            mastered_path_str = str(result.get("mastered", ""))
             self.store.update_job(
                 job_id,
                 status="completed",
@@ -349,8 +352,8 @@ class JobWorker:
                 title=str(result.get("title") or job.get("title") or ""),
                 source_video_id=str(result.get("video_id", "")),
                 uploaded_video_id="",
-                audio_path=str(result.get("audio", "")),
-                mastered_path=str(result.get("mastered", "")),
+                audio_path=audio_path_str,
+                mastered_path=mastered_path_str,
                 video_path="",
                 stage_state={
                     **{s: "done" for s in WEB_STAGES},
@@ -358,6 +361,13 @@ class JobWorker:
                     "upload": "skipped",
                 },
                 processing_stage=STAGE_DONE,
+            )
+            measure_and_store_job_lufs(
+                job_id,
+                self.store,
+                audio_wav=Path(audio_path_str) if audio_path_str else None,
+                mastered_wav=Path(mastered_path_str) if mastered_path_str else None,
+                ffmpeg_path=self.settings.ffmpeg_path,
             )
             log("Mastering complete.")
         except Exception as exc:  # noqa: BLE001
