@@ -90,6 +90,21 @@ def _cleanup_tmp_dir(tmp_dir: Path) -> None:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def _job_id_from_on_demand_video_artifact(path: Path, work_dir: Path) -> str | None:
+    """Return job id when path is an on-demand build artifact under users/.../jobs/."""
+    try:
+        rel = path.resolve().relative_to(Path(work_dir).resolve())
+    except (ValueError, OSError):
+        return None
+    parts = rel.parts
+    if len(parts) != 5 or parts[0] != "users" or parts[2] != "jobs":
+        return None
+    name = parts[4]
+    if name != BUILT_VIDEO_FILENAME and name != VIDEO_BUILD_TMP_DIRNAME:
+        return None
+    return parts[3]
+
+
 def resolve_job_thumbnail_path(job: dict[str, Any], work_dir: Path) -> Path | None:
     """Return cached YouTube thumbnail path when available."""
     video_id = extract_youtube_video_id((job.get("youtube_url") or "").strip())
@@ -343,6 +358,82 @@ class VideoBuildManager:
             if state.expires_at is None or state.expires_at < extended:
                 state.expires_at = extended
 
+    def _is_protected_on_disk_locked(self, job_id: str, now_mono: float) -> bool:
+        state = self._states.get(job_id)
+        if not state:
+            return False
+        if state.building or state.phase == VideoBuildPhase.BUILDING:
+            return True
+        if (
+            state.phase == VideoBuildPhase.READY
+            and state.expires_at is not None
+            and state.expires_at > now_mono
+        ):
+            return True
+        return False
+
+    def _try_remove_stale_artifact(
+        self,
+        path: Path,
+        job_id: str,
+        *,
+        now_mono: float,
+        mtime_cutoff: float,
+    ) -> bool:
+        with self._lock:
+            if self._is_protected_on_disk_locked(job_id, now_mono):
+                return False
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                return False
+            if mtime >= mtime_cutoff:
+                return False
+        if path.is_file():
+            path.unlink(missing_ok=True)
+            return True
+        if path.is_dir():
+            _cleanup_tmp_dir(path)
+            return True
+        return False
+
+    def _sweep_stale_video_artifacts_on_disk(self) -> int:
+        """Remove aged on-demand MP4/tmp dirs; survives restart with empty in-memory state."""
+        removed = 0
+        now_mono = time.monotonic()
+        mtime_cutoff = time.time() - self._cache_ttl
+        users_root = self.work_dir / "users"
+        if not users_root.is_dir():
+            return 0
+
+        candidates: list[tuple[Path, str]] = []
+        for mp4 in users_root.glob(f"*/jobs/*/{BUILT_VIDEO_FILENAME}"):
+            job_id = _job_id_from_on_demand_video_artifact(mp4, self.work_dir)
+            if job_id:
+                candidates.append((mp4, job_id))
+        for tmp in users_root.glob(f"*/jobs/*/{VIDEO_BUILD_TMP_DIRNAME}"):
+            if not tmp.is_dir():
+                continue
+            job_id = _job_id_from_on_demand_video_artifact(tmp, self.work_dir)
+            if job_id:
+                candidates.append((tmp, job_id))
+
+        for path, job_id in candidates:
+            if self._try_remove_stale_artifact(
+                path, job_id, now_mono=now_mono, mtime_cutoff=mtime_cutoff
+            ):
+                removed += 1
+                with self._lock:
+                    state = self._states.get(job_id)
+                    if state and state.output_path == path:
+                        self._reset_state_locked(job_id, state)
+                logger.debug(
+                    "Stale on-demand video artifact removed for job %s: %s",
+                    job_id,
+                    path.name,
+                )
+        return removed
+
     def cleanup_expired_files(self) -> int:
         removed = 0
         now = time.monotonic()
@@ -365,6 +456,7 @@ class VideoBuildManager:
                 tmp = _video_build_tmp_dir(path)
                 _cleanup_tmp_dir(tmp)
             logger.debug("Expired cached video removed for job %s", job_id)
+        removed += self._sweep_stale_video_artifacts_on_disk()
         return removed
 
     def _reset_state_locked(self, job_id: str, state: VideoBuildState) -> None:
@@ -520,7 +612,8 @@ def discard_video_build_for_job(job_id: str) -> None:
 
 
 def cleanup_stale_built_videos(work_dir: Path) -> int:
+    work_dir = Path(work_dir)
     mgr = get_video_build_manager()
-    if mgr:
-        return mgr.cleanup_expired_files()
-    return 0
+    if mgr is None or Path(mgr.work_dir).resolve() != work_dir.resolve():
+        mgr = VideoBuildManager(work_dir)
+    return mgr.cleanup_expired_files()

@@ -19,11 +19,13 @@ from remastered.web.download_filenames import video_remastered_download_filename
 from remastered.web.job_media_paths import job_workspace_dir
 from remastered.web.job_video_download import (
     BUILT_VIDEO_FILENAME,
+    VIDEO_BUILD_TMP_DIRNAME,
     VideoBuildManager,
     VideoBuildPhase,
     build_still_image_video_with_audio,
     built_video_is_current,
     built_video_path,
+    cleanup_stale_built_videos,
     init_video_build_manager,
     job_is_youtube_sourced,
     job_video_download_eligible,
@@ -490,6 +492,146 @@ def test_cleanup_expired_video_cache(tmp_path: Path, monkeypatch: pytest.MonkeyP
         state.output_path = out
 
     removed = mgr.cleanup_expired_files()
+    assert removed == 1
+    assert not out.is_file()
+
+
+def _age_file(path: Path, *, age_seconds: float) -> None:
+    ts = time.time() - age_seconds
+    os.utime(path, (ts, ts))
+
+
+@pytest.fixture
+def video_disk_cleanup_mgr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, VideoBuildManager]:
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.setenv("REMASTERED_WEB_VIDEO_DOWNLOAD_CACHE_TTL_SECONDS", "60")
+    mgr = VideoBuildManager(work)
+    return work, mgr
+
+
+def test_disk_sweep_removes_orphan_mp4_older_than_ttl(
+    video_disk_cleanup_mgr: tuple[Path, VideoBuildManager],
+) -> None:
+    work, mgr = video_disk_cleanup_mgr
+    ws = job_workspace_dir(work, "u", "orphan-job")
+    ws.mkdir(parents=True)
+    out = ws / BUILT_VIDEO_FILENAME
+    out.write_bytes(b"old-mp4")
+    _age_file(out, age_seconds=120)
+
+    removed = mgr.cleanup_expired_files()
+    assert removed == 1
+    assert not out.is_file()
+
+
+def test_disk_sweep_keeps_fresh_mp4(video_disk_cleanup_mgr: tuple[Path, VideoBuildManager]) -> None:
+    work, mgr = video_disk_cleanup_mgr
+    ws = job_workspace_dir(work, "u", "fresh-job")
+    ws.mkdir(parents=True)
+    out = ws / BUILT_VIDEO_FILENAME
+    out.write_bytes(b"fresh-mp4")
+
+    removed = mgr.cleanup_expired_files()
+    assert removed == 0
+    assert out.is_file()
+
+
+def test_disk_sweep_keeps_mp4_while_building(
+    video_disk_cleanup_mgr: tuple[Path, VideoBuildManager],
+) -> None:
+    work, mgr = video_disk_cleanup_mgr
+    ws = job_workspace_dir(work, "u", "build-active")
+    ws.mkdir(parents=True)
+    out = ws / BUILT_VIDEO_FILENAME
+    out.write_bytes(b"partial")
+    _age_file(out, age_seconds=120)
+    with mgr._lock:
+        state = mgr._state_for("build-active")
+        state.phase = VideoBuildPhase.BUILDING
+        state.building = True
+        state.output_path = out
+
+    removed = mgr.cleanup_expired_files()
+    assert removed == 0
+    assert out.is_file()
+
+
+def test_disk_sweep_keeps_ready_with_future_expiry(
+    video_disk_cleanup_mgr: tuple[Path, VideoBuildManager],
+) -> None:
+    work, mgr = video_disk_cleanup_mgr
+    ws = job_workspace_dir(work, "u", "ready-job")
+    ws.mkdir(parents=True)
+    out = ws / BUILT_VIDEO_FILENAME
+    out.write_bytes(b"served")
+    _age_file(out, age_seconds=120)
+    with mgr._lock:
+        state = mgr._state_for("ready-job")
+        state.phase = VideoBuildPhase.READY
+        state.expires_at = time.monotonic() + 500.0
+        state.output_path = out
+
+    removed = mgr.cleanup_expired_files()
+    assert removed == 0
+    assert out.is_file()
+
+
+def test_disk_sweep_leaves_other_job_media(
+    video_disk_cleanup_mgr: tuple[Path, VideoBuildManager],
+) -> None:
+    work, mgr = video_disk_cleanup_mgr
+    ws = job_workspace_dir(work, "u", "media-job")
+    ws.mkdir(parents=True)
+    mastered = ws / "mastered.wav"
+    preview = ws / "mastered.m4a"
+    upload = ws / "source.wav"
+    thumb = ws / "local-thumb.jpg"
+    for path in (mastered, preview, upload, thumb):
+        path.write_bytes(b"keep")
+        _age_file(path, age_seconds=120)
+    out = ws / BUILT_VIDEO_FILENAME
+    out.write_bytes(b"stale-video")
+    _age_file(out, age_seconds=120)
+
+    removed = mgr.cleanup_expired_files()
+    assert removed == 1
+    assert not out.is_file()
+    assert mastered.is_file() and preview.is_file()
+    assert upload.is_file() and thumb.is_file()
+
+
+def test_disk_sweep_removes_stale_tmp_build_dir(
+    video_disk_cleanup_mgr: tuple[Path, VideoBuildManager],
+) -> None:
+    work, mgr = video_disk_cleanup_mgr
+    ws = job_workspace_dir(work, "u", "tmp-job")
+    ws.mkdir(parents=True)
+    tmp = ws / VIDEO_BUILD_TMP_DIRNAME
+    tmp.mkdir()
+    (tmp / "_video_still.png").write_bytes(b"png")
+    _age_file(tmp, age_seconds=120)
+
+    removed = mgr.cleanup_expired_files()
+    assert removed == 1
+    assert not tmp.is_dir()
+
+
+def test_cleanup_stale_built_videos_without_global_manager(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.setenv("REMASTERED_WEB_VIDEO_DOWNLOAD_CACHE_TTL_SECONDS", "60")
+    ws = job_workspace_dir(work, "u", "no-mgr")
+    ws.mkdir(parents=True)
+    out = ws / BUILT_VIDEO_FILENAME
+    out.write_bytes(b"gone")
+    _age_file(out, age_seconds=120)
+
+    removed = cleanup_stale_built_videos(work)
     assert removed == 1
     assert not out.is_file()
 
