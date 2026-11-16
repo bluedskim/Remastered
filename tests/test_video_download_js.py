@@ -27,6 +27,14 @@ def test_job_players_partial_exposes_video_download_button() -> None:
     assert "{% if video_download_show %}" in players
 
 
+def test_video_download_js_poll_retry_and_auth_messages() -> None:
+    source = VIDEO_DOWNLOAD_JS.read_text(encoding="utf-8")
+    assert "POLL_MAX_FAILURES" in source
+    assert "Please sign in again to download the video." in source
+    assert "consecutiveFailures" in source
+    assert "Could not check video status. Please try again." in source
+
+
 def test_video_download_js_uses_document_click_delegation() -> None:
     source = VIDEO_DOWNLOAD_JS.read_text(encoding="utf-8")
     assert "document.addEventListener(\"click\"" in source
