@@ -232,6 +232,41 @@ def build_still_image_video_with_audio(
     return output_path
 
 
+def built_video_is_current(
+    job: dict[str, Any], work_dir: Path, output: Path
+) -> bool:
+    """True when an on-disk MP4 is non-empty and newer than mastering inputs."""
+    if not output.is_file():
+        return False
+    try:
+        if output.stat().st_size <= 0:
+            return False
+        video_mtime = output.stat().st_mtime
+    except OSError:
+        return False
+
+    mastered_raw = (job.get("mastered_path") or "").strip()
+    if not mastered_raw or not media_exists(mastered_raw, job, work_dir):
+        return False
+    mastered = Path(mastered_raw)
+    try:
+        if not mastered.is_file():
+            return False
+        if video_mtime < mastered.stat().st_mtime:
+            return False
+    except OSError:
+        return False
+
+    thumb = resolve_job_thumbnail_path(job, work_dir)
+    if thumb is not None:
+        try:
+            if thumb.is_file() and video_mtime < thumb.stat().st_mtime:
+                return False
+        except OSError:
+            return False
+    return True
+
+
 def run_video_build(
     job: dict[str, Any],
     *,
@@ -303,7 +338,10 @@ class VideoBuildManager:
             state = self._states.get(job_id)
             if not state or state.phase != VideoBuildPhase.READY:
                 return
-            state.expires_at = time.monotonic() + 120.0
+            now = time.monotonic()
+            extended = now + self._cache_ttl
+            if state.expires_at is None or state.expires_at < extended:
+                state.expires_at = extended
 
     def cleanup_expired_files(self) -> int:
         removed = 0
@@ -312,6 +350,8 @@ class VideoBuildManager:
             expired: list[tuple[str, Path | None]] = []
             for job_id, state in self._states.items():
                 if state.expires_at is None or state.expires_at > now:
+                    continue
+                if state.building or state.phase == VideoBuildPhase.BUILDING:
                     continue
                 if state.phase not in (VideoBuildPhase.READY, VideoBuildPhase.FAILED):
                     continue
@@ -344,20 +384,37 @@ class VideoBuildManager:
         tmp = _video_build_tmp_dir(path)
         _cleanup_tmp_dir(tmp)
 
+    def _promote_ready_from_disk(
+        self,
+        job_id: str,
+        state: VideoBuildState,
+        job: dict[str, Any],
+        output: Path,
+        now: float,
+    ) -> None:
+        state.phase = VideoBuildPhase.READY
+        state.error = None
+        state.output_path = output
+        state.building = False
+        if state.ready_at is None:
+            state.ready_at = now
+        if not state.download_filename:
+            state.download_filename = video_remastered_download_filename(job)
+        if state.expires_at is None or state.expires_at <= now:
+            state.expires_at = now + self._cache_ttl
+
     def status_payload(self, job: dict[str, Any]) -> dict[str, Any]:
         job_id = (job.get("id") or "").strip()
         output = built_video_path(job, self.work_dir)
         with self._lock:
             state = self._state_for(job_id)
+            now = time.monotonic()
             phase = state.phase
-            if (
-                phase == VideoBuildPhase.IDLE
-                and output.is_file()
-                and state.expires_at
-                and state.expires_at > time.monotonic()
-            ):
+            if built_video_is_current(job, self.work_dir, output):
+                if phase != VideoBuildPhase.READY:
+                    self._promote_ready_from_disk(job_id, state, job, output, now)
                 phase = VideoBuildPhase.READY
-            if phase == VideoBuildPhase.READY and not output.is_file():
+            elif phase == VideoBuildPhase.READY:
                 self._reset_state_locked(job_id, state)
                 phase = VideoBuildPhase.IDLE
 
@@ -383,12 +440,11 @@ class VideoBuildManager:
             state = self._state_for(job_id)
             output = built_video_path(job, self.work_dir)
             now = time.monotonic()
-            if (
-                state.phase == VideoBuildPhase.READY
-                and output.is_file()
-                and state.expires_at
-                and state.expires_at > now
-            ):
+            if built_video_is_current(job, self.work_dir, output):
+                if state.phase != VideoBuildPhase.READY:
+                    self._promote_ready_from_disk(job_id, state, job, output, now)
+                elif state.expires_at is None or state.expires_at <= now:
+                    state.expires_at = now + self._cache_ttl
                 return self.status_payload(job)
             if state.building or state.phase == VideoBuildPhase.BUILDING:
                 return self.status_payload(job)

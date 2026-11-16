@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -21,6 +22,7 @@ from remastered.web.job_video_download import (
     VideoBuildManager,
     VideoBuildPhase,
     build_still_image_video_with_audio,
+    built_video_is_current,
     built_video_path,
     init_video_build_manager,
     job_is_youtube_sourced,
@@ -340,6 +342,135 @@ def test_delete_job_removes_built_video(
     delete = video_client.delete(f"/api/jobs/{job_id}")
     assert delete.status_code == 200
     assert not path.is_file()
+
+
+def test_note_download_served_does_not_shorten_ttl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.setenv("REMASTERED_WEB_VIDEO_DOWNLOAD_CACHE_TTL_SECONDS", "3600")
+    mgr = VideoBuildManager(work)
+    job = {"id": "job-ttl", "user_id": "u", "youtube_url": "https://youtu.be/abc12345678"}
+    future_expiry = time.monotonic() + 3500.0
+    with mgr._lock:
+        state = mgr._state_for("job-ttl")
+        state.phase = VideoBuildPhase.READY
+        state.expires_at = future_expiry
+
+    mgr.note_download_served(job)
+    with mgr._lock:
+        state = mgr._state_for("job-ttl")
+        assert state.expires_at is not None
+        assert state.expires_at >= future_expiry
+
+
+def test_reuse_valid_mp4_after_cache_expiry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.setenv("REMASTERED_WEB_VIDEO_DOWNLOAD_CACHE_TTL_SECONDS", "60")
+    build_calls: list[str] = []
+
+    def fake_build(job, *, work_dir=None, settings=None):
+        build_calls.append(job["id"])
+        out = built_video_path(job, work_dir or work)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"mp4")
+        return out
+
+    monkeypatch.setattr("remastered.web.job_video_download.run_video_build", fake_build)
+    mgr = VideoBuildManager(work)
+    ws = job_workspace_dir(work, "u", "job-reuse")
+    ws.mkdir(parents=True)
+    mastered = ws / "master.wav"
+    mastered.write_bytes(b"wav")
+    mastered_ts = time.time() - 10
+    os.utime(mastered, (mastered_ts, mastered_ts))
+    job = {
+        "id": "job-reuse",
+        "user_id": "u",
+        "youtube_url": "https://youtu.be/abc12345678",
+        "mastered_path": str(mastered),
+        "status": "completed",
+    }
+    out = built_video_path(job, work)
+    out.write_bytes(b"cached-mp4")
+    os.utime(out, (time.time(), time.time()))
+
+    with mgr._lock:
+        state = mgr._state_for("job-reuse")
+        state.phase = VideoBuildPhase.READY
+        state.expires_at = time.monotonic() - 5.0
+        state.output_path = out
+
+    payload = mgr.start_build(job)
+    assert payload["status"] == "ready"
+    assert build_calls == []
+    assert out.is_file()
+    assert out.read_bytes() == b"cached-mp4"
+
+
+def test_rebuild_when_mastered_newer_than_mp4(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    build_calls: list[str] = []
+
+    def fake_build(job, *, work_dir=None, settings=None):
+        build_calls.append(job["id"])
+        out = built_video_path(job, work_dir or work)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"fresh-mp4")
+        return out
+
+    monkeypatch.setattr("remastered.web.job_video_download.run_video_build", fake_build)
+    mgr = VideoBuildManager(work)
+    ws = job_workspace_dir(work, "u", "job-stale")
+    ws.mkdir(parents=True)
+    mastered = ws / "master.wav"
+    mastered.write_bytes(b"new-master")
+    job = {
+        "id": "job-stale",
+        "user_id": "u",
+        "youtube_url": "https://youtu.be/abc12345678",
+        "mastered_path": str(mastered),
+        "status": "completed",
+    }
+    out = built_video_path(job, work)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(b"old-mp4")
+    os.utime(out, (time.time() - 60, time.time() - 60))
+
+    assert not built_video_is_current(job, work, out)
+    mgr.start_build(job)
+    for _ in range(40):
+        if build_calls:
+            break
+        time.sleep(0.05)
+    assert build_calls == ["job-stale"]
+
+
+def test_cleanup_skips_videos_still_building(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    mgr = VideoBuildManager(work)
+    ws = job_workspace_dir(work, "u", "job-building")
+    ws.mkdir(parents=True)
+    out = ws / BUILT_VIDEO_FILENAME
+    out.write_bytes(b"mp4")
+    with mgr._lock:
+        state = mgr._state_for("job-building")
+        state.phase = VideoBuildPhase.BUILDING
+        state.building = True
+        state.expires_at = time.monotonic() - 1
+        state.output_path = out
+
+    removed = mgr.cleanup_expired_files()
+    assert removed == 0
+    assert out.is_file()
 
 
 def test_cleanup_expired_video_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

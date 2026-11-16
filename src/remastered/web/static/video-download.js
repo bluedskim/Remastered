@@ -2,6 +2,7 @@
   "use strict";
 
   var POLL_MS = 1200;
+  var POLL_MAX_FAILURES = 3;
 
   function findStatusEl(button) {
     var host = button.closest(".ab-downloads") || button.parentElement;
@@ -35,13 +36,49 @@
     link.remove();
   }
 
-  function pollStatus(jobId, button, filename) {
+  function isUserFriendlyDetail(detail) {
+    if (typeof detail !== "string") return false;
+    var trimmed = detail.trim();
+    if (!trimmed || trimmed.length > 280) return false;
+    if (trimmed.indexOf("/") !== -1 || trimmed.indexOf("\\") !== -1) return false;
+    if (trimmed.toLowerCase().indexOf("traceback") !== -1) return false;
+    if (trimmed.toLowerCase().indexOf("exception") !== -1) return false;
+    return true;
+  }
+
+  function messageForPollFailure(resp, body) {
+    if (resp.status === 401) {
+      return "Please sign in again to download the video.";
+    }
+    if (body && isUserFriendlyDetail(body.detail)) {
+      return body.detail.trim();
+    }
+    return "Could not check video status. Please try again.";
+  }
+
+  function pollStatus(jobId, button, filename, consecutiveFailures) {
+    consecutiveFailures = consecutiveFailures || 0;
     return fetch("/api/jobs/" + encodeURIComponent(jobId) + "/video-download", {
       credentials: "same-origin",
     })
       .then(function (resp) {
         if (!resp.ok) {
-          throw new Error("Could not check video status.");
+          return resp
+            .json()
+            .catch(function () {
+              return {};
+            })
+            .then(function (body) {
+              var failures = consecutiveFailures + 1;
+              if (failures < POLL_MAX_FAILURES) {
+                return new Promise(function (resolve) {
+                  setTimeout(function () {
+                    resolve(pollStatus(jobId, button, filename, failures));
+                  }, POLL_MS);
+                });
+              }
+              throw new Error(messageForPollFailure(resp, body));
+            });
         }
         return resp.json();
       })
@@ -50,7 +87,7 @@
           setStatus(button, "Preparing video…", false);
           return new Promise(function (resolve) {
             setTimeout(function () {
-              resolve(pollStatus(jobId, button, filename));
+              resolve(pollStatus(jobId, button, filename, 0));
             }, POLL_MS);
           });
         }
@@ -70,7 +107,7 @@
         setStatus(button, "Preparing video…", false);
         return new Promise(function (resolve) {
           setTimeout(function () {
-            resolve(pollStatus(jobId, button, filename));
+            resolve(pollStatus(jobId, button, filename, 0));
           }, POLL_MS);
         });
       });
@@ -110,7 +147,7 @@
           button.textContent = "Download video";
           return;
         }
-        return pollStatus(jobId, button, filename);
+        return pollStatus(jobId, button, filename, 0);
       })
       .catch(function (err) {
         button.disabled = false;
