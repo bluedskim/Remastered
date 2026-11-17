@@ -74,6 +74,8 @@ _SAFE_LOG_PREFIXES = (
     "Downloading reference audio",
     "Using cached reference audio:",
     "True-peak protection:",
+    "Reference treble is cut off",
+    "No reference cutoff detected",
     "Job re-queued after the server restarted",
     "Playback file preparation failed",
 )

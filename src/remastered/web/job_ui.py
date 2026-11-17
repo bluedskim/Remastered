@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from remastered.stereo_width import stereo_width_label
+from remastered.treble_cutoff import treble_hold_label
 from remastered.web.db import JobStore
 from remastered.web.processing_stage import pipeline_steps_for_job
 from remastered.web.job_user_messages import user_facing_job_record
@@ -127,4 +128,12 @@ def enrich_job_ui(job: dict[str, Any], store: JobStore | None = None) -> dict[st
     data["reference_thumbnail"] = ref.get("thumbnail_url")
     data["reference_author"] = ref.get("author_name")
     data["stereo_width_label"] = stereo_width_label(job.get("stereo_width_mode"))
+    data["keep_source_treble_label"] = treble_hold_label(
+        job.get("keep_source_treble_above_reference_cutoff", True)
+    )
+    data["final_tp_protection_label"] = (
+        "On (true-peak safety, default)"
+        if job.get("final_tp_protection", True)
+        else "Off (legacy matchered level)"
+    )
     return data

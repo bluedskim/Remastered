@@ -733,6 +733,7 @@ async def create_job(
     reference_from_job_id: str = Form(""),
     stereo_width_mode: str = Form(DEFAULT_STEREO_WIDTH_MODE),
     final_tp_protection: str = Form("on"),
+    keep_source_treble_above_reference_cutoff: str = Form("on"),
 ) -> RedirectResponse:
     ip = client_ip(request)
     ws = _web_settings()
@@ -835,6 +836,13 @@ async def create_job(
         stereo_width_mode = DEFAULT_STEREO_WIDTH_MODE
 
     wants_tp = (final_tp_protection or "").strip().lower() not in ("", "0", "false", "off", "no")
+    wants_treble_hold = (keep_source_treble_above_reference_cutoff or "").strip().lower() not in (
+        "",
+        "0",
+        "false",
+        "off",
+        "no",
+    )
 
     job_id = store.create_job(
         user_id=owner_id,
@@ -851,6 +859,7 @@ async def create_job(
         reference_video_id=ref_video_id,
         reference_youtube_title=ref_youtube_title,
         final_tp_protection=wants_tp,
+        keep_source_treble_above_reference_cutoff=wants_treble_hold,
     )
     if reference_source_type == "upload" and reference_path is not None:
         snap_path = await run_in_threadpool(

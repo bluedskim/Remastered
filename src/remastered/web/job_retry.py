@@ -92,6 +92,9 @@ def build_job_retry_form_payload(
     payload = prefs.to_client_dict()
     payload["sourceYoutubeUrl"] = source_youtube_url
     payload["finalTpProtection"] = bool(job.get("final_tp_protection", True))
+    payload["keepSourceTrebleAboveReferenceCutoff"] = bool(
+        job.get("keep_source_treble_above_reference_cutoff", True)
+    )
     payload["stereoWidthMode"] = stereo_width_mode
     payload["warnings"] = warnings
     if source_type == "upload" and retry_from_job_id:

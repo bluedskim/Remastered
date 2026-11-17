@@ -38,6 +38,7 @@ def master_downloaded_audio(
     settings: RemasteredSettings,
     progress: PipelineProgress | None = None,
     stereo_width: StereoWidthMode = DEFAULT_STEREO_WIDTH_MODE,
+    keep_source_treble_above_reference_cutoff: bool = True,
 ) -> dict[str, Path | str]:
     prog = progress or PipelineProgress()
     job = job_dir(settings.work_dir, dl.video_id)
@@ -51,6 +52,7 @@ def master_downloaded_audio(
         preview=settings.preview,
         stem="mastered",
         stereo_width=stereo_width,
+        keep_source_treble_above_reference_cutoff=keep_source_treble_above_reference_cutoff,
         log_line=prog.log,
     )
     prog.log(f"Master WAV: {master_out.output_path.name}")
