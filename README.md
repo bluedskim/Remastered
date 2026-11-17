@@ -271,6 +271,10 @@ pytest
 
 합성 사인파 WAV로 matchering을 실제 실행하고, ffmpeg 렌더·yt-dlp·YouTube 호출은 모킹합니다.
 
+## 개선사항
+
+1. 레퍼런스와 마스터링 대상 원곡은 일정 기간동안 캐시함
+
 ## 라이선스
 
 MIT (matchering 자체는 GPLv3 — 사용 시 해당 라이선스를 확인하세요.)
