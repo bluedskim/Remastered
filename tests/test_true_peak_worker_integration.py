@@ -35,7 +35,7 @@ def _install_common_mocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tu
             source_url=url,
         )
 
-    def fake_master(dl, reference, settings, progress=None, stereo_width=None):
+    def fake_master(dl, reference, settings, progress=None, stereo_width=None, **kwargs):
         mastered = settings.work_dir / "vid12345678" / "master" / "mastered_16bit.wav"
         mastered.parent.mkdir(parents=True, exist_ok=True)
         mastered.write_bytes(b"RIFF" + b"\x00" * 32)

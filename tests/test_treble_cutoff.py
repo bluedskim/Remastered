@@ -45,15 +45,40 @@ def _lowpass(sig: np.ndarray, sr: int, fc: float, order: int = 8) -> np.ndarray:
     return signal.filtfilt(b, a, sig)
 
 
-def _gradual_tilt(sig: np.ndarray, sr: int) -> np.ndarray:
-    """Gentle high-shelf roll-off, not a hard encoder cut."""
+def _natural_master_tilt(
+    sig: np.ndarray,
+    sr: int,
+    db_per_khz: float = 2.0,
+    knee_hz: float = 4_000.0,
+) -> np.ndarray:
+    """Slow roll-off typical of a naturally dark master (not a codec floor)."""
     n = len(sig)
     spec = np.fft.rfft(sig)
     freqs = np.fft.rfftfreq(n, 1.0 / sr)
-    tilt_db = -6.0 * np.log2(np.maximum(freqs, 1.0) / 1000.0)
-    tilt_db = np.clip(tilt_db, -18.0, 0.0)
-    gain = 10.0 ** (tilt_db / 20.0)
+    out_db = np.where(
+        freqs <= knee_hz,
+        0.0,
+        -db_per_khz * (freqs - knee_hz) / 1000.0,
+    )
+    gain = 10.0 ** (out_db / 20.0)
     gain[0] = 1.0
+    return np.fft.irfft(spec * gain, n=n)
+
+
+def _codec_style_gentle_cut(
+    sig: np.ndarray,
+    sr: int,
+    knee_hz: float = 10_200.0,
+    slope_db_per_khz: float = 6.3,
+    floor_db: float = -55.0,
+) -> np.ndarray:
+    """Lossy-codec style: ~6 dB/kHz into a noise floor (YouTube-like)."""
+    n = len(sig)
+    spec = np.fft.rfft(sig)
+    freqs = np.fft.rfftfreq(n, 1.0 / sr)
+    rolloff = -slope_db_per_khz * np.maximum(freqs - knee_hz, 0.0) / 1000.0
+    out_db = np.maximum(rolloff, floor_db)
+    gain = 10.0 ** (out_db / 20.0)
     return np.fft.irfft(spec * gain, n=n)
 
 
@@ -74,7 +99,7 @@ def _band_rms_db(path: Path, lo_hz: float, hi_hz: float, sr: int = 44100) -> flo
     return 10.0 * np.log10(max(power, 1e-20))
 
 
-def test_detects_hard_lowpassed_reference() -> None:
+def test_detects_steep_butterworth_lowpass() -> None:
     sr = 44100
     n = sr * 4
     mono = _lowpass(_pink_noise(n, sr), sr, 12_000.0)
@@ -84,10 +109,20 @@ def test_detects_hard_lowpassed_reference() -> None:
     assert 10_500 <= fc <= 13_500
 
 
-def test_gradual_tilt_not_detected() -> None:
+def test_detects_gentle_codec_style_rolloff() -> None:
     sr = 44100
-    n = sr * 4
-    mono = _gradual_tilt(_pink_noise(n, sr), sr)
+    n = sr * 8
+    mono = _codec_style_gentle_cut(_pink_noise(n, sr), sr)
+    ref = np.column_stack(_stereo_from_mono(mono))
+    fc = detect_hard_reference_cutoff(ref, sr)
+    assert fc is not None
+    assert 10_000 <= fc <= 13_500
+
+
+def test_natural_master_tilt_not_detected() -> None:
+    sr = 44100
+    n = sr * 8
+    mono = _natural_master_tilt(_pink_noise(n, sr), sr, db_per_khz=2.0)
     ref = np.column_stack(_stereo_from_mono(mono))
     assert detect_hard_reference_cutoff(ref, sr) is None
 

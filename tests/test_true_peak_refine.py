@@ -293,7 +293,7 @@ def test_worker_playback_over_ceiling_fails_job(tmp_path: Path, monkeypatch) -> 
             source_url=url,
         )
 
-    def fake_master(dl, reference, settings, progress=None, stereo_width=None):
+    def fake_master(dl, reference, settings, progress=None, stereo_width=None, **kwargs):
         mastered = settings.work_dir / "vid" / "master" / "mastered_16bit.wav"
         mastered.parent.mkdir(parents=True, exist_ok=True)
         mastered.write_bytes(b"RIFF")

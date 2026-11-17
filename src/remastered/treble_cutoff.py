@@ -7,13 +7,21 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal
 
-# Detection thresholds (see module doc / PR description).
+# Detection thresholds — tuned for lossy codec lowpass (e.g. YouTube), not gentle masters.
 MEDIAN_BAND_HZ = (2_000.0, 8_000.0)
 SEARCH_MIN_HZ = 8_000.0
 MAX_CUTOFF_HZ = 19_500.0
 BELOW_MEDIAN_DB = 20.0
-STEEP_DROP_DB = 15.0
-STEEP_WINDOW_HZ = 1_000.0
+# Transition: ≥15 dB fall within ~2.5 kHz above the −20 dB crossing (~6 dB/kHz codec knee).
+TRANSITION_WINDOW_HZ = 2_500.0
+TRANSITION_LOOKBACK_HZ = 500.0
+MIN_TRANSITION_DROP_DB = 15.0
+MIN_AVG_SLOPE_DB_PER_KHZ = 5.0
+# Plateau: from fc+2.5 kHz to 19.5 kHz, flat codec floor (≈35–40 dB below body).
+PLATEAU_START_ABOVE_FC_HZ = 2_500.0
+FLOOR_MARGIN_DB = 34.0
+PLATEAU_RECOVERY_DB = 4.0
+PLATEAU_MAX_SPAN_DB = 7.0
 DEFAULT_TRANSITION_HZ = 750.0
 SOURCE_TREBLE_MARGIN_DB = 20.0
 
@@ -62,18 +70,48 @@ def _interp_db(freqs: np.ndarray, db: np.ndarray, hz: float) -> float:
     return float(np.interp(hz, freqs, db))
 
 
-def _is_steep_cutoff(freqs: np.ndarray, db: np.ndarray, fc_hz: float) -> bool:
-    """True when level falls >= STEEP_DROP_DB across STEEP_WINDOW_HZ ending at the cutoff."""
-    below = _interp_db(freqs, db, fc_hz - STEEP_WINDOW_HZ)
-    at_or_above = _interp_db(freqs, db, min(fc_hz + 200.0, freqs[-1]))
-    return (below - at_or_above) >= STEEP_DROP_DB
+def _has_codec_plateau(
+    freqs: np.ndarray,
+    db: np.ndarray,
+    median_db: float,
+    fc_hz: float,
+) -> bool:
+    """High band sits on a floor ≥FLOOR_MARGIN_DB below the body, without recovering."""
+    plateau_lo = fc_hz + PLATEAU_START_ABOVE_FC_HZ
+    if plateau_lo >= MAX_CUTOFF_HZ:
+        return False
+    plateau = (freqs >= plateau_lo) & (freqs <= MAX_CUTOFF_HZ)
+    if not np.any(plateau):
+        return False
+    tail = db[plateau]
+    floor_db = median_db - FLOOR_MARGIN_DB
+    tail_max = float(np.max(tail))
+    tail_span = float(np.max(tail) - np.min(tail))
+    if tail_max > floor_db + PLATEAU_RECOVERY_DB:
+        return False
+    # Natural masters keep measurable HF energy with a wide sloping span above ~median−28 dB.
+    if tail_max > median_db - 28.0 and tail_span > PLATEAU_MAX_SPAN_DB:
+        return False
+    return float(np.median(tail)) <= floor_db + 1.5
+
+
+def _has_codec_transition(freqs: np.ndarray, db: np.ndarray, fc_hz: float) -> bool:
+    """Enough slope into the cut for a codec knee (not a slow master tilt)."""
+    f_before = max(SEARCH_MIN_HZ, fc_hz - TRANSITION_LOOKBACK_HZ)
+    f_after = min(fc_hz + TRANSITION_WINDOW_HZ, float(freqs[-1]))
+    if f_after <= f_before + 500.0:
+        return False
+    drop_db = _interp_db(freqs, db, f_before) - _interp_db(freqs, db, f_after)
+    span_khz = (f_after - f_before) / 1000.0
+    avg_slope = drop_db / span_khz
+    return drop_db >= MIN_TRANSITION_DROP_DB or avg_slope >= MIN_AVG_SLOPE_DB_PER_KHZ
 
 
 def detect_hard_reference_cutoff(
     reference: np.ndarray,
     sample_rate: int,
 ) -> float | None:
-    """Return cutoff frequency in Hz, or None if no hard encoder lowpass is detected."""
+    """Return cutoff frequency in Hz, or None if no lossy encoder lowpass is detected."""
     mono = _rms_normalize(_stereo_to_mid(reference))
     freqs, db = welch_magnitude_db(mono, sample_rate)
     lo, hi = MEDIAN_BAND_HZ
@@ -92,14 +130,22 @@ def detect_hard_reference_cutoff(
     for idx in idx_candidates:
         f = float(freqs[idx])
         if f >= MAX_CUTOFF_HZ:
-            continue
-        tail = (freqs >= f) & (freqs <= MAX_CUTOFF_HZ)
-        if not np.all(db[tail] <= threshold + 1.0):
-            continue
-        if _is_steep_cutoff(freqs, db, f):
+            break
+        if idx > 0 and db[idx - 1] > threshold:
             fc_hz = f
             break
+    if fc_hz is None:
+        fc_hz = float(freqs[int(idx_candidates[0])])
+        if fc_hz >= MAX_CUTOFF_HZ:
+            return None
 
+    tail = (freqs >= fc_hz) & (freqs <= MAX_CUTOFF_HZ)
+    if not np.all(db[tail] <= threshold + 2.5):
+        return None
+    if not _has_codec_transition(freqs, db, fc_hz):
+        return None
+    if not _has_codec_plateau(freqs, db, median_db, fc_hz):
+        return None
     return fc_hz
 
 
