@@ -171,6 +171,24 @@
       </p>
     </div>
 
+    <div class="field field-treble-hold">
+      <input
+        type="hidden"
+        name="keep_source_treble_above_reference_cutoff"
+        id="keep_source_treble_above_reference_cutoff"
+        value="on"
+      />
+      <label class="checkbox-label">
+        <input type="checkbox" id="keep_source_treble_above_reference_cutoff_toggle" checked />
+        <span>Keep source treble above reference cutoff</span>
+      </label>
+      <p class="small muted hint">
+        When the reference loses high frequencies (typical of YouTube), we still match below
+        that range but leave your source&apos;s air above it unchanged. Turn off to match the
+        reference treble fully.
+      </p>
+    </div>
+
     <p class="limits-hint small muted">
       Source up to {{ limits.max_source_duration_seconds // 60 }} min · {{ limits.max_source_bytes // (1024*1024) }}MB
     </p>
@@ -227,14 +245,25 @@
   const form = document.getElementById("create-job-form");
   const finalTpHidden = document.getElementById("final_tp_protection");
   const finalTpToggle = document.getElementById("final_tp_protection_toggle");
+  const trebleHoldHidden = document.getElementById("keep_source_treble_above_reference_cutoff");
+  const trebleHoldToggle = document.getElementById("keep_source_treble_above_reference_cutoff_toggle");
   function syncFinalTpHidden() {
     if (!finalTpHidden || !finalTpToggle) return;
     finalTpHidden.value = finalTpToggle.checked ? "on" : "off";
+  }
+  function syncTrebleHoldHidden() {
+    if (!trebleHoldHidden || !trebleHoldToggle) return;
+    trebleHoldHidden.value = trebleHoldToggle.checked ? "on" : "off";
   }
   if (finalTpToggle) {
     finalTpToggle.addEventListener("change", function () {
       syncFinalTpHidden();
       writeStored({ immediate: true });
+    });
+  }
+  if (trebleHoldToggle) {
+    trebleHoldToggle.addEventListener("change", function () {
+      syncTrebleHoldHidden();
     });
   }
   const modeInput = document.getElementById("reference_source_mode");
@@ -862,6 +891,7 @@
 
   form.addEventListener("submit", function (e) {
     syncFinalTpHidden();
+    syncTrebleHoldHidden();
     if (sourceOverLimit) {
       e.preventDefault();
       return;

@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -114,6 +114,7 @@ class JobStore:
                     reference_youtube_title TEXT,
                     processing_stage TEXT NOT NULL DEFAULT 'queued',
                     final_tp_protection INTEGER NOT NULL DEFAULT 1,
+                    keep_source_treble_above_reference_cutoff INTEGER NOT NULL DEFAULT 1,
                     memo TEXT NOT NULL DEFAULT '',
                     lufs_original REAL,
                     lufs_mastered_wav REAL,
@@ -182,6 +183,14 @@ class JobStore:
             cols = self._job_columns(conn)
             if "lufs_mastered_wav" not in cols:
                 conn.execute("ALTER TABLE jobs ADD COLUMN lufs_mastered_wav REAL")
+            cols = self._job_columns(conn)
+            if "keep_source_treble_above_reference_cutoff" not in cols:
+                conn.execute(
+                    """
+                    ALTER TABLE jobs ADD COLUMN keep_source_treble_above_reference_cutoff
+                    INTEGER NOT NULL DEFAULT 1
+                    """
+                )
             self._backfill_legacy_jobs(conn)
 
         self._backfill_job_titles_from_logs(conn)
@@ -466,6 +475,7 @@ class JobStore:
         reference_video_id: str | None = None,
         reference_youtube_title: str | None = None,
         final_tp_protection: bool = True,
+        keep_source_treble_above_reference_cutoff: bool = True,
     ) -> str:
         job_id = uuid4().hex
         now = _utc_now()
@@ -481,8 +491,9 @@ class JobStore:
                     reference_path, title, description, privacy, upload_enabled,
                     stage_state, client_ip, stereo_width_mode,
                     reference_source_type, reference_youtube_url, reference_video_id,
-                    reference_youtube_title, processing_stage, final_tp_protection
-                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)
+                    reference_youtube_title, processing_stage, final_tp_protection,
+                    keep_source_treble_above_reference_cutoff
+                ) VALUES (?, ?, ?, ?, 'pending', 'download', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
                 """,
                 (
                     job_id,
@@ -503,6 +514,7 @@ class JobStore:
                     reference_video_id,
                     reference_youtube_title,
                     1 if final_tp_protection else 0,
+                    1 if keep_source_treble_above_reference_cutoff else 0,
                 ),
             )
         return job_id
@@ -535,6 +547,7 @@ class JobStore:
             "reference_path",
             "processing_stage",
             "final_tp_protection",
+            "keep_source_treble_above_reference_cutoff",
             "memo",
             "lufs_original",
             "lufs_mastered_wav",
@@ -544,6 +557,10 @@ class JobStore:
             return
         if "final_tp_protection" in updates:
             updates["final_tp_protection"] = 1 if bool(updates["final_tp_protection"]) else 0
+        if "keep_source_treble_above_reference_cutoff" in updates:
+            updates["keep_source_treble_above_reference_cutoff"] = (
+                1 if bool(updates["keep_source_treble_above_reference_cutoff"]) else 0
+            )
         if "stage_state" in updates and not isinstance(updates["stage_state"], str):
             updates["stage_state"] = json.dumps(updates["stage_state"])
         cols = ", ".join(f"{k} = ?" for k in updates)
@@ -1256,5 +1273,10 @@ class JobStore:
             data["final_tp_protection"] = bool(data["final_tp_protection"])
         else:
             data["final_tp_protection"] = True
+        key_treble = "keep_source_treble_above_reference_cutoff"
+        if key_treble in data:
+            data[key_treble] = bool(data[key_treble])
+        else:
+            data[key_treble] = True
         data.setdefault("memo", "")
         return data

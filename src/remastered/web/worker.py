@@ -248,6 +248,9 @@ class JobWorker:
                     job_settings,
                     progress=progress,
                     stereo_width=stereo_width,
+                    keep_source_treble_above_reference_cutoff=bool(
+                        job.get("keep_source_treble_above_reference_cutoff", True)
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Job %s matchering failed", job_id)

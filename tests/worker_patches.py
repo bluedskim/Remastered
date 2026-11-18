@@ -27,7 +27,7 @@ def install_fake_worker_pipeline(
         audio.write_bytes(b"RIFF" + b"\x00" * 100)
         return DownloadResult(video_id, "Test Track", audio, None, url)
 
-    def fake_master(dl, reference, settings, progress=None, stereo_width=None):
+    def fake_master(dl, reference, settings, progress=None, stereo_width=None, **kwargs):
         if progress:
             progress.stage_start("master")
             progress.stage_done("master")

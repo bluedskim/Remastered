@@ -75,6 +75,8 @@ def test_index_and_create_job(client: TestClient) -> None:
     assert "New job" in home.text
     assert "True-peak safety" in home.text
     assert 'id="final_tp_protection_toggle"' in home.text
+    assert "Keep source treble above reference cutoff" in home.text
+    assert 'id="keep_source_treble_above_reference_cutoff_toggle"' in home.text
     assert "YouTube에 업로드" not in home.text
 
     resp = client.post(
@@ -119,6 +121,25 @@ def test_index_and_create_job(client: TestClient) -> None:
     job = client.app.state.store.get_job(job_id)
     assert job is not None
     assert job.get("final_tp_protection") is True
+    assert job.get("keep_source_treble_above_reference_cutoff") is True
+
+
+def test_create_job_treble_hold_opt_out(client: TestClient) -> None:
+    client.get("/")
+    resp = client.post(
+        "/jobs",
+        data={
+            "youtube_url": "https://www.youtube.com/watch?v=trebleOptOut1",
+            "reference_name": "ref.wav",
+            "keep_source_treble_above_reference_cutoff": "off",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    job_id = resp.headers["location"].split("/")[-1]
+    job = client.app.state.store.get_job(job_id)
+    assert job is not None
+    assert job.get("keep_source_treble_above_reference_cutoff") is False
 
 
 def test_create_job_final_tp_protection_opt_out(client: TestClient) -> None:

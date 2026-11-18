@@ -20,6 +20,11 @@ from remastered.stereo_width import (
     preserve_stereo_width,
     stereo_side_mid_ratio_db,
 )
+from remastered.treble_cutoff import (
+    TrebleHoldPlan,
+    match_frequencies_with_treble_hold,
+    treble_hold_log_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +39,9 @@ def _matchering_no_limiter(
     target: np.ndarray,
     reference: np.ndarray,
     config: mg.Config,
+    *,
+    treble_hold_plan: TrebleHoldPlan | None = None,
+    use_stock_frequency_match: bool = True,
 ) -> tuple[np.ndarray, float]:
     from matchering.stages import (
         __correct_levels,
@@ -54,15 +62,27 @@ def _matchering_no_limiter(
         reference_match_rms,
     ) = __match_levels(target, reference, config)
 
-    result_no_limiter, result_no_limiter_mid = __match_frequencies(
-        target_mid,
-        target_side,
-        target_mid_loudest_pieces,
-        reference_mid_loudest_pieces,
-        target_side_loudest_pieces,
-        reference_side_loudest_pieces,
-        config,
-    )
+    if use_stock_frequency_match and treble_hold_plan is None:
+        result_no_limiter, result_no_limiter_mid = __match_frequencies(
+            target_mid,
+            target_side,
+            target_mid_loudest_pieces,
+            reference_mid_loudest_pieces,
+            target_side_loudest_pieces,
+            reference_side_loudest_pieces,
+            config,
+        )
+    else:
+        result_no_limiter, result_no_limiter_mid = match_frequencies_with_treble_hold(
+            target_mid,
+            target_side,
+            target_mid_loudest_pieces,
+            reference_mid_loudest_pieces,
+            target_side_loudest_pieces,
+            reference_side_loudest_pieces,
+            config,
+            treble_hold_plan,
+        )
 
     result_no_limiter = __correct_levels(
         result_no_limiter,
@@ -119,6 +139,7 @@ def run_matchering(
     preview: bool = False,
     stem: str = "mastered",
     stereo_width: StereoWidthMode = DEFAULT_STEREO_WIDTH_MODE,
+    keep_source_treble_above_reference_cutoff: bool = True,
     log_line: Callable[[str], None] | None = None,
 ) -> MasterResult:
     """matchering으로 target을 reference에 맞춰 마스터링합니다."""
@@ -159,7 +180,25 @@ def run_matchering(
     sm_orig = stereo_side_mid_ratio_db(target_snapshot)
     _log(f"Stereo width (original Side/Mid): {sm_orig:.2f} dB")
 
-    pre_limiter, final_amp = _matchering_no_limiter(target, reference, config)
+    treble_hold_plan: TrebleHoldPlan | None = None
+    detected_fc: float | None = None
+    use_stock_frequency_match = not keep_source_treble_above_reference_cutoff
+    if keep_source_treble_above_reference_cutoff:
+        from remastered.treble_cutoff import detect_hard_reference_cutoff
+
+        detected_fc = detect_hard_reference_cutoff(reference, sample_rate)
+        treble_hold_plan = TrebleHoldPlan.resolve(reference, target, sample_rate)
+        use_stock_frequency_match = treble_hold_plan is None
+
+    pre_limiter, final_amp = _matchering_no_limiter(
+        target,
+        reference,
+        config,
+        treble_hold_plan=treble_hold_plan,
+        use_stock_frequency_match=use_stock_frequency_match,
+    )
+    if keep_source_treble_above_reference_cutoff:
+        _log(treble_hold_log_message(treble_hold_plan, detected_fc))
     sm_pre = stereo_side_mid_ratio_db(pre_limiter)
     _log(f"Stereo width (after mastering, before correction): {sm_pre:.2f} dB")
 
