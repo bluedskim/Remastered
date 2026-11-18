@@ -7,25 +7,42 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal
 
-# Detection thresholds — tuned for lossy codec lowpass (e.g. YouTube), not gentle masters.
 MEDIAN_BAND_HZ = (2_000.0, 8_000.0)
-SEARCH_MIN_HZ = 8_000.0
-MAX_CUTOFF_HZ = 19_500.0
-BELOW_MEDIAN_DB = 20.0
-# Transition: ≥15 dB fall within ~2.5 kHz above the −20 dB crossing (~6 dB/kHz codec knee).
-TRANSITION_WINDOW_HZ = 2_500.0
-TRANSITION_LOOKBACK_HZ = 500.0
-MIN_TRANSITION_DROP_DB = 15.0
-MIN_AVG_SLOPE_DB_PER_KHZ = 5.0
-# Plateau: from fc+2.5 kHz to 19.5 kHz, flat codec floor (≈35–40 dB below body).
-PLATEAU_START_ABOVE_FC_HZ = 2_500.0
-FLOOR_MARGIN_DB = 34.0
-PLATEAU_RECOVERY_DB = 4.0
-PLATEAU_MAX_SPAN_DB = 7.0
-DEFAULT_TRANSITION_HZ = 750.0
-SOURCE_TREBLE_MARGIN_DB = 20.0
-
 WELCH_NPERSEG = 8192
+
+# Rule 1 — first −20 dB crossing (relative to 2–8 kHz median).
+FC_SEARCH_MIN_HZ = 8_000.0
+FC_SEARCH_MAX_HZ = 16_500.0
+FC_CROSSING_DB = -20.0
+
+# Rule 2 — cut depth immediately above fc.
+DEPTH_BAND_START_ABOVE_FC_HZ = 1_000.0
+DEPTH_BAND_END_ABOVE_FC_HZ = 5_000.0
+DEPTH_BAND_CAP_HZ = 19_500.0
+DEPTH_MIN_WIDTH_HZ = 2_000.0
+DEPTH_POWER_MEAN_MAX_DB = -28.0
+
+# Rule 3 — transition width between −10 dB and −30 dB crossings.
+TRANSITION_CROSSING_HIGH_DB = -10.0
+TRANSITION_CROSSING_LOW_DB = -30.0
+TRANSITION_MAX_WIDTH_HZ = 4_500.0
+TRANSITION_LOW_CAP_HZ = 19_500.0
+
+# Rule 4 — no mid-treble recovery before fc.
+RECOVERY_BAND_MIN_HZ = 10_000.0
+RECOVERY_MAX_DB = -3.0
+
+# Rule 5 — source has more air than reference above fc.
+DIVERGENCE_MIN_DB = 10.0
+DIVERGENCE_BAND_ABOVE_FC_HZ = 4_000.0
+DIVERGENCE_BAND_CAP_HZ = 20_000.0
+
+# Binned PSD (matches production verification curves).
+PSD_BIN_HZ = 50.0
+PSD_BIN_START_HZ = 5_000.0
+PSD_BIN_END_HZ = 22_000.0
+
+DEFAULT_TRANSITION_HZ = 750.0
 
 
 def treble_hold_label(enabled: bool | None) -> str:
@@ -62,49 +79,113 @@ def welch_magnitude_db(mono: np.ndarray, sample_rate: int) -> tuple[np.ndarray, 
     return freqs, mag_db
 
 
-def _interp_db(freqs: np.ndarray, db: np.ndarray, hz: float) -> float:
-    if hz <= freqs[0]:
-        return float(db[0])
-    if hz >= freqs[-1]:
-        return float(db[-1])
-    return float(np.interp(hz, freqs, db))
+def psd_bin_centers_hz() -> np.ndarray:
+    half = PSD_BIN_HZ / 2.0
+    return np.arange(PSD_BIN_START_HZ + half, PSD_BIN_END_HZ + half, PSD_BIN_HZ)
 
 
-def _has_codec_plateau(
+def binned_relative_psd_from_stereo(
+    audio: np.ndarray,
+    sample_rate: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Welch spectrum, dB relative to 2–8 kHz median, 50 Hz bins (5–22 kHz)."""
+    mono = _rms_normalize(_stereo_to_mid(audio))
+    freqs, db = welch_magnitude_db(mono, sample_rate)
+    lo, hi = MEDIAN_BAND_HZ
+    band = (freqs >= lo) & (freqs <= hi)
+    if not np.any(band):
+        centers = psd_bin_centers_hz()
+        return centers, np.full_like(centers, np.nan, dtype=np.float64)
+    median_db = float(np.median(db[band]))
+    db_rel = db - median_db
+    centers = psd_bin_centers_hz()
+    binned = np.interp(centers, freqs, db_rel, left=np.nan, right=np.nan)
+    return centers, binned
+
+
+def _first_downward_crossing(
     freqs: np.ndarray,
-    db: np.ndarray,
-    median_db: float,
-    fc_hz: float,
-) -> bool:
-    """High band sits on a floor ≥FLOOR_MARGIN_DB below the body, without recovering."""
-    plateau_lo = fc_hz + PLATEAU_START_ABOVE_FC_HZ
-    if plateau_lo >= MAX_CUTOFF_HZ:
-        return False
-    plateau = (freqs >= plateau_lo) & (freqs <= MAX_CUTOFF_HZ)
-    if not np.any(plateau):
-        return False
-    tail = db[plateau]
-    floor_db = median_db - FLOOR_MARGIN_DB
-    tail_max = float(np.max(tail))
-    tail_span = float(np.max(tail) - np.min(tail))
-    if tail_max > floor_db + PLATEAU_RECOVERY_DB:
-        return False
-    # Natural masters keep measurable HF energy with a wide sloping span above ~median−28 dB.
-    if tail_max > median_db - 28.0 and tail_span > PLATEAU_MAX_SPAN_DB:
-        return False
-    return float(np.median(tail)) <= floor_db + 1.5
+    levels_db: np.ndarray,
+    threshold_db: float,
+    *,
+    f_min: float,
+    f_max: float,
+) -> float | None:
+    for i in range(1, len(freqs)):
+        f = float(freqs[i])
+        if f < f_min:
+            continue
+        if f > f_max:
+            break
+        if levels_db[i - 1] > threshold_db and levels_db[i] <= threshold_db:
+            return f
+    return None
 
 
-def _has_codec_transition(freqs: np.ndarray, db: np.ndarray, fc_hz: float) -> bool:
-    """Enough slope into the cut for a codec knee (not a slow master tilt)."""
-    f_before = max(SEARCH_MIN_HZ, fc_hz - TRANSITION_LOOKBACK_HZ)
-    f_after = min(fc_hz + TRANSITION_WINDOW_HZ, float(freqs[-1]))
-    if f_after <= f_before + 500.0:
-        return False
-    drop_db = _interp_db(freqs, db, f_before) - _interp_db(freqs, db, f_after)
-    span_khz = (f_after - f_before) / 1000.0
-    avg_slope = drop_db / span_khz
-    return drop_db >= MIN_TRANSITION_DROP_DB or avg_slope >= MIN_AVG_SLOPE_DB_PER_KHZ
+def _power_mean_db(levels_db: np.ndarray) -> float:
+    lin = 10.0 ** (levels_db / 10.0)
+    return float(10.0 * np.log10(max(float(np.mean(lin)), 1e-30)))
+
+
+def detect_hard_reference_cutoff_from_relative_psd(
+    freqs_hz: np.ndarray,
+    level_db_rel: np.ndarray,
+) -> float | None:
+    """Return fc (Hz) when all reference cut rules pass, else None."""
+    if np.any(np.isnan(level_db_rel)):
+        return None
+
+    fc_hz = _first_downward_crossing(
+        freqs_hz,
+        level_db_rel,
+        FC_CROSSING_DB,
+        f_min=FC_SEARCH_MIN_HZ,
+        f_max=FC_SEARCH_MAX_HZ,
+    )
+    if fc_hz is None:
+        return None
+
+    # Rule 2 — depth
+    depth_lo = fc_hz + DEPTH_BAND_START_ABOVE_FC_HZ
+    depth_hi = min(fc_hz + DEPTH_BAND_END_ABOVE_FC_HZ, DEPTH_BAND_CAP_HZ)
+    if depth_hi - depth_lo < DEPTH_MIN_WIDTH_HZ:
+        return None
+    depth_mask = (freqs_hz >= depth_lo) & (freqs_hz <= depth_hi)
+    if not np.any(depth_mask):
+        return None
+    if _power_mean_db(level_db_rel[depth_mask]) > DEPTH_POWER_MEAN_MAX_DB:
+        return None
+
+    # Rule 3 — transition width
+    f10 = _first_downward_crossing(
+        freqs_hz,
+        level_db_rel,
+        TRANSITION_CROSSING_HIGH_DB,
+        f_min=PSD_BIN_START_HZ,
+        f_max=float(freqs_hz[-1]),
+    )
+    if f10 is None:
+        return None
+    f30 = _first_downward_crossing(
+        freqs_hz,
+        level_db_rel,
+        TRANSITION_CROSSING_LOW_DB,
+        f_min=f10,
+        f_max=TRANSITION_LOW_CAP_HZ,
+    )
+    if f30 is None or f30 >= TRANSITION_LOW_CAP_HZ:
+        return None
+    if f30 - f10 > TRANSITION_MAX_WIDTH_HZ:
+        return None
+
+    # Rule 4 — no mid-treble recovery
+    pre_mask = (freqs_hz >= RECOVERY_BAND_MIN_HZ) & (freqs_hz <= fc_hz)
+    if not np.any(pre_mask):
+        return None
+    if float(np.max(level_db_rel[pre_mask])) > RECOVERY_MAX_DB:
+        return None
+
+    return fc_hz
 
 
 def detect_hard_reference_cutoff(
@@ -112,61 +193,47 @@ def detect_hard_reference_cutoff(
     sample_rate: int,
 ) -> float | None:
     """Return cutoff frequency in Hz, or None if no lossy encoder lowpass is detected."""
-    mono = _rms_normalize(_stereo_to_mid(reference))
-    freqs, db = welch_magnitude_db(mono, sample_rate)
-    lo, hi = MEDIAN_BAND_HZ
-    band = (freqs >= lo) & (freqs <= hi)
-    if not np.any(band):
-        return None
-    median_db = float(np.median(db[band]))
-    threshold = median_db - BELOW_MEDIAN_DB
+    freqs, rel = binned_relative_psd_from_stereo(reference, sample_rate)
+    return detect_hard_reference_cutoff_from_relative_psd(freqs, rel)
 
-    above = freqs >= SEARCH_MIN_HZ
-    idx_candidates = np.where(above & (db <= threshold))[0]
-    if idx_candidates.size == 0:
-        return None
 
-    fc_hz: float | None = None
-    for idx in idx_candidates:
-        f = float(freqs[idx])
-        if f >= MAX_CUTOFF_HZ:
-            break
-        if idx > 0 and db[idx - 1] > threshold:
-            fc_hz = f
-            break
-    if fc_hz is None:
-        fc_hz = float(freqs[int(idx_candidates[0])])
-        if fc_hz >= MAX_CUTOFF_HZ:
-            return None
+def source_ref_treble_divergence_from_relative_psd(
+    freqs_hz: np.ndarray,
+    rel_src: np.ndarray,
+    rel_ref: np.ndarray,
+    fc_hz: float,
+) -> float:
+    hi = min(fc_hz + DIVERGENCE_BAND_ABOVE_FC_HZ, DIVERGENCE_BAND_CAP_HZ)
+    mask = (freqs_hz >= fc_hz) & (freqs_hz <= hi)
+    if not np.any(mask):
+        return -999.0
+    return float(np.mean(rel_src[mask]) - np.mean(rel_ref[mask]))
 
-    tail = (freqs >= fc_hz) & (freqs <= MAX_CUTOFF_HZ)
-    if not np.all(db[tail] <= threshold + 2.5):
-        return None
-    if not _has_codec_transition(freqs, db, fc_hz):
-        return None
-    if not _has_codec_plateau(freqs, db, median_db, fc_hz):
-        return None
-    return fc_hz
+
+def source_ref_treble_divergence_db(
+    target: np.ndarray,
+    reference: np.ndarray,
+    sample_rate: int,
+    fc_hz: float,
+) -> float:
+    """Mean relative level (source − ref) over [fc, min(fc+4 kHz, 20 kHz)]."""
+    freq_t, rel_t = binned_relative_psd_from_stereo(target, sample_rate)
+    freq_r, rel_r = binned_relative_psd_from_stereo(reference, sample_rate)
+    if not np.allclose(freq_t, freq_r):
+        raise ValueError("mismatched PSD bin grids")
+    return source_ref_treble_divergence_from_relative_psd(freq_t, rel_t, rel_r, fc_hz)
 
 
 def source_has_treble_above(
     target: np.ndarray,
+    reference: np.ndarray,
     sample_rate: int,
     fc_hz: float,
 ) -> bool:
-    """True when the source still has meaningful energy above fc_hz."""
-    mono = _rms_normalize(_stereo_to_mid(target))
-    freqs, db = welch_magnitude_db(mono, sample_rate)
-    lo, hi = MEDIAN_BAND_HZ
-    band = (freqs >= lo) & (freqs <= hi)
-    if not np.any(band):
-        return False
-    median_db = float(np.median(db[band]))
-    threshold = median_db - SOURCE_TREBLE_MARGIN_DB
-    check = (freqs >= fc_hz) & (freqs <= min(fc_hz + 4_000.0, freqs[-1]))
-    if not np.any(check):
-        return False
-    return bool(np.max(db[check]) > threshold)
+    return (
+        source_ref_treble_divergence_db(target, reference, sample_rate, fc_hz)
+        >= DIVERGENCE_MIN_DB
+    )
 
 
 @dataclass(frozen=True)
@@ -183,7 +250,7 @@ class TrebleHoldPlan:
         fc = detect_hard_reference_cutoff(reference, sample_rate)
         if fc is None:
             return None
-        if not source_has_treble_above(target, sample_rate, fc):
+        if not source_has_treble_above(target, reference, sample_rate, fc):
             return None
         return TrebleHoldPlan(fc_hz=fc)
 

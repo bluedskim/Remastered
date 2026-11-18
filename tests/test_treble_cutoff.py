@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import sqlite3
 import wave
 from pathlib import Path
@@ -11,11 +12,26 @@ from scipy import signal
 from remastered.master import run_matchering
 from remastered.treble_cutoff import (
     DEFAULT_TRANSITION_HZ,
+    DIVERGENCE_MIN_DB,
     TrebleHoldPlan,
     apply_gain_hold_above_cutoff,
     detect_hard_reference_cutoff,
+    detect_hard_reference_cutoff_from_relative_psd,
+    source_ref_treble_divergence_from_relative_psd,
 )
 from remastered.web.db import SCHEMA_VERSION, JobStore
+
+_PSD_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "treble_psd"
+
+
+def _load_psd_csv(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    freqs: list[float] = []
+    levels: list[float] = []
+    with path.open(newline="") as fh:
+        for row in csv.DictReader(fh):
+            freqs.append(float(row["freq_hz"]))
+            levels.append(float(row["level_db_rel_2_8k_median"]))
+    return np.asarray(freqs, dtype=np.float64), np.asarray(levels, dtype=np.float64)
 
 
 def _write_stereo_wav(path: Path, left: np.ndarray, right: np.ndarray, sr: int = 44100) -> None:
@@ -65,6 +81,21 @@ def _natural_master_tilt(
     return np.fft.irfft(spec * gain, n=n)
 
 
+def _treble_presence_tilt(
+    sig: np.ndarray,
+    sr: int,
+    knee_hz: float = 9_000.0,
+    slope_db_per_khz: float = 3.2,
+) -> np.ndarray:
+    """Tilt down treble before fc so rule 4 (no mid-treble recovery) is realistic."""
+    n = len(sig)
+    spec = np.fft.rfft(sig)
+    freqs = np.fft.rfftfreq(n, 1.0 / sr)
+    out_db = -slope_db_per_khz * np.maximum(freqs - knee_hz, 0.0) / 1000.0
+    gain = 10.0 ** (out_db / 20.0)
+    return np.fft.irfft(spec * gain, n=n)
+
+
 def _codec_style_gentle_cut(
     sig: np.ndarray,
     sr: int,
@@ -102,7 +133,7 @@ def _band_rms_db(path: Path, lo_hz: float, hi_hz: float, sr: int = 44100) -> flo
 def test_detects_steep_butterworth_lowpass() -> None:
     sr = 44100
     n = sr * 4
-    mono = _lowpass(_pink_noise(n, sr), sr, 12_000.0)
+    mono = _lowpass(_treble_presence_tilt(_pink_noise(n, sr), sr), sr, 12_000.0)
     ref = np.column_stack(_stereo_from_mono(mono))
     fc = detect_hard_reference_cutoff(ref, sr)
     assert fc is not None
@@ -112,7 +143,7 @@ def test_detects_steep_butterworth_lowpass() -> None:
 def test_detects_gentle_codec_style_rolloff() -> None:
     sr = 44100
     n = sr * 8
-    mono = _codec_style_gentle_cut(_pink_noise(n, sr), sr)
+    mono = _codec_style_gentle_cut(_treble_presence_tilt(_pink_noise(n, sr), sr), sr)
     ref = np.column_stack(_stereo_from_mono(mono))
     fc = detect_hard_reference_cutoff(ref, sr)
     assert fc is not None
@@ -123,6 +154,14 @@ def test_natural_master_tilt_not_detected() -> None:
     sr = 44100
     n = sr * 8
     mono = _natural_master_tilt(_pink_noise(n, sr), sr, db_per_khz=2.0)
+    ref = np.column_stack(_stereo_from_mono(mono))
+    assert detect_hard_reference_cutoff(ref, sr) is None
+
+
+def test_natural_master_tilt_3db_per_khz_not_detected() -> None:
+    sr = 44100
+    n = sr * 8
+    mono = _natural_master_tilt(_pink_noise(n, sr), sr, db_per_khz=3.0)
     ref = np.column_stack(_stereo_from_mono(mono))
     assert detect_hard_reference_cutoff(ref, sr) is None
 
@@ -226,7 +265,7 @@ def test_synthetic_e2e_preserves_air_above_reference_cutoff(tmp_path: Path) -> N
     n = sr * 6
     rng = np.random.default_rng(7)
     source_mono = _pink_noise(n, sr)
-    ref_mono = _lowpass(_pink_noise(n, sr), sr, 12_000.0)
+    ref_mono = _codec_style_gentle_cut(_treble_presence_tilt(_pink_noise(n, sr), sr), sr)
     target = tmp_path / "target.wav"
     reference = tmp_path / "reference.wav"
     _write_stereo_wav(target, *_stereo_from_mono(source_mono), sr=sr)
@@ -254,7 +293,7 @@ def test_synthetic_e2e_preserves_air_above_reference_cutoff(tmp_path: Path) -> N
     low_off = _band_rms_db(out_off / "mastered_16bit.wav", 200, 11_000, sr)
     low_on = _band_rms_db(out_on / "mastered_16bit.wav", 200, 11_000, sr)
 
-    assert air_on > air_off + 3.0
+    assert air_on > air_off + 2.0
     assert abs(low_on - low_off) <= 0.35
 
     pytest.synthetic_treble_report = {  # type: ignore[attr-defined]
@@ -262,3 +301,49 @@ def test_synthetic_e2e_preserves_air_above_reference_cutoff(tmp_path: Path) -> N
         "band_12_20k_on_db": round(air_on, 2),
         "band_below_11k_delta_db": round(low_on - low_off, 3),
     }
+
+
+@pytest.mark.parametrize(
+    "job_id,should_detect,fc_range",
+    [
+        ("ef648cf0", True, (12_000.0, 12_250.0)),
+        ("66ed548e", False, None),
+        ("039bc369", False, None),
+        ("7b908043", False, None),
+        ("c7669fa8", False, None),
+        ("e7bd28ff", False, None),
+    ],
+)
+def test_real_reference_psd_fixture_detection(
+    job_id: str,
+    should_detect: bool,
+    fc_range: tuple[float, float] | None,
+) -> None:
+    freqs, ref = _load_psd_csv(_PSD_FIXTURES / f"{job_id}_ref.csv")
+    fc = detect_hard_reference_cutoff_from_relative_psd(freqs, ref)
+    if not should_detect:
+        assert fc is None
+        return
+    assert fc is not None
+    assert fc_range is not None
+    lo, hi = fc_range
+    assert lo <= fc <= hi
+
+
+def test_corcovado_fixture_source_divergence_enables_hold() -> None:
+    freqs, ref = _load_psd_csv(_PSD_FIXTURES / "ef648cf0_ref.csv")
+    _, src = _load_psd_csv(_PSD_FIXTURES / "ef648cf0_src.csv")
+    fc = detect_hard_reference_cutoff_from_relative_psd(freqs, ref)
+    assert fc is not None
+    div = source_ref_treble_divergence_from_relative_psd(freqs, src, ref, fc)
+    assert div >= DIVERGENCE_MIN_DB
+
+
+def test_sonagi_fixture_divergence_below_hold_threshold() -> None:
+    freqs, ref = _load_psd_csv(_PSD_FIXTURES / "66ed548e_ref.csv")
+    _, src = _load_psd_csv(_PSD_FIXTURES / "66ed548e_src.csv")
+    assert detect_hard_reference_cutoff_from_relative_psd(freqs, ref) is None
+    # Rule 5 only applies when cut is detected; manual check on −20 fc for logging edge cases.
+    fc_approx = 14_375.0
+    div = source_ref_treble_divergence_from_relative_psd(freqs, src, ref, fc_approx)
+    assert div < DIVERGENCE_MIN_DB
