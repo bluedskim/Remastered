@@ -7,8 +7,12 @@
   <div class="privacy-body">
     <p>{{ privacy_notice }}</p>
     <p>
+      {% if retention_exempt | default(false) %}
+      Job audio files and related outputs are kept until you delete them.
+      {% else %}
       Job audio files and related outputs are removed automatically after
       <strong>{{ privacy_retention_days }} days</strong> (configured server retention).
+      {% endif %}
     </p>
   </div>
   <p class="small"><a href="/">← Back to home</a></p>

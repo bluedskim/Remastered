@@ -54,7 +54,11 @@
     </main>
     <footer class="site-footer small muted">
       <p>
+        {% if retention_exempt | default(false) %}
+        Files are kept until you delete them.
+        {% else %}
         Files are deleted automatically after {{ privacy_retention_days | default(14) }} days.
+        {% endif %}
         <a href="/privacy">Privacy</a>
         · <a href="/opensource">Open source</a>
         · <a href="mailto:bluedskim@gmail.com">Contact</a>

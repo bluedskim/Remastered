@@ -32,6 +32,7 @@ class WebSettings(BaseSettings):
     max_concurrent_video_builds: int = 2
     video_download_cache_ttl_seconds: int = 3600
     video_download_allowed_emails: str = "bluedskim@gmail.com"
+    retention_exempt_emails: str = "bluedskim@gmail.com"
     uvicorn_limit_concurrency: int = 80
     uvicorn_timeout_keep_alive: int = 5
     home_demo_before: str | None = None
