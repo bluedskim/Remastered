@@ -40,6 +40,7 @@ from remastered.web.job_video_download import (
     init_video_build_manager,
     job_video_download_eligible,
 )
+from remastered.web.retention_exempt import retention_exempt_for_identity
 from remastered.web.video_download_access import video_download_allowed_for_identity
 from remastered.web.job_feedback_ui import (
     enrich_feedback_rows_for_admin,
@@ -257,30 +258,6 @@ def sitemap_xml() -> Response:
     )
 
 
-@fastapi_application.get("/privacy", response_class=HTMLResponse)
-def privacy_page(request: Request) -> HTMLResponse:
-    ws = _web_settings()
-    desc = (
-        "Privacy policy for Remastered: how we handle YouTube sources, "
-        "job audio, and automatic file retention."
-    )
-    ctx = _privacy_template_context()
-    _merge_seo_context(
-        request,
-        ctx,
-        path="/privacy",
-        title="Privacy — Remastered",
-        description=desc,
-        json_ld=web_page_json_ld(
-            name="Privacy",
-            path="/privacy",
-            description=desc,
-            ws=ws,
-        ),
-    )
-    return templates.TemplateResponse(request, "privacy.html", ctx)
-
-
 @fastapi_application.get("/opensource", response_class=HTMLResponse)
 def opensource_page(request: Request) -> HTMLResponse:
     ws = _web_settings()
@@ -328,6 +305,34 @@ def require_account(identity: RequestIdentity = Depends(require_identity)) -> Re
     if not identity.account_id:
         raise HTTPException(status_code=401, detail="Sign in required.")
     return identity
+
+
+@fastapi_application.get("/privacy", response_class=HTMLResponse)
+def privacy_page(
+    request: Request,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> HTMLResponse:
+    ws = _web_settings()
+    desc = (
+        "Privacy policy for Remastered: how we handle YouTube sources, "
+        "job audio, and automatic file retention."
+    )
+    ctx = _privacy_template_context(identity, store)
+    _merge_seo_context(
+        request,
+        ctx,
+        path="/privacy",
+        title="Privacy — Remastered",
+        description=desc,
+        json_ld=web_page_json_ld(
+            name="Privacy",
+            path="/privacy",
+            description=desc,
+            ws=ws,
+        ),
+    )
+    return templates.TemplateResponse(request, "privacy.html", ctx)
 
 
 def _reference_prefs_for_identity(
@@ -406,6 +411,11 @@ def _job_media_context(
     store: JobStore | None = None,
 ) -> dict[str, bool | str | None]:
     ws = _web_settings()
+    retention_exempt = (
+        retention_exempt_for_identity(identity, store)
+        if identity is not None and store is not None
+        else False
+    )
     settings = resolve_settings()
     work = settings.work_dir
     audio_path = job.get("audio_path")
@@ -453,7 +463,9 @@ def _job_media_context(
         "mastered_download_filename": mastered_download_filename,
         "video_download_show": video_download_show,
         "video_download_filename": video_download_filename,
-        "rights_notice_short": rights_notice_short(ws.job_retention_days),
+        "rights_notice_short": rights_notice_short(
+            ws.job_retention_days, retention_exempt=retention_exempt
+        ),
         "remaster_volume_of_original_line": remaster_volume_of_original_line,
     }
 
@@ -574,12 +586,21 @@ def _enrich_job(job: dict, store: JobStore) -> dict:
     return data
 
 
-def _privacy_template_context() -> dict[str, int | str]:
+def _privacy_template_context(
+    identity: RequestIdentity | None = None,
+    store: JobStore | None = None,
+) -> dict[str, int | str | bool]:
     ws = _web_settings()
+    retention_exempt = (
+        retention_exempt_for_identity(identity, store)
+        if identity is not None and store is not None
+        else False
+    )
     return {
         "privacy_retention_days": ws.job_retention_days,
         "privacy_notice": PRIVACY_NOTICE,
         "privacy_updated": "2026-10-24",
+        "retention_exempt": retention_exempt,
     }
 
 
@@ -630,12 +651,18 @@ def _dashboard_context(
         "reference_prefs": _reference_prefs_for_identity(identity, store, ws),
         "stage_labels": STAGE_LABELS,
         "privacy_notice": PRIVACY_NOTICE,
-        "rights_notice_lines": rights_notice_lines(ws.job_retention_days),
-        "rights_notice_short": rights_notice_short(ws.job_retention_days),
+        "rights_notice_lines": rights_notice_lines(
+            ws.job_retention_days,
+            retention_exempt=retention_exempt_for_identity(identity, store),
+        ),
+        "rights_notice_short": rights_notice_short(
+            ws.job_retention_days,
+            retention_exempt=retention_exempt_for_identity(identity, store),
+        ),
         "home_demo_samples": resolve_home_demo_samples(),
         "limits": ws,
         **_auth_template_context(identity),
-        **_privacy_template_context(),
+        **_privacy_template_context(identity, store),
     }
 
 
@@ -1206,7 +1233,7 @@ def job_detail(
             "stages": WEB_STAGES,
             **_auth_template_context(identity),
             **page_ctx,
-            **_privacy_template_context(),
+            **_privacy_template_context(identity, store),
         },
     )
 
@@ -1234,7 +1261,7 @@ def job_panel(
         "stages": WEB_STAGES,
         **page_ctx,
         **_auth_template_context(identity),
-        **_privacy_template_context(),
+        **_privacy_template_context(identity, store),
     }
     # HTMX: 286 stops hx-trigger polling (see htmx.org/docs/#polling)
     status_code = 286 if job["status"] in TERMINAL_JOB_STATUSES else status.HTTP_200_OK

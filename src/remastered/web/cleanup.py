@@ -13,6 +13,7 @@ from remastered.web.job_video_download import (
     cleanup_stale_built_videos,
     discard_video_build_for_job,
 )
+from remastered.web.retention_exempt import is_retention_exempt_user_id
 from remastered.web.youtube_thumb_cache import cleanup_stale_thumbnails
 
 logger = logging.getLogger(__name__)
@@ -85,12 +86,22 @@ def cleanup_old_jobs(store: JobStore, work_dir: Path) -> int:
         return 0
     cutoff = datetime.now(timezone.utc) - timedelta(days=ws.job_retention_days)
     removed = 0
+    skipped_exempt = 0
     for job in store.list_jobs_for_cleanup(cutoff.isoformat()):
+        owner_id = (job.get("user_id") or "").strip()
+        if is_retention_exempt_user_id(store, owner_id):
+            skipped_exempt += 1
+            continue
         delete_job_media_files(job, work_dir)
         store.mark_files_cleaned(job["id"])
         removed += 1
     thumb_removed = cleanup_stale_thumbnails(work_dir, ws.job_retention_days)
     video_removed = cleanup_stale_built_videos(work_dir)
+    if skipped_exempt:
+        logger.info(
+            "Retention sweep skipped %d job(s) owned by exempt accounts",
+            skipped_exempt,
+        )
     if removed:
         logger.info("오래된 작업 파일 %d건 정리", removed)
     if thumb_removed:
