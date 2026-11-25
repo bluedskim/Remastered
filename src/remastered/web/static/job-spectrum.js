@@ -26,7 +26,7 @@
     remastered: "#ec4899",
   };
 
-  var Y_FLOOR_DB = -30;
+  var Y_FLOOR_DB = -42;
 
   function ceilToStep(value, step) {
     return Math.ceil(value / step) * step;

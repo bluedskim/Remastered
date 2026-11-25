@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-Y_FLOOR_DB = -30
+Y_FLOOR_DB = -42
 
 
 def ceil_to_step(value: float, step: float) -> float:
@@ -61,10 +61,10 @@ def strong_bass_steep_rolloff_series() -> list[float]:
     return out
 
 
-def test_y_floor_is_minus_30() -> None:
+def test_y_floor_is_minus_42() -> None:
     deep = [-72.0, -58.0, -12.0, 6.0]
     y_min, y_max = compute_y_axis_range(deep)
-    assert y_min == -30.0
+    assert y_min == -42.0
     assert y_max >= 9.0
     assert y_max <= 18.0
 
@@ -79,8 +79,8 @@ def test_tick_steps_yield_five_to_seven_labels() -> None:
 
 
 def test_axis_not_stretched_by_deep_data_min() -> None:
-    """Old behavior would extend yMin below -60; new caps display at -30."""
+    """Old behavior would extend yMin below -60; new caps display at -42."""
     curves = strong_bass_steep_rolloff_series()
     y_min, _ = compute_y_axis_range(curves)
-    assert y_min == -30.0
+    assert y_min == -42.0
     assert min(curves) < -40

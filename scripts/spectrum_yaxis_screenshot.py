@@ -1,130 +1,111 @@
 #!/usr/bin/env python3
-"""Before/after Y-axis screenshots for spectrum chart (synthetic bass + rolloff data)."""
+"""Before/after spectrum Y-axis screenshots via real job-spectrum.js in headless Chrome."""
 
 from __future__ import annotations
 
+import json
 import math
+import sys
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np
-
-import sys
+from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tests"))
-sys.path.insert(0, str(ROOT / "src"))
-
-from test_job_spectrum_chart_axis import (  # noqa: E402
-    Y_FLOOR_DB,
-    choose_y_tick_step,
-    compute_y_axis_range,
-    strong_bass_steep_rolloff_series,
-)
+ARTIFACTS = Path("/opt/cursor/artifacts")
+HTML = ROOT / "scripts" / "spectrum_browser_screenshot.html"
+BEFORE_JS = ROOT / "scripts" / "spectrum-yaxis-before.js"
+AFTER_JS = ROOT / "scripts" / "spectrum-yaxis-after.js"
 
 
-def _synthetic_curves() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    f: list[float] = []
+def _log_freqs(n: int = 100) -> list[float]:
+    return [20 * (20000 / 20) ** (i / (n - 1)) for i in range(n)]
+
+
+def realistic_job_spectrum_payload() -> dict:
+    """Strong ~80 Hz bass; original dives above 10 kHz; ref/master flatter in treble."""
+    freqs = _log_freqs()
     o: list[float] = []
     r: list[float] = []
     m: list[float] = []
-    base = strong_bass_steep_rolloff_series()
-    for i, orig in enumerate(base):
-        t = i / 99
-        hz = 20 * (20000 / 20) ** t
-        f.append(hz)
-        o.append(orig)
-        r.append(orig - 2.5 - 0.5 * max(0, math.log10(hz) - 3))
-        m.append(orig + 1.2 * max(0, math.log10(hz) - 3.2))
-    return np.asarray(f), np.asarray(o), np.asarray(r), np.asarray(m)
+    for hz in freqs:
+        bass_bump = 10 * math.exp(-((math.log(hz) - math.log(80)) / 0.45) ** 2)
+        orig_body = 2 - 0.35 * max(0.0, math.log10(hz) - 2.5)
+        air_drop = -max(0.0, math.log10(hz) - 4.0) * 38
+        orig = bass_bump + orig_body + air_drop
+        ref = bass_bump * 0.55 + 1.5 - 8 * max(0.0, math.log10(hz) - 4.0)
+        mast = bass_bump * 0.6 + 2.0 - 6 * max(0.0, math.log10(hz) - 4.05)
+        o.append(round(orig, 1))
+        r.append(round(ref, 1))
+        m.append(round(mast, 1))
+    return {"v": 1, "f": [round(f, 1) if f < 1000 else round(f) for f in freqs], "o": o, "r": r, "m": m}
 
 
-def _old_axis(o: np.ndarray, r: np.ndarray, m: np.ndarray) -> tuple[float, float, int]:
-    allv = np.concatenate([o, r, m])
-    y_min = math.floor(float(np.min(allv)) / 3) * 3 - 3
-    y_max = math.ceil(float(np.max(allv)) / 3) * 3 + 3
-    if y_max - y_min < 12:
-        y_min -= 6
-        y_max += 6
-    return y_min, y_max, 6
+def _write_payload_html(payload: dict, js_rel: str) -> Path:
+    """Write a one-off HTML that inlines JSON and loads the chart script."""
+    html = HTML.read_text(encoding="utf-8")
+    html = html.replace(
+        '<script type="application/json" class="spectrum-data" id="spectrum-payload"></script>',
+        '<script type="application/json" class="spectrum-data" id="spectrum-payload">'
+        + json.dumps(payload, separators=(",", ":"))
+        + "</script>",
+    )
+    html = html.replace(
+        """  <script id="chart-script"></script>
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var src = params.get("js");
+      if (!src) return;
+      var s = document.getElementById("chart-script");
+      s.src = src;
+    })();
+  </script>""",
+        f'  <script src="{js_rel}"></script>',
+    )
+    tmp = ROOT / "scripts" / f".spectrum-shot-{Path(js_rel).name}.html"
+    tmp.write_text(html, encoding="utf-8")
+    return tmp
 
 
-def _plot(
-    path: Path,
-    freqs: np.ndarray,
-    o: np.ndarray,
-    r: np.ndarray,
-    m: np.ndarray,
-    y_min: float,
-    y_max: float,
-    tick: int,
-    title: str,
-    clip_floor: bool,
-) -> None:
-    def clip(y: np.ndarray) -> np.ndarray:
-        if not clip_floor:
-            return y
-        return np.maximum(y, y_min)
-
-    fig, ax = plt.subplots(figsize=(9, 4), facecolor="#0c0a14")
-    ax.set_facecolor("#0c0a14")
-    ax.semilogx(freqs, clip(o), "--", color="#9ca3af", linewidth=1.5, label="Original")
-    ax.semilogx(freqs, clip(r), color="#f97316", linewidth=1.75, label="Reference")
-    ax.semilogx(freqs, clip(m), color="#ec4899", linewidth=2.5, label="Remastered")
-    ax.set_xlim(20, 20000)
-    ax.set_ylim(y_min, y_max)
-    ticks = list(np.arange(y_min, y_max + 0.001, tick))
-    ax.set_yticks(ticks)
-    ax.set_ylabel("Relative dB")
-    ax.set_xlabel("Frequency (Hz)")
-    ax.grid(True, alpha=0.15, color="white")
-    ax.tick_params(colors="#a39bb8")
-    for sp in ax.spines.values():
-        sp.set_color("#ffffff33")
-    ax.legend(facecolor="#161224", edgecolor="#ffffff22", labelcolor="#f2f0fa")
-    ax.set_title(title, color="#f2f0fa")
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
+def _browser_screenshot(html_path: Path, out_png: Path) -> None:
+    url = html_path.resolve().as_uri()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 820, "height": 520})
+        page.goto(url, wait_until="networkidle")
+        page.wait_for_selector(".spectrum-chart svg", timeout=10_000)
+        panel = page.locator("[data-spectrum-panel]")
+        panel.screenshot(path=str(out_png))
+        browser.close()
+    if not out_png.is_file() or out_png.stat().st_size < 1000:
+        raise RuntimeError(f"screenshot missing or too small: {out_png}")
 
 
 def main() -> None:
-    out = Path("/opt/cursor/artifacts")
-    out.mkdir(parents=True, exist_ok=True)
-    freqs, o, r, m = _synthetic_curves()
-    y0_min, y0_max, tick0 = _old_axis(o, r, m)
-    _plot(
-        out / "spectrum-yaxis-before.png",
-        freqs,
-        o,
-        r,
-        m,
-        y0_min,
-        y0_max,
-        tick0,
-        "Spectrum Y-axis (before)",
-        clip_floor=False,
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    payload = realistic_job_spectrum_payload()
+    if not BEFORE_JS.is_file():
+        raise SystemExit("Run: git show main:src/remastered/web/static/job-spectrum.js > scripts/spectrum-yaxis-before.js")
+
+    AFTER_JS.write_text(
+        (ROOT / "src/remastered/web/static/job-spectrum.js").read_text(encoding="utf-8"),
+        encoding="utf-8",
     )
-    allv = list(o) + list(r) + list(m)
-    y_min, y_max = compute_y_axis_range(allv)
-    tick = choose_y_tick_step(y_min, y_max)
-    _plot(
-        out / "spectrum-yaxis-after.png",
-        freqs,
-        o,
-        r,
-        m,
-        y_min,
-        y_max,
-        tick,
-        f"Spectrum Y-axis (after, floor {Y_FLOOR_DB} dB)",
-        clip_floor=True,
-    )
-    print("wrote", out / "spectrum-yaxis-before.png", out / "spectrum-yaxis-after.png")
+    before_html = _write_payload_html(payload, "spectrum-yaxis-before.js")
+    after_html = _write_payload_html(payload, "spectrum-yaxis-after.js")
+
+    before_png = ARTIFACTS / "spectrum-yaxis-before.png"
+    after_png = ARTIFACTS / "spectrum-yaxis-after.png"
+
+    _browser_screenshot(before_html, before_png)
+    _browser_screenshot(after_html, after_png)
+    print("payload air sample original@12k", min(payload["o"][-20:]))
+    print("wrote", before_png, after_png)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:  # noqa: BLE001
+        print(exc, file=sys.stderr)
+        raise
