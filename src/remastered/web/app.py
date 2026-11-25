@@ -444,14 +444,17 @@ def _job_media_context(
     )
 
     remaster_volume_of_original_line: str | None = None
+    remaster_volume_percent: int | None = None
     if audio_ok and mastered_ok:
-        from remastered.web.job_loudness_metrics import resolve_remaster_volume_of_original_line
+        from remastered.web.job_loudness_metrics import resolve_remaster_volume_of_original
 
-        remaster_volume_of_original_line = resolve_remaster_volume_of_original_line(
-            job,
-            store=store,
-            work_dir=work,
-            ffmpeg_path=settings.ffmpeg_path,
+        remaster_volume_percent, remaster_volume_of_original_line = (
+            resolve_remaster_volume_of_original(
+                job,
+                store=store,
+                work_dir=work,
+                ffmpeg_path=settings.ffmpeg_path,
+            )
         )
 
     spectrum_comparison: dict | None = None
@@ -478,6 +481,7 @@ def _job_media_context(
             ws.job_retention_days, retention_exempt=retention_exempt
         ),
         "remaster_volume_of_original_line": remaster_volume_of_original_line,
+        "remaster_volume_percent": remaster_volume_percent,
         "spectrum_comparison": spectrum_comparison,
     }
 
