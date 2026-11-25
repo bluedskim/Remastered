@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../src/remastered/web/static/style.css" />
+  <title>Spectrum fixture</title>
+</head>
+<body>
+  <div class="page-bg" aria-hidden="true"></div>
+  <div class="container layout-page">
+    <details class="card spectrum-panel" data-spectrum-panel open>
+      <summary class="spectrum-panel__summary">
+        <span class="spectrum-panel__title">Spectrum</span>
+        <span class="spectrum-panel__hint small muted">Compare tonal balance</span>
+      </summary>
+      <div class="spectrum-panel__body">
+        <p class="spectrum-panel__caption small muted">
+          Curves are volume-matched to compare tonal balance.
+        </p>
+        <script type="application/json" class="spectrum-data" id="spectrum-data"></script>
+        <div class="spectrum-chart" data-spectrum-chart role="img" aria-label="Spectrum comparison"></div>
+        <ul class="spectrum-legend" aria-hidden="true">
+          <li><span class="spectrum-legend__swatch spectrum-legend__swatch--original"></span> Original</li>
+          <li><span class="spectrum-legend__swatch spectrum-legend__swatch--reference"></span> Reference</li>
+          <li><span class="spectrum-legend__swatch spectrum-legend__swatch--remastered"></span> Remastered</li>
+        </ul>
+      </div>
+    </details>
+  </div>
+  <script src="../src/remastered/web/static/job-spectrum.js"></script>
+  <script>
+    // Synthetic shapes: dark reference, brighter remastered air
+    const f = [];
+    const o = [], r = [], m = [];
+    for (let i = 0; i < 100; i++) {
+      const t = i / 99;
+      const hz = 20 * Math.pow(20000/20, t);
+      f.push(hz < 1000 ? Math.round(hz*10)/10 : Math.round(hz));
+      const orig = -2 + 4*Math.exp(-Math.pow((Math.log10(hz)-Math.log10(200))/0.8,2));
+      const ref = orig - 6*Math.max(0, (Math.log10(hz)-Math.log10(800))*1.2);
+      const rem = orig + 2*Math.max(0, (Math.log10(hz)-Math.log10(3000))*0.8);
+      o.push(+orig.toFixed(1));
+      r.push(+ref.toFixed(1));
+      m.push(+rem.toFixed(1));
+    }
+    document.getElementById('spectrum-data').textContent = JSON.stringify({v:1,f,o,r,m});
+  </script>
+</body>
+</html>

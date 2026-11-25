@@ -1,0 +1,26 @@
+{% if spectrum_comparison and job.status == 'completed' %}
+<details class="card spectrum-panel" data-spectrum-panel>
+  <summary class="spectrum-panel__summary">
+    <span class="spectrum-panel__title">Spectrum</span>
+    <span class="spectrum-panel__hint small muted">Compare tonal balance</span>
+  </summary>
+  <div class="spectrum-panel__body">
+    <p class="spectrum-panel__caption small muted">
+      Curves are volume-matched to compare tonal balance.
+    </p>
+    <script type="application/json" class="spectrum-data">{{ spectrum_comparison | tojson }}</script>
+    <div
+      class="spectrum-chart"
+      data-spectrum-chart
+      role="img"
+      aria-label="Spectrum comparison of original, reference, and remastered audio"
+    ></div>
+    <ul class="spectrum-legend" aria-hidden="true">
+      <li><span class="spectrum-legend__swatch spectrum-legend__swatch--original"></span> Original</li>
+      <li><span class="spectrum-legend__swatch spectrum-legend__swatch--reference"></span> Reference</li>
+      <li><span class="spectrum-legend__swatch spectrum-legend__swatch--remastered"></span> Remastered</li>
+    </ul>
+    <p class="spectrum-tooltip small muted" data-spectrum-tooltip hidden></p>
+  </div>
+</details>
+{% endif %}
