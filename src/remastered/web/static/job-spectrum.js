@@ -26,6 +26,50 @@
     remastered: "#ec4899",
   };
 
+  var Y_FLOOR_DB = -30;
+
+  function ceilToStep(value, step) {
+    return Math.ceil(value / step) * step;
+  }
+
+  /** Keep in sync with tests/test_job_spectrum_chart_axis.py */
+  function computeYAxisRange(allDb) {
+    var dataMax = Math.max.apply(null, allDb);
+    var yMin = Y_FLOOR_DB;
+    var headroom = 3;
+    var rawTop = dataMax + headroom;
+    var roundStep = rawTop <= 12 ? 3 : 6;
+    var yMax = ceilToStep(rawTop, roundStep);
+    var minSpan = 24;
+    if (yMax - yMin < minSpan) {
+      yMax = yMin + minSpan;
+    }
+    return { yMin: yMin, yMax: yMax };
+  }
+
+  function chooseYTickStep(yMin, yMax) {
+    var span = yMax - yMin;
+    var bestStep = 6;
+    var bestScore = Infinity;
+    [10, 6].forEach(function (step) {
+      var count = 0;
+      for (var g = yMin; g <= yMax + 0.001; g += step) {
+        count++;
+      }
+      if (count >= 5 && count <= 7) {
+        var score = Math.abs(count - 6);
+        if (score < bestScore) {
+          bestScore = score;
+          bestStep = step;
+        }
+      }
+    });
+    if (bestScore === Infinity) {
+      return span > 48 ? 10 : 6;
+    }
+    return bestStep;
+  }
+
   function logX(freq, w, fMin, fMax) {
     var minL = Math.log10(fMin);
     var maxL = Math.log10(fMax);
@@ -51,7 +95,13 @@
     var parts = [];
     for (var i = 0; i < freqs.length; i++) {
       var x = padL + logX(freqs[i], plotW, fMin, fMax);
-      var y = padT + yMap(dbs[i], plotH, yMin, yMax);
+      var db = dbs[i];
+      if (db < yMin) {
+        db = yMin;
+      } else if (db > yMax) {
+        db = yMax;
+      }
+      var y = padT + yMap(db, plotH, yMin, yMax);
       parts.push(x.toFixed(2) + "," + y.toFixed(2));
     }
     return parts.join(" ");
@@ -62,12 +112,10 @@
     var fMin = freqs[0];
     var fMax = freqs[freqs.length - 1];
     var all = data.o.concat(data.r, data.m);
-    var yMin = Math.floor(Math.min.apply(null, all) / 3) * 3 - 3;
-    var yMax = Math.ceil(Math.max.apply(null, all) / 3) * 3 + 3;
-    if (yMax - yMin < 12) {
-      yMin -= 6;
-      yMax += 6;
-    }
+    var yAxis = computeYAxisRange(all);
+    var yMin = yAxis.yMin;
+    var yMax = yAxis.yMax;
+    var yTickStep = chooseYTickStep(yMin, yMax);
 
     var width = 720;
     var height = 280;
@@ -118,7 +166,7 @@
       svg.appendChild(label);
     });
 
-    for (var g = yMin; g <= yMax; g += 6) {
+    for (var g = yMin; g <= yMax + 0.001; g += yTickStep) {
       var gy = padT + yMap(g, plotH, yMin, yMax);
       var line = document.createElementNS(ns, "line");
       line.setAttribute("x1", padL);
