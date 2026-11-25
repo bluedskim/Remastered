@@ -132,7 +132,7 @@ def enrich_job_ui(job: dict[str, Any], store: JobStore | None = None) -> dict[st
         job.get("keep_source_treble_above_reference_cutoff", True)
     )
     data["final_tp_protection_label"] = (
-        "On (true-peak safety, default)"
+        "On (default)"
         if job.get("final_tp_protection", True)
         else "Off (legacy matchered level)"
     )

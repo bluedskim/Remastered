@@ -1333,6 +1333,35 @@ button,
   word-break: break-word;
 }
 
+.job-reference-options {
+  flex: 1 1 100%;
+  margin: 0.15rem 0 0.35rem;
+  padding: 0 0 0 1.15rem;
+  list-style: disc;
+  list-style-position: outside;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  color: var(--text);
+}
+
+.job-reference-option {
+  line-height: 1.5;
+  padding-left: 0.2rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.job-reference-option-name {
+  font-weight: 600;
+  color: #c4b5fd;
+}
+
+.job-reference-option-value {
+  font-weight: 400;
+  color: var(--text);
+}
+
 .ref-source-field {
   min-width: 0;
   max-width: 100%;
@@ -1702,6 +1731,55 @@ button,
   margin: 0 0 0.65rem;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+.ab-remaster-volume--badge {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 0.95rem;
+  padding: 0.65rem 1.05rem;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #f3e8ff;
+  border-radius: 999px;
+  border: 1px solid rgba(168, 85, 247, 0.5);
+  background: linear-gradient(
+    135deg,
+    rgba(139, 92, 246, 0.28) 0%,
+    rgba(236, 72, 153, 0.16) 55%,
+    rgba(244, 114, 182, 0.12) 100%
+  );
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.22);
+}
+
+.ab-remaster-volume-pct {
+  font-size: 1.28rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: #f9a8d4;
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .ab-remaster-volume-pct {
+    color: transparent;
+  }
+}
+
+@media (max-width: 480px) {
+  .ab-remaster-volume--badge {
+    font-size: 0.92rem;
+    padding: 0.55rem 0.9rem;
+  }
+
+  .ab-remaster-volume-pct {
+    font-size: 1.12rem;
+  }
 }
 
 .ab-loudness-row {

@@ -29,7 +29,18 @@
   <span class="ref-genre ref-genre--compact">{{ job.reference_genre }}</span>
   <span class="ref-title">{{ job.reference_label }}</span>
   {% endif %}
-  <span class="job-stereo-width muted small">Stereo width: {{ job.stereo_width_label }}</span>
-  <span class="job-tp-protection muted small">True-peak safety: {{ job.final_tp_protection_label }}</span>
-  <span class="job-treble-hold muted small">Source treble above reference cutoff: {{ job.keep_source_treble_label }}</span>
+  <ul class="job-reference-options small">
+    <li class="job-reference-option">
+      <span class="job-reference-option-name">Stereo width:</span>
+      <span class="job-reference-option-value">{{ job.stereo_width_label }}</span>
+    </li>
+    <li class="job-reference-option">
+      <span class="job-reference-option-name">True-peak safety:</span>
+      <span class="job-reference-option-value">{{ job.final_tp_protection_label }}</span>
+    </li>
+    <li class="job-reference-option">
+      <span class="job-reference-option-name">Source treble above reference cutoff:</span>
+      <span class="job-reference-option-value">{{ job.keep_source_treble_label }}</span>
+    </li>
+  </ul>
 </div>
