@@ -11,6 +11,7 @@ from remastered.web.app import app as asgi_app, fastapi_application
 from remastered.web.auth_jwt import AUTH_COOKIE_NAME
 from remastered.web.media import RETENTION_MESSAGE
 from remastered.web.stream_audio import playback_path_for_wav
+from tests.job_wait import wait_job_complete, wait_job_store_completed, wait_until
 
 
 @pytest.fixture
@@ -89,14 +90,8 @@ def test_index_and_create_job(client: TestClient) -> None:
     )
     assert resp.status_code == 303
     job_url = resp.headers["location"]
-
-    for _ in range(40):
-        panel = client.get(job_url + "/panel")
-        if panel.status_code == 286:
-            break
-        time.sleep(0.05)
-    else:
-        pytest.fail("job did not complete")
+    job_id = job_url.rstrip("/").split("/")[-1]
+    wait_job_complete(client, job_id)
 
     media = client.get(job_url.replace("/jobs/", "/media/") + "/mastered")
     assert media.status_code == 200
@@ -190,14 +185,7 @@ def test_missing_media_retention_message(client: TestClient) -> None:
         follow_redirects=False,
     )
     job_id = resp.headers["location"].split("/")[-1]
-    for _ in range(40):
-        job = store.get_job(job_id)
-        if job and job["status"] == "completed":
-            break
-        time.sleep(0.05)
-    else:
-        pytest.fail("job did not complete")
-    assert job is not None
+    job = wait_job_store_completed(store, job_id)
     owner_id = job["user_id"]
     work = client.app.state.store.db_path.parent
     store.update_job(
@@ -251,13 +239,7 @@ def test_media_download_disposition(
         follow_redirects=False,
     )
     job_id = resp.headers["location"].split("/")[-1]
-    for _ in range(40):
-        panel = client.get(f"/jobs/{job_id}/panel")
-        if panel.status_code == 286:
-            break
-        time.sleep(0.05)
-    else:
-        pytest.fail("job did not complete")
+    wait_job_complete(client, job_id)
 
     audio_inline = client.get(f"/media/{job_id}/audio")
     assert audio_inline.status_code == 200
@@ -318,13 +300,12 @@ def test_job_title_on_dashboard_and_detail(client: TestClient) -> None:
         follow_redirects=False,
     )
     job_id = resp.headers["location"].split("/")[-1]
-    for _ in range(40):
+
+    def title_set() -> bool:
         job = client.app.state.store.get_job(job_id)
-        if job and job.get("title"):
-            break
-        time.sleep(0.05)
-    else:
-        pytest.fail("title not set")
+        return bool(job and job.get("title"))
+
+    wait_until(title_set, failure_message=f"title not set for job {job_id}")
 
     dash = client.get("/")
     assert "Test Track" in dash.text

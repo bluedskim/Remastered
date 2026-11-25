@@ -74,12 +74,9 @@ def test_health_responsive_during_concurrent_media(media_client: TestClient) -> 
         follow_redirects=False,
     )
     job_id = post.headers["location"].split("/")[-1]
-    for _ in range(40):
-        if media_client.get(f"/jobs/{job_id}/panel").status_code == 286:
-            break
-        time.sleep(0.05)
-    else:
-        pytest.fail("job did not complete")
+    from tests.job_wait import wait_job_complete
+
+    wait_job_complete(media_client, job_id)
 
     def fetch_range() -> int:
         return media_client.get(

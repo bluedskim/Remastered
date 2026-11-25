@@ -266,13 +266,9 @@ def test_job_page_renders_youtube_reference(youtube_ref_client: TestClient) -> N
     )
     assert resp.status_code == 303
     job_id = resp.headers["location"].split("/")[-1]
-    for _ in range(40):
-        job = store.get_job(job_id)
-        if job and job["status"] == "completed":
-            break
-        time.sleep(0.05)
-    else:
-        pytest.fail("job did not complete")
+    from tests.job_wait import wait_job_store_completed
+
+    wait_job_store_completed(store, job_id)
 
     store.update_job(job_id, reference_youtube_title="Reference From YouTube")
     detail = youtube_ref_client.get(f"/jobs/{job_id}")

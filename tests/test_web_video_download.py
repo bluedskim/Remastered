@@ -114,13 +114,7 @@ def _verification_code(caplog: pytest.LogCaptureFixture) -> str:
     raise AssertionError("verification code not found")
 
 
-def _wait_job_complete(client: TestClient, job_id: str) -> None:
-    for _ in range(40):
-        panel = client.get(f"/jobs/{job_id}/panel")
-        if panel.status_code == 286:
-            return
-        time.sleep(0.05)
-    pytest.fail("job did not complete")
+from tests.job_wait import wait_job_complete, wait_until
 
 
 def _signup(client: TestClient, caplog: pytest.LogCaptureFixture, email: str = "video-dl@example.com") -> None:
@@ -151,7 +145,7 @@ def _create_completed_youtube_job(client: TestClient, video_id: str = "abc123456
         follow_redirects=False,
     )
     job_id = resp.headers["location"].split("/")[-1]
-    _wait_job_complete(client, job_id)
+    wait_job_complete(client, job_id)
     return job_id
 
 
@@ -315,12 +309,10 @@ def test_double_start_while_building(tmp_path: Path, monkeypatch: pytest.MonkeyP
     second = mgr.start_build(job)
     assert second["status"] == "building"
     gate.set()
-    for _ in range(40):
-        if mgr.status_payload(job)["status"] == "ready":
-            break
-        time.sleep(0.05)
-    else:
-        pytest.fail("build did not finish")
+    wait_until(
+        lambda: mgr.status_payload(job)["status"] == "ready",
+        failure_message="video build did not finish",
+    )
 
 
 def test_delete_job_removes_built_video(
@@ -448,10 +440,7 @@ def test_rebuild_when_mastered_newer_than_mp4(
 
     assert not built_video_is_current(job, work, out)
     mgr.start_build(job)
-    for _ in range(40):
-        if build_calls:
-            break
-        time.sleep(0.05)
+    wait_until(lambda: bool(build_calls), failure_message="stale rebuild did not start")
     assert build_calls == ["job-stale"]
 
 

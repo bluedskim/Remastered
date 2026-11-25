@@ -39,13 +39,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         yield test_client
 
 
-def _wait_job_complete(client: TestClient, job_id: str) -> None:
-    for _ in range(40):
-        panel = client.get(f"/jobs/{job_id}/panel")
-        if panel.status_code == 286:
-            return
-        time.sleep(0.05)
-    pytest.fail("job did not complete")
+from tests.job_wait import wait_job_complete
 
 
 def _create_completed_job(client: TestClient) -> str:
@@ -60,7 +54,7 @@ def _create_completed_job(client: TestClient) -> str:
     )
     assert resp.status_code == 303
     job_id = resp.headers["location"].split("/")[-1]
-    _wait_job_complete(client, job_id)
+    wait_job_complete(client, job_id)
     return job_id
 
 
