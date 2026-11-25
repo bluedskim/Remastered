@@ -73,11 +73,16 @@ def test_job_players_shows_fixed_download_volume_line(jinja_env: Environment) ->
         mastered_ok=True,
         ab_compare_ok=True,
         remaster_volume_of_original_line=line,
+        remaster_volume_percent=112,
         mastered_download_filename="t (Remastered).wav",
         rights_notice_short="Rights notice",
     )
     assert 'data-ab-remaster-volume' in html
-    assert line in html
+    assert "ab-remaster-volume--badge" in html
+    assert 'class="ab-remaster-volume-pct"' in html
+    assert "Remastered is" in html
+    assert "112%" in html
+    assert "of original volume" in html
     assert "data-ab-loudness-attenuation" not in html
 
 

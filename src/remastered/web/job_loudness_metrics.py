@@ -55,14 +55,14 @@ def measure_and_store_job_lufs(
         logger.warning("Could not store LUFS metrics for job %s", job_id, exc_info=True)
 
 
-def resolve_remaster_volume_of_original_line(
+def resolve_remaster_volume_of_original(
     job: dict,
     *,
     store: JobStore | None,
     work_dir: Path,
     ffmpeg_path: str = "ffmpeg",
-) -> str | None:
-    """Return user-facing download volume line, measuring lazily for older jobs when safe."""
+) -> tuple[int | None, str | None]:
+    """Return download-volume percent and user-facing line (lazy LUFS measure when safe)."""
     l_orig = _finite_lufs(job.get("lufs_original"))
     l_mast = _finite_lufs(job.get("lufs_mastered_wav"))
 
@@ -73,7 +73,7 @@ def resolve_remaster_volume_of_original_line(
             media_exists(audio_key, job, work_dir)
             and media_exists(mastered_key, job, work_dir)
         ):
-            return None
+            return None, None
         audio_path = Path(str(audio_key))
         mastered_path = Path(str(mastered_key))
         try:
@@ -83,7 +83,7 @@ def resolve_remaster_volume_of_original_line(
                 l_mast = measure_integrated_lufs(mastered_path, ffmpeg_path=ffmpeg_path)
         except Exception:  # noqa: BLE001
             logger.warning("Lazy LUFS measure failed for job %s", job.get("id"), exc_info=True)
-            return None
+            return None, None
         if store is not None and job.get("id"):
             fields: dict[str, float] = {}
             if l_orig is not None and job.get("lufs_original") is None:
@@ -103,4 +103,18 @@ def resolve_remaster_volume_of_original_line(
         l_mast if l_mast is not None else float("nan"),
         l_orig if l_orig is not None else float("nan"),
     )
-    return format_remaster_volume_of_original_line(percent)
+    return percent, format_remaster_volume_of_original_line(percent)
+
+
+def resolve_remaster_volume_of_original_line(
+    job: dict,
+    *,
+    store: JobStore | None,
+    work_dir: Path,
+    ffmpeg_path: str = "ffmpeg",
+) -> str | None:
+    """Return user-facing download volume line, measuring lazily for older jobs when safe."""
+    _, line = resolve_remaster_volume_of_original(
+        job, store=store, work_dir=work_dir, ffmpeg_path=ffmpeg_path
+    )
+    return line
