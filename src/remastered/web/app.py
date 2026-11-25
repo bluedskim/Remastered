@@ -454,6 +454,17 @@ def _job_media_context(
             ffmpeg_path=settings.ffmpeg_path,
         )
 
+    spectrum_comparison: dict | None = None
+    if audio_ok and mastered_ok and job.get("status") == "completed":
+        from remastered.web.job_spectrum import resolve_spectrum_for_job
+
+        spectrum_comparison = resolve_spectrum_for_job(
+            job,
+            store=store,
+            work_dir=work,
+            ffmpeg_path=settings.ffmpeg_path,
+        )
+
     return {
         "audio_ok": audio_ok,
         "mastered_ok": mastered_ok,
@@ -467,6 +478,7 @@ def _job_media_context(
             ws.job_retention_days, retention_exempt=retention_exempt
         ),
         "remaster_volume_of_original_line": remaster_volume_of_original_line,
+        "spectrum_comparison": spectrum_comparison,
     }
 
 
@@ -1088,6 +1100,35 @@ async def delete_job_remove_post_api(
 ) -> JSONResponse:
     """POST without a ``/delete`` URL segment (some privacy extensions block that path)."""
     return await _delete_job_for_identity(job_id, identity, store)
+
+
+@fastapi_application.get("/api/jobs/{job_id}/spectrum-comparison")
+def job_spectrum_comparison_api(
+    job_id: str,
+    identity: RequestIdentity = Depends(require_identity),
+    store: JobStore = Depends(get_store),
+) -> JSONResponse:
+    job = store.get_job_for_access(
+        job_id,
+        account_id=identity.account_id,
+        anon_id=identity.anon_id,
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=404, detail="Spectrum not available.")
+    settings = resolve_settings()
+    from remastered.web.job_spectrum import resolve_spectrum_for_job
+
+    payload = resolve_spectrum_for_job(
+        job,
+        store=store,
+        work_dir=settings.work_dir,
+        ffmpeg_path=settings.ffmpeg_path,
+    )
+    if not payload:
+        raise HTTPException(status_code=404, detail="Spectrum not available.")
+    return JSONResponse(payload)
 
 
 @fastapi_application.post("/api/jobs/{job_id}/feedback")

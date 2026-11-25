@@ -239,8 +239,9 @@ def test_migration_v16_to_v17_adds_treble_column(tmp_path: Path) -> None:
     with store._conn() as conn:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
-    assert version == SCHEMA_VERSION == 17
+    assert version == SCHEMA_VERSION == 18
     assert "keep_source_treble_above_reference_cutoff" in cols
+    assert "spectrum_comparison_json" in cols
 
 
 def test_create_job_defaults_treble_hold_on(tmp_path: Path) -> None:

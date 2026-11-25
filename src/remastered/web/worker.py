@@ -26,6 +26,7 @@ from remastered.web.reference_resolve import REFERENCE_DOWNLOAD_FAILED, resolve_
 from remastered.web.reference_youtube import is_youtube_reference_job
 from remastered.web.stream_audio import transcode_wav_for_playback
 from remastered.web.job_loudness_metrics import measure_and_store_job_lufs
+from remastered.web.job_spectrum import measure_and_store_job_spectrum
 from remastered.web.true_peak_protection import (
     apply_final_true_peak_protection,
     copy_matchering_to_raw,
@@ -369,6 +370,14 @@ class JobWorker:
                 job_id,
                 self.store,
                 audio_wav=Path(audio_path_str) if audio_path_str else None,
+                mastered_wav=Path(mastered_path_str) if mastered_path_str else None,
+                ffmpeg_path=self.settings.ffmpeg_path,
+            )
+            measure_and_store_job_spectrum(
+                job_id,
+                self.store,
+                original_wav=Path(audio_path_str) if audio_path_str else None,
+                reference_wav=reference,
                 mastered_wav=Path(mastered_path_str) if mastered_path_str else None,
                 ffmpeg_path=self.settings.ffmpeg_path,
             )

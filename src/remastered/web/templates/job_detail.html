@@ -22,6 +22,7 @@
 <div id="job-players">
   {% include "partials/job_players.html" %}
 </div>
+{% include "partials/job_spectrum.html" %}
 <script src="{{ static_url('ab-loudness-match.js') }}" defer></script>
 <script src="{{ static_url('ab-player.js') }}" defer></script>
 <script src="{{ static_url('video-download.js') }}" defer></script>
@@ -29,4 +30,7 @@
 <script src="{{ static_url('job-feedback.js') }}" defer></script>
 <script src="{{ static_url('job-memo.js') }}" defer></script>
 <script src="{{ static_url('job-log-scroll.js') }}" defer></script>
+{% if spectrum_comparison %}
+<script src="{{ static_url('job-spectrum.js') }}" defer></script>
+{% endif %}
 {% endblock %}

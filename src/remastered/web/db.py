@@ -14,7 +14,7 @@ from remastered.stereo_width import DEFAULT_STEREO_WIDTH_MODE
 STAGES = ("download", "master", "render", "upload")
 WEB_STAGES = ("download", "master")
 STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 LEGACY_MIGRATION_USER_ID = "__legacy_local__"
 
 
@@ -118,6 +118,7 @@ class JobStore:
                     memo TEXT NOT NULL DEFAULT '',
                     lufs_original REAL,
                     lufs_mastered_wav REAL,
+                    spectrum_comparison_json TEXT,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
                 """
@@ -190,6 +191,11 @@ class JobStore:
                     ALTER TABLE jobs ADD COLUMN keep_source_treble_above_reference_cutoff
                     INTEGER NOT NULL DEFAULT 1
                     """
+                )
+            cols = self._job_columns(conn)
+            if "spectrum_comparison_json" not in cols:
+                conn.execute(
+                    "ALTER TABLE jobs ADD COLUMN spectrum_comparison_json TEXT"
                 )
             self._backfill_legacy_jobs(conn)
 
@@ -551,6 +557,7 @@ class JobStore:
             "memo",
             "lufs_original",
             "lufs_mastered_wav",
+            "spectrum_comparison_json",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
