@@ -49,13 +49,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         yield test_client
 
 
-def _wait_job_complete(client: TestClient, job_id: str) -> None:
-    for _ in range(40):
-        panel = client.get(f"/jobs/{job_id}/panel")
-        if panel.status_code == 286:
-            return
-        time.sleep(0.05)
-    pytest.fail("job did not complete")
+from tests.job_wait import wait_job_complete
 
 
 def _create_job(client: TestClient, url: str = "https://www.youtube.com/watch?v=memo1") -> str:
@@ -232,7 +226,7 @@ def test_memo_card_renders_above_log_while_job_running(client: TestClient) -> No
 
 def test_memo_card_renders_above_log_when_job_terminal(client: TestClient) -> None:
     job_id = _create_job(client)
-    _wait_job_complete(client, job_id)
+    wait_job_complete(client, job_id)
     detail = client.get(f"/jobs/{job_id}")
     assert detail.status_code == 200
     _memo_index_before_log_box(detail.text)
@@ -241,7 +235,7 @@ def test_memo_card_renders_above_log_when_job_terminal(client: TestClient) -> No
 def test_memo_survives_after_job_completes(client: TestClient) -> None:
     job_id = _create_job(client)
     client.put(f"/api/jobs/{job_id}/memo", json={"memo": "kept"})
-    _wait_job_complete(client, job_id)
+    wait_job_complete(client, job_id)
     detail = client.get(f"/jobs/{job_id}")
     assert "kept" in detail.text
     assert 'id="job-memo"' in detail.text

@@ -10,7 +10,9 @@ import pytest
 from scipy import signal
 
 from remastered.web.db import SCHEMA_VERSION, JobStore
+from tests.job_wait import wait_job_complete
 from remastered.web.job_spectrum import (
+    _path_looks_like_wav,
     NUM_POINTS,
     SPECTRUM_JSON_VERSION,
     _lufs_gain,
@@ -37,6 +39,54 @@ def _write_stereo_wav(path: Path, left: np.ndarray, right: np.ndarray, sr: int =
 def _pink(n: int, sr: int, rng: np.random.Generator) -> np.ndarray:
     white = rng.standard_normal(n)
     return signal.filtfilt(*signal.butter(1, 2.0 / (sr / 2), btype="high"), white)
+
+
+def test_worker_finalize_does_not_call_spectrum_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi.testclient import TestClient
+
+    work = tmp_path / "work"
+    refs = tmp_path / "refs"
+    work.mkdir()
+    refs.mkdir()
+    (refs / "ref.wav").write_bytes(b"x")
+    monkeypatch.setenv("REMASTERED_WORK_DIR", str(work))
+    monkeypatch.setenv("REMASTERED_WEB_REFERENCES_DIR", str(refs))
+    monkeypatch.setenv("REMASTERED_WEB_JOB_CREATE_MIN_INTERVAL_SECONDS", "0")
+    monkeypatch.setenv("REMASTERED_MAIL_MODE", "log")
+    monkeypatch.setenv(
+        "REMASTERED_JWT_SECRET",
+        "test-jwt-secret-key-at-least-32-bytes!!",
+    )
+    monkeypatch.setattr(
+        "remastered.web.limits.inspect_youtube_source",
+        lambda url: {"duration": 120, "filesize": 1000, "title": "Worker"},
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "remastered.web.job_spectrum.measure_and_store_job_spectrum",
+        lambda *a, **k: calls.append("spectrum"),
+    )
+
+    from tests.worker_patches import install_fake_worker_pipeline
+
+    install_fake_worker_pipeline(monkeypatch, reference_path=refs / "ref.wav")
+    from remastered.web.app import fastapi_application
+
+    with TestClient(fastapi_application) as client:
+        client.get("/")
+        resp = client.post(
+            "/jobs",
+            data={
+                "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "reference_name": "ref.wav",
+            },
+            follow_redirects=False,
+        )
+        job_id = resp.headers["location"].split("/")[-1]
+        wait_job_complete(client, job_id)
+    assert calls == []
 
 
 def test_migration_v17_to_v18_adds_spectrum_column(tmp_path: Path) -> None:
@@ -98,6 +148,17 @@ def test_lufs_gain_scales_rms() -> None:
     sig = np.ones(1000) * 0.01
     louder = _lufs_gain(sig, -30.0)
     assert float(np.sqrt(np.mean(louder * louder))) > float(np.sqrt(np.mean(sig * sig)))
+
+
+def test_skip_stub_wav_without_soundfile() -> None:
+    import tempfile
+
+    stub = Path(tempfile.mkdtemp()) / "stub.wav"
+    stub.write_bytes(b"RIFF" + b"\x00" * 96)
+    assert not _path_looks_like_wav(stub)
+    bad = stub.parent / "tiny.wav"
+    bad.write_bytes(b"x")
+    assert not _path_looks_like_wav(bad)
 
 
 def test_compute_and_json_shape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,10 +240,7 @@ def test_job_detail_shows_spectrum_panel(tmp_path: Path, monkeypatch: pytest.Mon
             follow_redirects=False,
         )
         job_id = resp.headers["location"].split("/")[-1]
-        for _ in range(40):
-            if client.get(f"/jobs/{job_id}/panel").status_code == 286:
-                break
-            time.sleep(0.05)
+        wait_job_complete(client, job_id)
         store = JobStore(resolve_settings().work_dir / "remastered_jobs.db")
         store.update_job(job_id, spectrum_comparison_json=json.dumps(fake))
         detail = client.get(f"/jobs/{job_id}")
@@ -235,10 +293,7 @@ def test_job_detail_hides_spectrum_when_absent(tmp_path: Path, monkeypatch: pyte
             follow_redirects=False,
         )
         job_id = resp.headers["location"].split("/")[-1]
-        for _ in range(40):
-            if client.get(f"/jobs/{job_id}/panel").status_code == 286:
-                break
-            time.sleep(0.05)
+        wait_job_complete(client, job_id)
         detail = client.get(f"/jobs/{job_id}")
         assert detail.status_code == 200
         assert "spectrum-panel" not in detail.text
@@ -291,10 +346,7 @@ def test_spectrum_api_access_control(tmp_path: Path, monkeypatch: pytest.MonkeyP
             follow_redirects=False,
         )
         job_id = resp.headers["location"].split("/")[-1]
-        for _ in range(40):
-            if client.get(f"/jobs/{job_id}/panel").status_code == 286:
-                break
-            time.sleep(0.05)
+        wait_job_complete(client, job_id)
         JobStore(resolve_settings().work_dir / "remastered_jobs.db").update_job(
             job_id,
             spectrum_comparison_json=json.dumps(fake),

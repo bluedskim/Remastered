@@ -11,14 +11,6 @@ import numpy as np
 import soundfile as sf
 
 from remastered.treble_cutoff import welch_magnitude_db
-
-
-def _to_mono_mid(audio: np.ndarray) -> np.ndarray:
-    if audio.ndim == 1:
-        return audio
-    if audio.shape[1] == 1:
-        return audio[:, 0]
-    return 0.5 * (audio[:, 0] + audio[:, 1])
 from remastered.web.integrated_loudness import measure_integrated_lufs
 from remastered.web.media import media_exists
 from remastered.web.reference_resolve import reference_cache_wav
@@ -37,6 +29,29 @@ FREQ_MAX_HZ = 20_000.0
 NUM_POINTS = 100
 MEDIAN_BAND_HZ = (500.0, 2_000.0)
 _OCT_FRAC = 1.0 / 3.0
+
+
+def _to_mono_mid(audio: np.ndarray) -> np.ndarray:
+    if audio.ndim == 1:
+        return audio
+    if audio.shape[1] == 1:
+        return audio[:, 0]
+    return 0.5 * (audio[:, 0] + audio[:, 1])
+
+
+def _path_looks_like_wav(path: Path) -> bool:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return False
+    if size < 44:
+        return False
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(12)
+    except OSError:
+        return False
+    return len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"WAVE"
 
 
 def _cache_is_fresh(path: Path, retention_days: int) -> bool:
@@ -75,12 +90,12 @@ def _lufs_gain(linear_audio: np.ndarray, measured_lufs: float | None) -> np.ndar
 
 
 def _load_mono_mid(path: Path) -> tuple[np.ndarray, int] | None:
-    if not path.is_file() or path.stat().st_size <= 0:
+    if not path.is_file() or not _path_looks_like_wav(path):
         return None
     try:
         audio, sr = sf.read(str(path), always_2d=True, dtype="float64")
     except Exception:  # noqa: BLE001
-        logger.warning("Could not read WAV for spectrum: %s", path, exc_info=True)
+        logger.debug("Skip spectrum WAV read for %s", path)
         return None
     if audio.size == 0:
         return None
@@ -259,7 +274,7 @@ def resolve_spectrum_for_job(
             ffmpeg_path=ffmpeg_path,
         )
     except Exception:  # noqa: BLE001
-        logger.warning("Lazy spectrum failed for job %s", job.get("id"), exc_info=True)
+        logger.debug("Lazy spectrum failed for job %s", job.get("id"))
         return None
 
     if payload is None:

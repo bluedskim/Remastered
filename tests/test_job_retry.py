@@ -47,13 +47,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         yield test_client
 
 
-def _wait_job_complete(client: TestClient, job_id: str) -> None:
-    for _ in range(40):
-        panel = client.get(f"/jobs/{job_id}/panel")
-        if panel.status_code == 286:
-            return
-        time.sleep(0.05)
-    pytest.fail("job did not complete")
+from tests.job_wait import wait_job_complete
 
 
 def _create_completed_job(
@@ -74,7 +68,7 @@ def _create_completed_job(
     )
     assert resp.status_code == 303
     job_id = resp.headers["location"].split("/")[-1]
-    _wait_job_complete(client, job_id)
+    wait_job_complete(client, job_id)
     return job_id
 
 
@@ -194,7 +188,7 @@ def test_job_detail_try_again_after_panel_poll(client: TestClient) -> None:
     assert running_page.status_code == 200
     assert f'href="/?from_job={job_id}"' not in running_page.text
 
-    _wait_job_complete(client, job_id)
+    wait_job_complete(client, job_id)
     panel = client.get(f"/jobs/{job_id}/panel")
     assert panel.status_code == 286
     assert "Try again" in panel.text
@@ -284,7 +278,7 @@ def _create_upload_reference_job(
     )
     assert resp.status_code == 303, resp.text
     job_id = resp.headers["location"].split("/")[-1]
-    _wait_job_complete(client, job_id)
+    wait_job_complete(client, job_id)
     return job_id
 
 
@@ -338,7 +332,7 @@ def test_upload_reference_snapshot_survives_replaced_user_file(
     )
     assert resp.status_code == 303
     job_retry = resp.headers["location"].split("/")[-1]
-    _wait_job_complete(client, job_retry)
+    wait_job_complete(client, job_retry)
     row_retry = store.get_job(job_retry)
     assert row_retry is not None
     assert Path(row_retry["reference_path"]).read_bytes() == b"REF-A-CONTENT"
