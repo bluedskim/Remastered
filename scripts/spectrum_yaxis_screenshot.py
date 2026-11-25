@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Before/after spectrum Y-axis screenshots via real job-spectrum.js in headless Chrome."""
+"""Before/after spectrum Y-axis screenshots via real job-spectrum.js in headless Chromium."""
 
 from __future__ import annotations
 
@@ -22,21 +22,44 @@ def _log_freqs(n: int = 100) -> list[float]:
 
 
 def realistic_job_spectrum_payload() -> dict:
-    """Strong ~80 Hz bass; original dives above 10 kHz; ref/master flatter in treble."""
+    """
+    Job-like fixture: ~80 Hz bass bump; original → ~−60 dB above 10 kHz;
+    reference/remastered ~−20 dB between 10–16 kHz (visible above floor).
+    """
     freqs = _log_freqs()
     o: list[float] = []
     r: list[float] = []
     m: list[float] = []
     for hz in freqs:
-        bass_bump = 10 * math.exp(-((math.log(hz) - math.log(80)) / 0.45) ** 2)
-        orig_body = 2 - 0.35 * max(0.0, math.log10(hz) - 2.5)
-        air_drop = -max(0.0, math.log10(hz) - 4.0) * 38
-        orig = bass_bump + orig_body + air_drop
-        ref = bass_bump * 0.55 + 1.5 - 8 * max(0.0, math.log10(hz) - 4.0)
-        mast = bass_bump * 0.6 + 2.0 - 6 * max(0.0, math.log10(hz) - 4.05)
+        bass = 9 * math.exp(-((math.log(hz) - math.log(80)) / 0.42) ** 2)
+        if hz < 4000:
+            orig = bass + 1.5 - 0.25 * max(0.0, math.log10(hz) - 2.2)
+        elif hz < 10000:
+            orig = 2.0 - 6.0 * (math.log10(hz) - 3.6)
+        else:
+            log_rel = max(0.0, math.log10(hz) - 4.0)
+            orig = -22.0 - log_rel * 125.0
+        if hz >= 8000:
+            ref = -20.0 - 0.35 * max(0.0, math.log10(hz) - 3.85)
+            mast = -19.0 - 0.4 * max(0.0, math.log10(hz) - 3.88)
+        else:
+            ref = bass * 0.45 + 0.5
+            mast = bass * 0.5 + 0.8
         o.append(round(orig, 1))
         r.append(round(ref, 1))
         m.append(round(mast, 1))
+    at_12k = min(
+        payload_o
+        for hz, payload_o in zip(freqs, o, strict=True)
+        if hz >= 12_000
+    )
+    at_14k = [
+        v
+        for hz, v in zip(freqs, r, strict=True)
+        if 10_000 <= hz <= 16_000
+    ]
+    assert at_12k <= -55, at_12k
+    assert at_14k and -25 <= sum(at_14k) / len(at_14k) <= -15, at_14k
     return {"v": 1, "f": [round(f, 1) if f < 1000 else round(f) for f in freqs], "o": o, "r": r, "m": m}
 
 
@@ -99,7 +122,15 @@ def main() -> None:
 
     _browser_screenshot(before_html, before_png)
     _browser_screenshot(after_html, after_png)
-    print("payload air sample original@12k", min(payload["o"][-20:]))
+    print("original min (treble)", min(payload["o"][-30:]))
+    print(
+        "ref avg 10-16k",
+        round(
+            sum(v for hz, v in zip(payload["f"], payload["r"]) if 10_000 <= hz <= 16_000)
+            / max(1, sum(1 for hz in payload["f"] if 10_000 <= hz <= 16_000)),
+            1,
+        ),
+    )
     print("wrote", before_png, after_png)
 
 

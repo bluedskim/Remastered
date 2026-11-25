@@ -26,48 +26,62 @@
     remastered: "#ec4899",
   };
 
-  var Y_FLOOR_DB = -42;
+  /**
+   * Y-axis rule (keep in sync with tests/test_job_spectrum_chart_axis.py):
+   * - Tick labels are 0-anchored multiples of tickStep (…, -20, -10, 0, 10, …).
+   * - Prefer tickStep 10 dB; use 6 dB only if 10 dB cannot yield 5–7 ticks.
+   * - Display floor yMin: −40 dB when tickStep is 10, else −42 dB (6 dB grid).
+   * - Curves clip to yMin at the bottom edge; deep data below −42 is not shown.
+   * - yMax = ceil((dataMax + 3 dB) / tickStep) * tickStep, trimmed to 5–7 ticks.
+   */
+  var CLIP_TARGET_DB = -42;
 
   function ceilToStep(value, step) {
     return Math.ceil(value / step) * step;
   }
 
+  function displayFloorForStep(step) {
+    return step === 10 ? -40 : -42;
+  }
+
   /** Keep in sync with tests/test_job_spectrum_chart_axis.py */
   function computeYAxisRange(allDb) {
     var dataMax = Math.max.apply(null, allDb);
-    var yMin = Y_FLOOR_DB;
     var headroom = 3;
-    var rawTop = dataMax + headroom;
-    var roundStep = rawTop <= 12 ? 3 : 6;
-    var yMax = ceilToStep(rawTop, roundStep);
-    var minSpan = 24;
-    if (yMax - yMin < minSpan) {
-      yMax = yMin + minSpan;
-    }
-    return { yMin: yMin, yMax: yMax };
-  }
-
-  function chooseYTickStep(yMin, yMax) {
-    var span = yMax - yMin;
-    var bestStep = 6;
-    var bestScore = Infinity;
-    [10, 6].forEach(function (step) {
-      var count = 0;
-      for (var g = yMin; g <= yMax + 0.001; g += step) {
+    var minTicks = 5;
+    var maxTicks = 7;
+    var steps = [10, 6];
+    for (var si = 0; si < steps.length; si++) {
+      var tickStep = steps[si];
+      var yMin = displayFloorForStep(tickStep);
+      var yMax = ceilToStep(dataMax + headroom, tickStep);
+      var count = (yMax - yMin) / tickStep + 1;
+      while (count > maxTicks) {
+        yMax -= tickStep;
+        count--;
+      }
+      while (count < minTicks) {
+        yMax += tickStep;
         count++;
       }
-      if (count >= 5 && count <= 7) {
-        var score = Math.abs(count - 6);
-        if (score < bestScore) {
-          bestScore = score;
-          bestStep = step;
-        }
+      if (count >= minTicks && count <= maxTicks) {
+        return { yMin: yMin, yMax: yMax, tickStep: tickStep };
       }
-    });
-    if (bestScore === Infinity) {
-      return span > 48 ? 10 : 6;
     }
-    return bestStep;
+    var fallbackStep = 10;
+    var yMinFb = displayFloorForStep(fallbackStep);
+    var yMaxFb = ceilToStep(dataMax + headroom, fallbackStep);
+    return { yMin: yMinFb, yMax: yMaxFb, tickStep: fallbackStep };
+  }
+
+  function yAxisTickValues(yMin, yMax, tickStep) {
+    var k0 = yMin / tickStep;
+    var k1 = yMax / tickStep;
+    var ticks = [];
+    for (var k = k0; k <= k1 + 1e-6; k++) {
+      ticks.push(k * tickStep);
+    }
+    return ticks;
   }
 
   function logX(freq, w, fMin, fMax) {
@@ -96,7 +110,7 @@
     for (var i = 0; i < freqs.length; i++) {
       var x = padL + logX(freqs[i], plotW, fMin, fMax);
       var db = dbs[i];
-      if (db < yMin) {
+      if (db < yMin || db < CLIP_TARGET_DB) {
         db = yMin;
       } else if (db > yMax) {
         db = yMax;
@@ -115,7 +129,8 @@
     var yAxis = computeYAxisRange(all);
     var yMin = yAxis.yMin;
     var yMax = yAxis.yMax;
-    var yTickStep = chooseYTickStep(yMin, yMax);
+    var yTickStep = yAxis.tickStep;
+    var yTicks = yAxisTickValues(yMin, yMax, yTickStep);
 
     var width = 720;
     var height = 280;
@@ -166,7 +181,7 @@
       svg.appendChild(label);
     });
 
-    for (var g = yMin; g <= yMax + 0.001; g += yTickStep) {
+    yTicks.forEach(function (g) {
       var gy = padT + yMap(g, plotH, yMin, yMax);
       var line = document.createElementNS(ns, "line");
       line.setAttribute("x1", padL);
@@ -182,7 +197,7 @@
       ylab.setAttribute("class", "spectrum-axis-label");
       ylab.textContent = g + " dB";
       svg.appendChild(ylab);
-    }
+    });
 
     FREQ_TICKS.forEach(function (tick) {
       if (tick.hz < fMin || tick.hz > fMax) return;
