@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../src/remastered/web/static/style.css" />
+  <title>Spectrum axis compare</title>
+  <style>
+    body { padding: 1.25rem; }
+    .spectrum-panel { max-width: 720px; margin: 0 auto; }
+    details.spectrum-panel { display: block; }
+    details.spectrum-panel > summary { display: none; }
+    details.spectrum-panel > .spectrum-panel__body { padding-top: 0; }
+  </style>
+</head>
+<body>
+  <div class="page-bg" aria-hidden="true"></div>
+  <details class="card spectrum-panel" data-spectrum-panel open>
+    <summary class="spectrum-panel__summary"><span class="spectrum-panel__title">Spectrum</span></summary>
+    <div class="spectrum-panel__body">
+      <p class="spectrum-panel__caption small muted">Curves are volume-matched to compare tonal balance.</p>
+      <script type="application/json" class="spectrum-data" id="spectrum-payload"></script>
+      <div class="spectrum-chart" data-spectrum-chart role="img" aria-label="Spectrum comparison"></div>
+      <ul class="spectrum-legend" aria-hidden="true">
+        <li><span class="spectrum-legend__swatch spectrum-legend__swatch--original"></span> Original</li>
+        <li><span class="spectrum-legend__swatch spectrum-legend__swatch--reference"></span> Reference</li>
+        <li><span class="spectrum-legend__swatch spectrum-legend__swatch--remastered"></span> Remastered</li>
+      </ul>
+    </div>
+  </details>
+  <script id="chart-script"></script>
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var src = params.get("js");
+      if (!src) return;
+      var s = document.getElementById("chart-script");
+      s.src = src;
+    })();
+  </script>
+</body>
+</html>
