@@ -18,7 +18,12 @@
   <details class="card spectrum-panel" data-spectrum-panel open>
     <summary class="spectrum-panel__summary"><span class="spectrum-panel__title">Spectrum</span></summary>
     <div class="spectrum-panel__body">
-      <p class="spectrum-panel__caption small muted">Curves are volume-matched to compare tonal balance.</p>
+      <div class="spectrum-mode-toggle" role="group" aria-label="Spectrum display mode">
+        <button type="button" class="spectrum-mode-toggle__btn is-active" data-spectrum-mode="tone" aria-pressed="true">Tone (matched)</button>
+        <button type="button" class="spectrum-mode-toggle__btn" data-spectrum-mode="actual" aria-pressed="false">Actual level</button>
+      </div>
+      <p class="spectrum-panel__caption" data-spectrum-caption>Tone only: all curves are matched to the same loudness. See the volume line above for level change.</p>
+      <p class="spectrum-level-note small" data-spectrum-level-note hidden></p>
       <script type="application/json" class="spectrum-data" id="spectrum-payload"></script>
       <div class="spectrum-chart" data-spectrum-chart role="img" aria-label="Spectrum comparison"></div>
       <ul class="spectrum-legend" aria-hidden="true">

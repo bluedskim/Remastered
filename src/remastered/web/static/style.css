@@ -2202,8 +2202,52 @@ table.jobs td {
   padding-top: 0.75rem;
 }
 
+.spectrum-mode-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.65rem;
+}
+
+.spectrum-mode-toggle__btn {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(196, 181, 253, 0.35);
+  background: rgba(15, 10, 30, 0.55);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.spectrum-mode-toggle__btn:hover:not(:disabled) {
+  border-color: rgba(196, 181, 253, 0.55);
+  color: var(--text);
+}
+
+.spectrum-mode-toggle__btn.is-active {
+  border-color: rgba(236, 72, 153, 0.65);
+  background: rgba(236, 72, 153, 0.12);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.spectrum-mode-toggle__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .spectrum-panel__caption {
   margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.spectrum-level-note {
+  margin: -0.35rem 0 0.75rem;
+  color: rgba(196, 181, 253, 0.9);
+  font-variant-numeric: tabular-nums;
 }
 
 .spectrum-chart {

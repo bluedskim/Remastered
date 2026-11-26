@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SPECTRUM_JSON_VERSION = 1
+SPECTRUM_JSON_VERSION = 2
 LOUDNESS_TARGET_LUFS = -23.0
 FREQ_MIN_HZ = 20.0
 FREQ_MAX_HZ = 20_000.0
@@ -80,6 +80,21 @@ def reference_wav_if_available(job: dict, work_dir: Path, *, retention_days: int
 
 def _log_freq_grid() -> np.ndarray:
     return np.geomspace(FREQ_MIN_HZ, FREQ_MAX_HZ, NUM_POINTS)
+
+
+def loudness_offset_db(integrated_lufs: float) -> float:
+    """dB to add to a tone-matched curve for actual integrated level (LUFS vs -23)."""
+    return float(integrated_lufs) - LOUDNESS_TARGET_LUFS
+
+
+def spectrum_has_level_data(payload: dict[str, Any]) -> bool:
+    """True when stored JSON includes per-curve integrated LUFS (v2+)."""
+    if int(payload.get("v", 0)) < 2:
+        return False
+    lu = payload.get("lu")
+    if not isinstance(lu, list) or len(lu) != 3:
+        return False
+    return all(isinstance(x, (int, float)) and np.isfinite(float(x)) for x in lu)
 
 
 def _lufs_gain(linear_audio: np.ndarray, measured_lufs: float | None) -> np.ndarray:
@@ -143,6 +158,7 @@ def compute_spectrum_comparison(
     """Return compact comparison payload or None on failure."""
     paths = (original_wav, reference_wav, mastered_wav)
     curves_db: list[np.ndarray] = []
+    integrated_lufs: list[float] = []
     grid = _log_freq_grid()
 
     for wav in paths:
@@ -151,6 +167,9 @@ def compute_spectrum_comparison(
             return None
         mono, sr = loaded
         lufs = measure_integrated_lufs(wav, ffmpeg_path=ffmpeg_path)
+        if lufs is None or not np.isfinite(lufs):
+            return None
+        integrated_lufs.append(round(float(lufs), 1))
         mono = _lufs_gain(mono, lufs)
         freqs, db = welch_magnitude_db(mono, sr)
         binned = _smooth_third_octave(freqs, db, grid)
@@ -179,6 +198,7 @@ def compute_spectrum_comparison(
         "o": _round_list(curves_db[0]),
         "r": _round_list(curves_db[1]),
         "m": _round_list(curves_db[2]),
+        "lu": integrated_lufs,
     }
 
 
@@ -247,7 +267,7 @@ def resolve_spectrum_for_job(
         return None
 
     cached = parse_stored_spectrum(job.get("spectrum_comparison_json"))
-    if cached is not None:
+    if cached is not None and spectrum_has_level_data(cached):
         return cached
 
     audio_key = job.get("audio_path")

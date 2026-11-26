@@ -181,6 +181,7 @@ def test_compute_and_json_shape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     )
     assert payload is not None
     assert payload["v"] == SPECTRUM_JSON_VERSION
+    assert payload.get("lu") == [-20.0, -20.0, -20.0]
     assert len(payload["f"]) == NUM_POINTS
     assert len(payload["o"]) == len(payload["r"]) == len(payload["m"]) == NUM_POINTS
     assert spectrum_json_bytes(payload) < 12_000
@@ -222,11 +223,12 @@ def test_job_detail_shows_spectrum_panel(tmp_path: Path, monkeypatch: pytest.Mon
     from remastered.web.db import JobStore
 
     fake = {
-        "v": 1,
+        "v": 2,
         "f": [100.0, 1000.0],
         "o": [0.0, 0.0],
         "r": [1.0, 1.0],
         "m": [2.0, 2.0],
+        "lu": [-23.0, -23.0, -23.0],
     }
 
     with TestClient(fastapi_application) as client:
@@ -247,7 +249,8 @@ def test_job_detail_shows_spectrum_panel(tmp_path: Path, monkeypatch: pytest.Mon
         assert detail.status_code == 200
         assert "spectrum-panel" in detail.text
         assert "Spectrum" in detail.text
-        assert "volume-matched" in detail.text
+        assert "Tone only" in detail.text
+        assert "Tone (matched)" in detail.text
 
 
 def test_job_detail_hides_spectrum_when_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -333,7 +336,14 @@ def test_spectrum_api_access_control(tmp_path: Path, monkeypatch: pytest.MonkeyP
     from remastered.web.app import fastapi_application
     from remastered.web.db import JobStore
 
-    fake = {"v": 1, "f": [100.0], "o": [0.0], "r": [0.0], "m": [0.0]}
+    fake = {
+        "v": 2,
+        "f": [100.0],
+        "o": [0.0],
+        "r": [0.0],
+        "m": [0.0],
+        "lu": [-23.0, -23.0, -23.0],
+    }
 
     with TestClient(fastapi_application) as client:
         client.get("/")
@@ -353,7 +363,8 @@ def test_spectrum_api_access_control(tmp_path: Path, monkeypatch: pytest.MonkeyP
         )
         ok = client.get(f"/api/jobs/{job_id}/spectrum-comparison")
         assert ok.status_code == 200
-        assert ok.json()["v"] == 1
+        assert ok.json()["v"] == 2
+        assert ok.json()["lu"] == [-23.0, -23.0, -23.0]
 
     with TestClient(fastapi_application) as stranger:
         denied = stranger.get(f"/api/jobs/{job_id}/spectrum-comparison")

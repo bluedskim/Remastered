@@ -26,6 +26,8 @@
     remastered: "#ec4899",
   };
 
+  var LOUDNESS_TARGET_LUFS = -23;
+
   /**
    * Y-axis rule (keep in sync with tests/test_job_spectrum_chart_axis.py):
    * - Tick labels are 0-anchored multiples of tickStep (…, -20, -10, 0, 10, …).
@@ -112,6 +114,40 @@
     }
   }
 
+  function loudnessOffsetDb(integratedLufs) {
+    return integratedLufs - LOUDNESS_TARGET_LUFS;
+  }
+
+  function curveForMode(values, offsetDb) {
+    if (!offsetDb) return values;
+    return values.map(function (v) {
+      return v + offsetDb;
+    });
+  }
+
+  function seriesDataForMode(data, mode) {
+    if (mode !== "actual" || !data.lu || data.lu.length !== 3) {
+      return { o: data.o, r: data.r, m: data.m };
+    }
+    return {
+      o: curveForMode(data.o, loudnessOffsetDb(data.lu[0])),
+      r: curveForMode(data.r, loudnessOffsetDb(data.lu[1])),
+      m: curveForMode(data.m, loudnessOffsetDb(data.lu[2])),
+    };
+  }
+
+  function formatLevelDeltaDb(delta) {
+    var rounded = Math.round(delta * 10) / 10;
+    var sign = rounded > 0 ? "+" : "";
+    return sign + rounded.toFixed(1);
+  }
+
+  function remasteredVsOriginalLine(data) {
+    if (!data.lu || data.lu.length !== 3) return null;
+    var delta = data.lu[2] - data.lu[0];
+    return "Remastered is " + formatLevelDeltaDb(delta) + " dB vs original";
+  }
+
   function polylinePoints(freqs, dbs, plotW, plotH, padL, padT, yMin, yMax, fMin, fMax) {
     var parts = [];
     for (var i = 0; i < freqs.length; i++) {
@@ -126,11 +162,13 @@
     return parts.join(" ");
   }
 
-  function renderChart(container, data) {
+  function renderChart(container, data, mode) {
+    var displayMode = mode || "tone";
+    var seriesData = seriesDataForMode(data, displayMode);
     var freqs = data.f;
     var fMin = freqs[0];
     var fMax = freqs[freqs.length - 1];
-    var all = data.o.concat(data.r, data.m);
+    var all = seriesData.o.concat(seriesData.r, seriesData.m);
     var yAxis = computeYAxisRange(all);
     var yMin = yAxis.yMin;
     var yMax = yAxis.yMax;
@@ -236,7 +274,7 @@
       var pl = document.createElementNS(ns, "polyline");
       pl.setAttribute(
         "points",
-        polylinePoints(freqs, data[s.key], plotW, plotH, padL, padT, yMin, yMax, fMin, fMax)
+        polylinePoints(freqs, seriesData[s.key], plotW, plotH, padL, padT, yMin, yMax, fMin, fMax)
       );
       pl.setAttribute("fill", "none");
       pl.setAttribute("stroke", s.color);
@@ -293,11 +331,11 @@
         tooltipEl.textContent =
           labelHz +
           " · Original " +
-          data.o[idx].toFixed(1) +
+          seriesData.o[idx].toFixed(1) +
           " dB · Reference " +
-          data.r[idx].toFixed(1) +
+          seriesData.r[idx].toFixed(1) +
           " dB · Remastered " +
-          data.m[idx].toFixed(1) +
+          seriesData.m[idx].toFixed(1) +
           " dB";
         tooltipEl.hidden = false;
       }
@@ -309,10 +347,60 @@
     }
   }
 
-  document.querySelectorAll("[data-spectrum-chart]").forEach(function (el) {
-    var data = parsePayload(el);
-    if (data && data.f && data.o && data.r && data.m) {
-      renderChart(el, data);
+  function updateModeUi(panel, mode, data) {
+    var captionEl = panel.querySelector("[data-spectrum-caption]");
+    var levelNote = panel.querySelector("[data-spectrum-level-note]");
+    var canActual = data.lu && data.lu.length === 3;
+    panel.querySelectorAll("[data-spectrum-mode]").forEach(function (btn) {
+      var active = btn.getAttribute("data-spectrum-mode") === mode;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+      if (btn.getAttribute("data-spectrum-mode") === "actual") {
+        btn.disabled = !canActual;
+      }
+    });
+    if (captionEl) {
+      if (mode === "actual") {
+        captionEl.textContent =
+          "Actual level: each curve includes its real loudness. Tone (matched) view aligns loudness for shape only.";
+      } else {
+        captionEl.textContent =
+          "Tone only: all curves are matched to the same loudness. See the volume line above for level change.";
+      }
     }
-  });
+    if (levelNote) {
+      if (mode === "actual" && canActual) {
+        var line = remasteredVsOriginalLine(data);
+        levelNote.textContent = line || "";
+        levelNote.hidden = !line;
+      } else {
+        levelNote.hidden = true;
+        levelNote.textContent = "";
+      }
+    }
+  }
+
+  function initSpectrumPanel(panel) {
+    var chartEl = panel.querySelector("[data-spectrum-chart]");
+    if (!chartEl) return;
+    var data = parsePayload(chartEl);
+    if (!data || !data.f || !data.o || !data.r || !data.m) return;
+
+    var mode = "tone";
+    renderChart(chartEl, data, mode);
+    updateModeUi(panel, mode, data);
+
+    panel.querySelectorAll("[data-spectrum-mode]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var next = btn.getAttribute("data-spectrum-mode");
+        if (!next || next === mode) return;
+        if (next === "actual" && !(data.lu && data.lu.length === 3)) return;
+        mode = next;
+        renderChart(chartEl, data, mode);
+        updateModeUi(panel, mode, data);
+      });
+    });
+  }
+
+  document.querySelectorAll("[data-spectrum-panel]").forEach(initSpectrumPanel);
 })();
