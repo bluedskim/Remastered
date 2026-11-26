@@ -29,10 +29,10 @@
   /**
    * Y-axis rule (keep in sync with tests/test_job_spectrum_chart_axis.py):
    * - Tick labels are 0-anchored multiples of tickStep (…, -20, -10, 0, 10, …).
-   * - Prefer tickStep 10 dB; use 6 dB only if 10 dB cannot yield 5–7 ticks.
-   * - Display floor yMin: −40 dB when tickStep is 10, else −42 dB (6 dB grid).
+   * - Prefer tickStep 10 dB; try 20 dB or 6 dB, or label every 2nd gridline, for 5–7 labels.
+   * - Display floor yMin: −40 dB when tickStep is 10 or 20, else −42 dB (6 dB grid).
    * - Curves clip to yMin at the bottom edge; deep data below −42 is not shown.
-   * - yMax = ceil((dataMax + 3 dB) / tickStep) * tickStep, trimmed to 5–7 ticks.
+   * - yMax is ALWAYS ceil((dataMax + 3 dB) / tickStep) * tickStep (never reduced).
    */
   var CLIP_TARGET_DB = -42;
 
@@ -41,37 +41,44 @@
   }
 
   function displayFloorForStep(step) {
-    return step === 10 ? -40 : -42;
+    return step === 6 ? -42 : -40;
+  }
+
+  function tickCount(yMin, yMax, tickStep) {
+    return (yMax - yMin) / tickStep + 1;
   }
 
   /** Keep in sync with tests/test_job_spectrum_chart_axis.py */
   function computeYAxisRange(allDb) {
     var dataMax = Math.max.apply(null, allDb);
     var headroom = 3;
+    var requiredTop = dataMax + headroom;
     var minTicks = 5;
     var maxTicks = 7;
-    var steps = [10, 6];
-    for (var si = 0; si < steps.length; si++) {
-      var tickStep = steps[si];
+    var stepCandidates = [10, 20, 6];
+    for (var si = 0; si < stepCandidates.length; si++) {
+      var tickStep = stepCandidates[si];
       var yMin = displayFloorForStep(tickStep);
-      var yMax = ceilToStep(dataMax + headroom, tickStep);
-      var count = (yMax - yMin) / tickStep + 1;
-      while (count > maxTicks) {
-        yMax -= tickStep;
-        count--;
+      var yMax = ceilToStep(requiredTop, tickStep);
+      var count = tickCount(yMin, yMax, tickStep);
+      if (count > maxTicks) {
+        var labelEvery = 2;
+        var labelCount = Math.ceil(count / labelEvery);
+        if (labelCount >= minTicks && labelCount <= maxTicks) {
+          return { yMin: yMin, yMax: yMax, tickStep: tickStep, labelEvery: labelEvery };
+        }
+        continue;
       }
       while (count < minTicks) {
         yMax += tickStep;
         count++;
       }
-      if (count >= minTicks && count <= maxTicks) {
-        return { yMin: yMin, yMax: yMax, tickStep: tickStep };
-      }
+      return { yMin: yMin, yMax: yMax, tickStep: tickStep, labelEvery: 1 };
     }
-    var fallbackStep = 10;
-    var yMinFb = displayFloorForStep(fallbackStep);
-    var yMaxFb = ceilToStep(dataMax + headroom, fallbackStep);
-    return { yMin: yMinFb, yMax: yMaxFb, tickStep: fallbackStep };
+    var tickStep = 20;
+    var yMin = displayFloorForStep(tickStep);
+    var yMax = ceilToStep(requiredTop, tickStep);
+    return { yMin: yMin, yMax: yMax, tickStep: tickStep, labelEvery: 1 };
   }
 
   function yAxisTickValues(yMin, yMax, tickStep) {
@@ -112,8 +119,6 @@
       var db = dbs[i];
       if (db < yMin || db < CLIP_TARGET_DB) {
         db = yMin;
-      } else if (db > yMax) {
-        db = yMax;
       }
       var y = padT + yMap(db, plotH, yMin, yMax);
       parts.push(x.toFixed(2) + "," + y.toFixed(2));
@@ -130,6 +135,7 @@
     var yMin = yAxis.yMin;
     var yMax = yAxis.yMax;
     var yTickStep = yAxis.tickStep;
+    var labelEvery = yAxis.labelEvery || 1;
     var yTicks = yAxisTickValues(yMin, yMax, yTickStep);
 
     var width = 720;
@@ -181,7 +187,7 @@
       svg.appendChild(label);
     });
 
-    yTicks.forEach(function (g) {
+    yTicks.forEach(function (g, idx) {
       var gy = padT + yMap(g, plotH, yMin, yMax);
       var line = document.createElementNS(ns, "line");
       line.setAttribute("x1", padL);
@@ -190,13 +196,15 @@
       line.setAttribute("y2", gy.toFixed(2));
       line.setAttribute("class", "spectrum-grid-line");
       svg.appendChild(line);
-      var ylab = document.createElementNS(ns, "text");
-      ylab.setAttribute("x", (padL - 6).toFixed(2));
-      ylab.setAttribute("y", (gy + 4).toFixed(2));
-      ylab.setAttribute("text-anchor", "end");
-      ylab.setAttribute("class", "spectrum-axis-label");
-      ylab.textContent = g + " dB";
-      svg.appendChild(ylab);
+      if (idx % labelEvery === 0) {
+        var ylab = document.createElementNS(ns, "text");
+        ylab.setAttribute("x", (padL - 6).toFixed(2));
+        ylab.setAttribute("y", (gy + 4).toFixed(2));
+        ylab.setAttribute("text-anchor", "end");
+        ylab.setAttribute("class", "spectrum-axis-label");
+        ylab.textContent = g + " dB";
+        svg.appendChild(ylab);
+      }
     });
 
     FREQ_TICKS.forEach(function (tick) {

@@ -23,42 +23,39 @@ def _log_freqs(n: int = 100) -> list[float]:
 
 def realistic_job_spectrum_payload() -> dict:
     """
-    Job-like fixture: ~80 Hz bass bump; original → ~−60 dB above 10 kHz;
-    reference/remastered ~−20 dB between 10–16 kHz (visible above floor).
+    Job 18ff496f-like: ~+26 dB at ~80 Hz; steep top-end rolloff; ref/master
+    flatter in treble (~−20 dB at 10–16 kHz).
     """
     freqs = _log_freqs()
     o: list[float] = []
     r: list[float] = []
     m: list[float] = []
     for hz in freqs:
-        bass = 9 * math.exp(-((math.log(hz) - math.log(80)) / 0.42) ** 2)
-        if hz < 4000:
-            orig = bass + 1.5 - 0.25 * max(0.0, math.log10(hz) - 2.2)
-        elif hz < 10000:
-            orig = 2.0 - 6.0 * (math.log10(hz) - 3.6)
-        else:
+        bass_o = 26 * math.exp(-((math.log(hz) - math.log(80)) / 0.35) ** 2)
+        bass_r = 24 * math.exp(-((math.log(hz) - math.log(82)) / 0.36) ** 2)
+        bass_m = 25 * math.exp(-((math.log(hz) - math.log(79)) / 0.34) ** 2)
+        if hz >= 10_000:
             log_rel = max(0.0, math.log10(hz) - 4.0)
-            orig = -22.0 - log_rel * 125.0
-        if hz >= 8000:
-            ref = -20.0 - 0.35 * max(0.0, math.log10(hz) - 3.85)
-            mast = -19.0 - 0.4 * max(0.0, math.log10(hz) - 3.88)
+            orig = -20.0 - log_rel * 120.0
+        elif hz < 4000:
+            orig = bass_o - 0.35 * max(0.0, math.log10(hz) - 2.4)
         else:
-            ref = bass * 0.45 + 0.5
-            mast = bass * 0.5 + 0.8
+            orig = 4.0 - 8.0 * (math.log10(hz) - 3.6)
+        if hz >= 8000:
+            ref = -19.5 - 0.35 * max(0.0, math.log10(hz) - 3.85)
+            mast = -18.5 - 0.38 * max(0.0, math.log10(hz) - 3.88)
+        else:
+            ref = bass_r * 0.92 - 0.5
+            mast = bass_m * 0.94
         o.append(round(orig, 1))
         r.append(round(ref, 1))
         m.append(round(mast, 1))
-    at_12k = min(
-        payload_o
-        for hz, payload_o in zip(freqs, o, strict=True)
-        if hz >= 12_000
-    )
+    assert max(o) >= 24.0, max(o)
     at_14k = [
         v
         for hz, v in zip(freqs, r, strict=True)
         if 10_000 <= hz <= 16_000
     ]
-    assert at_12k <= -55, at_12k
     assert at_14k and -25 <= sum(at_14k) / len(at_14k) <= -15, at_14k
     return {"v": 1, "f": [round(f, 1) if f < 1000 else round(f) for f in freqs], "o": o, "r": r, "m": m}
 
@@ -117,11 +114,12 @@ def main() -> None:
     before_html = _write_payload_html(payload, "spectrum-yaxis-before.js")
     after_html = _write_payload_html(payload, "spectrum-yaxis-after.js")
 
-    before_png = ARTIFACTS / "spectrum-yaxis-before.png"
-    after_png = ARTIFACTS / "spectrum-yaxis-after.png"
+    before_png = ARTIFACTS / "spectrum-18ff496f-before.png"
+    after_png = ARTIFACTS / "spectrum-18ff496f-after.png"
 
     _browser_screenshot(before_html, before_png)
     _browser_screenshot(after_html, after_png)
+    print("peak dB", max(max(payload["o"]), max(payload["r"]), max(payload["m"])))
     print("original min (treble)", min(payload["o"][-30:]))
     print(
         "ref avg 10-16k",
