@@ -2243,6 +2243,10 @@ table.jobs td {
   letter-spacing: 0.04em;
 }
 
+.spectrum-line--reference {
+  filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.32));
+}
+
 .spectrum-line--remastered {
   filter: drop-shadow(0 0 6px rgba(236, 72, 153, 0.45));
 }
@@ -2279,7 +2283,8 @@ table.jobs td {
 }
 
 .spectrum-legend__swatch--reference {
-  background: #f97316;
+  background: #22d3ee;
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.35);
 }
 
 .spectrum-legend__swatch--remastered {

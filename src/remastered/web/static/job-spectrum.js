@@ -22,7 +22,7 @@
 
   var COLORS = {
     original: "#9ca3af",
-    reference: "#f97316",
+    reference: "#22d3ee",
     remastered: "#ec4899",
   };
 
@@ -227,9 +227,9 @@
     });
 
     var series = [
-      { key: "o", color: COLORS.original, dash: "6 4", width: "1.5" },
-      { key: "r", color: COLORS.reference, dash: "", width: "1.75" },
-      { key: "m", color: COLORS.remastered, dash: "", width: "2.5" },
+      { key: "o", color: COLORS.original, dash: "6 4", width: "1.5", lineClass: "" },
+      { key: "r", color: COLORS.reference, dash: "", width: "1.25", lineClass: "spectrum-line--reference" },
+      { key: "m", color: COLORS.remastered, dash: "", width: "2.85", lineClass: "spectrum-line--remastered" },
     ];
 
     series.forEach(function (s) {
@@ -241,8 +241,10 @@
       pl.setAttribute("fill", "none");
       pl.setAttribute("stroke", s.color);
       pl.setAttribute("stroke-width", s.width);
+      pl.setAttribute("stroke-linecap", "round");
+      pl.setAttribute("stroke-linejoin", "round");
       if (s.dash) pl.setAttribute("stroke-dasharray", s.dash);
-      if (s.key === "m") pl.setAttribute("class", "spectrum-line--remastered");
+      if (s.lineClass) pl.setAttribute("class", s.lineClass);
       svg.appendChild(pl);
     });
 
